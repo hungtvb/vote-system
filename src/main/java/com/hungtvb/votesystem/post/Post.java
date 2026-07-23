@@ -1,6 +1,7 @@
 package com.hungtvb.votesystem.post;
 
 import jakarta.persistence.*;
+
 import java.time.Instant;
 import java.util.UUID;
 
@@ -41,6 +42,11 @@ public class Post {
 
     public static Post create(UUID authorId, String title, String content) {
         return new Post(authorId, title, content);
+    }
+
+    public void update(String title, String content) {
+        this.title = title;
+        this.content = content;
     }
 
     @PrePersist
