@@ -14,16 +14,16 @@ import java.util.UUID;
 public interface RefreshSessionRepository extends JpaRepository<RefreshSession, UUID> {
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select session from RefreshSession session where session.tokenHash = :tokenHash")
+    @Query("select s from RefreshSession s where s.tokenHash = :tokenHash")
     Optional<RefreshSession> findByTokenHashForUpdate(@Param("tokenHash") String tokenHash);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
-            update RefreshSession session
-               set session.revokedAt = :revokedAt,
-                   session.lastUsedAt = :revokedAt
-             where session.userId = :userId
-               and session.revokedAt is null
+            update RefreshSession s
+               set s.revokedAt = :revokedAt,
+                   s.lastUsedAt = :revokedAt
+             where s.userId = :userId
+               and s.revokedAt is null
             """)
     int revokeAllActiveByUserId(@Param("userId") UUID userId, @Param("revokedAt") Instant revokedAt);
 }
