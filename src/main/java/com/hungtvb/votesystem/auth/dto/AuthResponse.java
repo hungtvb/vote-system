@@ -6,6 +6,7 @@ public record AuthResponse(
         String tokenType,
         String accessToken,
         long expiresInSeconds,
+        long refreshExpiresInSeconds,
         UUID userId,
         String email,
         String role

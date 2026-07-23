@@ -38,4 +38,9 @@ app:
     jwt:
       issuer: ${JWT_ISSUER:vote-system}
       secret: ${JWT_SECRET:dev-only-change-me-0123456789abcdef}
-      access-token-ttl: PT15M
+      access-token-ttl: ${ACCESS_TOKEN_TTL:PT15M}
+    refresh-token:
+      ttl: ${REFRESH_TOKEN_TTL:P30D}
+      cookie-name: ${REFRESH_COOKIE_NAME:vote_refresh}
+      secure: ${REFRESH_COOKIE_SECURE:false}
+      same-site: ${REFRESH_COOKIE_SAME_SITE:Lax}
