@@ -14,6 +14,6 @@ public interface UserRepository extends JpaRepository<AppUser, UUID> {
     boolean existsByEmail(String email);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select user from AppUser user where user.id = :id")
+    @Query("select u from AppUser u where u.id = :id")
     Optional<AppUser> findByIdForUpdate(@Param("id") UUID id);
 }
