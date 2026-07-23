@@ -57,6 +57,10 @@ public class Vote {
         this.updatedAt = Instant.now();
     }
 
+    public UUID getPostId() {
+        return postId;
+    }
+
     public VoteType getType() {
         return type;
     }
