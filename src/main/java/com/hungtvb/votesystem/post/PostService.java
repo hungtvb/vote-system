@@ -3,17 +3,19 @@ package com.hungtvb.votesystem.post;
 import com.hungtvb.votesystem.common.error.ResourceNotFoundException;
 import com.hungtvb.votesystem.post.dto.CreatePostRequest;
 import com.hungtvb.votesystem.post.dto.PostResponse;
+import com.hungtvb.votesystem.post.dto.UpdatePostRequest;
 import com.hungtvb.votesystem.vote.Vote;
 import com.hungtvb.votesystem.vote.VoteRepository;
 import com.hungtvb.votesystem.vote.VoteType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -30,6 +32,23 @@ public class PostService {
     public PostResponse create(UUID authorId, CreatePostRequest request) {
         Post post = Post.create(authorId, request.title().trim(), request.content().trim());
         return PostResponse.from(postRepository.save(post));
+    }
+
+    @Transactional
+    public PostResponse update(UUID authorId, UUID postId, UpdatePostRequest request) {
+        Post post = findOwnedPost(authorId, postId);
+        post.update(request.title().trim(), request.content().trim());
+        VoteType myVote = voteRepository.findByUserIdAndPostId(authorId, postId)
+                .map(Vote::getType)
+                .orElse(null);
+        return PostResponse.from(post, myVote);
+    }
+
+    @Transactional
+    public void delete(UUID authorId, UUID postId) {
+        Post post = findOwnedPost(authorId, postId);
+        voteRepository.deleteByPostId(postId);
+        postRepository.delete(post);
     }
 
     @Transactional(readOnly = true)
@@ -56,5 +75,14 @@ public class PostService {
                 .collect(Collectors.toMap(Vote::getPostId, Vote::getType, (first, ignored) -> first));
 
         return posts.map(post -> PostResponse.from(post, votesByPostId.get(post.getId())));
+    }
+
+    private Post findOwnedPost(UUID authorId, UUID postId) {
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
+        if (!post.getAuthorId().equals(authorId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the author can modify this post");
+        }
+        return post;
     }
 }
