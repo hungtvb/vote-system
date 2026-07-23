@@ -1,5 +1,6 @@
 package com.hungtvb.votesystem.post;
 
+import com.hungtvb.votesystem.common.error.ForbiddenException;
 import com.hungtvb.votesystem.common.error.ResourceNotFoundException;
 import com.hungtvb.votesystem.post.dto.CreatePostRequest;
 import com.hungtvb.votesystem.post.dto.PostResponse;
@@ -9,10 +10,8 @@ import com.hungtvb.votesystem.vote.VoteRepository;
 import com.hungtvb.votesystem.vote.VoteType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Map;
 import java.util.UUID;
@@ -38,6 +37,7 @@ public class PostService {
     public PostResponse update(UUID authorId, UUID postId, UpdatePostRequest request) {
         Post post = findOwnedPost(authorId, postId);
         post.update(request.title().trim(), request.content().trim());
+        postRepository.saveAndFlush(post);
         VoteType myVote = voteRepository.findByUserIdAndPostId(authorId, postId)
                 .map(Vote::getType)
                 .orElse(null);
@@ -81,7 +81,7 @@ public class PostService {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
         if (!post.getAuthorId().equals(authorId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the author can modify this post");
+            throw new ForbiddenException("Only the author can modify this post");
         }
         return post;
     }
