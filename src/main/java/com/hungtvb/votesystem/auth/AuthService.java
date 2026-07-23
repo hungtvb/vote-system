@@ -60,17 +60,14 @@ public class AuthService {
         return issueSession((AuthenticatedUser) authentication.getPrincipal());
     }
 
-    @Transactional
     public IssuedAuthSession refresh(String refreshToken) {
         return response(refreshSessionService.rotate(refreshToken));
     }
 
-    @Transactional
     public void logout(String refreshToken) {
         refreshSessionService.revoke(refreshToken);
     }
 
-    @Transactional
     public int logoutAll(UUID userId) {
         return refreshSessionService.revokeAll(userId);
     }
