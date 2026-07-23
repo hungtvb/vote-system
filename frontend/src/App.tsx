@@ -142,10 +142,11 @@ function PostEditorModal({ post, busy, onClose, onSave }: EditorModalProps) {
   }, [post, busy, onClose]);
 
   if (!post) return null;
+  const activePost = post;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await onSave(post, { title: title.trim(), content: content.trim() });
+    await onSave(activePost, { title: title.trim(), content: content.trim() });
   }
 
   return (
