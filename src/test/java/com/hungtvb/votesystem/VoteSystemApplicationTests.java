@@ -54,26 +54,24 @@ class VoteSystemApplicationTests {
 
         String postId = objectMapper.readTree(postJson).get("id").asText();
 
-        mockMvc.perform(put("/api/v1/posts/{postId}/vote", postId)
-                        .header("Authorization", "Bearer " + token)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"type\":\"UP\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.voteScore").value(1))
-                .andExpect(jsonPath("$.myVote").value("UP"));
-
-        mockMvc.perform(put("/api/v1/posts/{postId}/vote", postId)
-                        .header("Authorization", "Bearer " + token)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"type\":\"DOWN\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.voteScore").value(-1))
-                .andExpect(jsonPath("$.myVote").value("DOWN"));
+        castVote(token, postId, "UP", 1);
+        castVote(token, postId, "UP", 1);
+        castVote(token, postId, "DOWN", -1);
 
         mockMvc.perform(delete("/api/v1/posts/{postId}/vote", postId)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.voteScore").value(0))
                 .andExpect(jsonPath("$.myVote").doesNotExist());
+    }
+
+    private void castVote(String token, String postId, String type, int expectedScore) throws Exception {
+        mockMvc.perform(put("/api/v1/posts/{postId}/vote", postId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"" + type + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.voteScore").value(expectedScore))
+                .andExpect(jsonPath("$.myVote").value(type));
     }
 }
