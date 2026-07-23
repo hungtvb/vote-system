@@ -25,12 +25,14 @@ A production-oriented vote platform built as a **modular monolith**. Domain boun
 
 - Register, login, logout, and persisted browser session
 - BCrypt password hashing and stateless JWT authentication
-- Create, browse, search, and paginate posts
+- Create, browse, search, paginate, edit, and delete posts
+- Ownership enforcement: only the author can update or delete a post
 - Upvote, downvote, change vote, and remove vote
 - Current user's vote returned with each post without N+1 queries
 - One vote per user/post enforced by a database constraint
 - Atomic post score updates
-- Loading, empty, error, and responsive UI states
+- Deleting a post removes its votes in the same transaction
+- Loading, empty, error, ownership, and responsive UI states
 - PostgreSQL integration tests through Testcontainers
 - Backend and frontend CI builds
 
@@ -87,6 +89,24 @@ curl -s http://localhost:8080/api/v1/posts \
   -d '{"title":"First post","content":"Production vote system"}'
 ```
 
+Update an owned post:
+
+```bash
+curl -s http://localhost:8080/api/v1/posts/<postId> \
+  -X PUT \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Updated title","content":"Updated content"}'
+```
+
+Delete an owned post:
+
+```bash
+curl -i http://localhost:8080/api/v1/posts/<postId> \
+  -X DELETE \
+  -H "Authorization: Bearer $TOKEN"
+```
+
 Vote:
 
 ```bash
@@ -112,8 +132,7 @@ The first version uses one PostgreSQL database because it keeps transactions, de
 ## Next milestones
 
 1. Refresh tokens and session revocation
-2. Post ownership, update, and delete
-3. Redis rate limiting and hot ranking
-4. Outbox events
-5. WebSocket/SSE fan-out where realtime delivery is justified
-6. Metrics dashboards and load tests
+2. Redis rate limiting and hot ranking
+3. Outbox events
+4. WebSocket/SSE fan-out where realtime delivery is justified
+5. Metrics dashboards and load tests

@@ -2,6 +2,7 @@ package com.hungtvb.votesystem.post;
 
 import com.hungtvb.votesystem.post.dto.CreatePostRequest;
 import com.hungtvb.votesystem.post.dto.PostResponse;
+import com.hungtvb.votesystem.post.dto.UpdatePostRequest;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -25,6 +26,19 @@ public class PostController {
     @ResponseStatus(HttpStatus.CREATED)
     PostResponse create(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody CreatePostRequest request) {
         return postService.create(UUID.fromString(jwt.getSubject()), request);
+    }
+
+    @PutMapping("/{postId}")
+    PostResponse update(@AuthenticationPrincipal Jwt jwt,
+                        @PathVariable UUID postId,
+                        @Valid @RequestBody UpdatePostRequest request) {
+        return postService.update(UUID.fromString(jwt.getSubject()), postId, request);
+    }
+
+    @DeleteMapping("/{postId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void delete(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID postId) {
+        postService.delete(UUID.fromString(jwt.getSubject()), postId);
     }
 
     @GetMapping("/{postId}")

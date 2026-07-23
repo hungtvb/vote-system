@@ -23,6 +23,11 @@ public class ApiExceptionHandler {
         return problem(HttpStatus.NOT_FOUND, exception.getMessage(), request);
     }
 
+    @ExceptionHandler(ForbiddenException.class)
+    ResponseEntity<ProblemDetail> handleForbidden(ForbiddenException exception, HttpServletRequest request) {
+        return problem(HttpStatus.FORBIDDEN, exception.getMessage(), request);
+    }
+
     @ExceptionHandler({ConflictException.class, DataIntegrityViolationException.class})
     ResponseEntity<ProblemDetail> handleConflict(Exception exception, HttpServletRequest request) {
         String detail = exception instanceof ConflictException

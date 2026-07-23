@@ -4,6 +4,7 @@ import type {
   PageResponse,
   Post,
   Session,
+  UpdatePostPayload,
   VoteResponse,
   VoteType
 } from './types';
@@ -39,6 +40,9 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
     throw new ApiError(message, response.status);
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
   return response.json() as Promise<T>;
 }
 
@@ -65,6 +69,19 @@ export const api = {
     return request<Post>('/api/v1/posts', {
       method: 'POST',
       body: JSON.stringify(payload)
+    }, token);
+  },
+
+  updatePost(postId: string, payload: UpdatePostPayload, token: string) {
+    return request<Post>(`/api/v1/posts/${postId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    }, token);
+  },
+
+  deletePost(postId: string, token: string) {
+    return request<void>(`/api/v1/posts/${postId}`, {
+      method: 'DELETE'
     }, token);
   },
 

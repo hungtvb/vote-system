@@ -42,7 +42,10 @@ export interface AuthPayload {
   password: string;
 }
 
-export interface CreatePostPayload {
+export interface PostPayload {
   title: string;
   content: string;
 }
+
+export type CreatePostPayload = PostPayload;
+export type UpdatePostPayload = PostPayload;
