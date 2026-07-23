@@ -28,14 +28,19 @@ public class PostController {
     }
 
     @GetMapping("/{postId}")
-    PostResponse get(@PathVariable UUID postId) {
-        return postService.get(postId);
+    PostResponse get(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID postId) {
+        return postService.get(postId, currentUserId(jwt));
     }
 
     @GetMapping
-    Page<PostResponse> list(@RequestParam(defaultValue = "0") int page,
+    Page<PostResponse> list(@AuthenticationPrincipal Jwt jwt,
+                            @RequestParam(defaultValue = "0") int page,
                             @RequestParam(defaultValue = "20") int size) {
         int safeSize = Math.min(Math.max(size, 1), 100);
-        return postService.list(PageRequest.of(Math.max(page, 0), safeSize));
+        return postService.list(PageRequest.of(Math.max(page, 0), safeSize), currentUserId(jwt));
+    }
+
+    private UUID currentUserId(Jwt jwt) {
+        return jwt == null ? null : UUID.fromString(jwt.getSubject());
     }
 }
