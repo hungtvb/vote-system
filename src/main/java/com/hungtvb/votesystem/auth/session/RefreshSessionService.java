@@ -41,7 +41,7 @@ public class RefreshSessionService {
         return new RefreshGrant(user, issuedToken.rawToken(), properties.ttl().toSeconds());
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = UnauthorizedException.class)
     public RefreshGrant rotate(String rawToken) {
         String tokenHash = hash(requireToken(rawToken));
         Instant now = Instant.now();
