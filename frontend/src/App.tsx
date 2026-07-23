@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { ApiError, api } from './api';
 import { loadSession, saveSession } from './session';
-import type { AuthPayload, Post, Session, VoteType } from './types';
+import type { AuthPayload, Post, Session, UpdatePostPayload, VoteType } from './types';
 
 type AuthMode = 'login' | 'register';
 type ToastTone = 'success' | 'error';
@@ -30,6 +30,14 @@ function CloseIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>;
 }
 
+function EditIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></svg>;
+}
+
+function TrashIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5M14 11v5" /></svg>;
+}
+
 function formatRelativeTime(value: string): string {
   const seconds = Math.round((new Date(value).getTime() - Date.now()) / 1000);
   const formatter = new Intl.RelativeTimeFormat('vi', { numeric: 'auto' });
@@ -40,6 +48,10 @@ function formatRelativeTime(value: string): string {
     if (Math.abs(seconds) >= divisor) return formatter.format(Math.round(seconds / divisor), unit);
   }
   return formatter.format(seconds, 'second');
+}
+
+function wasEdited(post: Post): boolean {
+  return new Date(post.updatedAt).getTime() - new Date(post.createdAt).getTime() > 1000;
 }
 
 interface AuthModalProps {
@@ -105,6 +117,54 @@ function AuthModal({ open, mode, onModeChange, onClose, onAuthenticated }: AuthM
   );
 }
 
+interface EditorModalProps {
+  post: Post | null;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (post: Post, payload: UpdatePostPayload) => Promise<void>;
+}
+
+function PostEditorModal({ post, busy, onClose, onSave }: EditorModalProps) {
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+
+  useEffect(() => {
+    if (!post) return;
+    setTitle(post.title);
+    setContent(post.content);
+  }, [post]);
+
+  useEffect(() => {
+    if (!post) return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => event.key === 'Escape' && !busy && onClose();
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [post, busy, onClose]);
+
+  if (!post) return null;
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await onSave(post, { title: title.trim(), content: content.trim() });
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}>
+      <section className="auth-modal editor-modal" role="dialog" aria-modal="true" aria-labelledby="editor-title">
+        <button className="icon-button modal-close" type="button" onClick={onClose} disabled={busy} aria-label="Đóng"><CloseIcon /></button>
+        <p className="eyebrow">Quản lý chủ đề</p>
+        <h2 id="editor-title">Chỉnh sửa bài viết</h2>
+        <p className="modal-copy">Thay đổi sẽ được cập nhật ngay trên bảng tin nhưng không làm mất điểm bình chọn.</p>
+        <form className="auth-form editor-form" onSubmit={submit}>
+          <label>Tiêu đề<input autoFocus required maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} /></label>
+          <label>Nội dung<textarea required maxLength={5000} rows={7} value={content} onChange={(event) => setContent(event.target.value)} /></label>
+          <div className="editor-footer"><span>{content.length}/5000</span><div><button className="secondary-button" type="button" onClick={onClose} disabled={busy}>Hủy</button><button className="primary-button" type="submit" disabled={busy || !title.trim() || !content.trim()}>{busy ? 'Đang lưu…' : 'Lưu thay đổi'}</button></div></div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 interface ComposerProps {
   session: Session | null;
   onRequireAuth: () => void;
@@ -148,7 +208,7 @@ function PostComposer({ session, onRequireAuth, onCreated, onError }: ComposerPr
   return (
     <form className="composer-card" onSubmit={submit}>
       <div className="composer-heading"><div><p className="eyebrow">Tạo chủ đề mới</p><h2>Chia sẻ điều đáng để cộng đồng bàn luận</h2></div><button className="icon-button" type="button" onClick={() => setExpanded(false)} aria-label="Thu gọn"><CloseIcon /></button></div>
-      <label>Tiêu đề<input required maxLength={180} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Một câu hỏi hoặc quan điểm rõ ràng" autoFocus /></label>
+      <label>Tiêu đề<input required maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Một câu hỏi hoặc quan điểm rõ ràng" autoFocus /></label>
       <label>Nội dung<textarea required maxLength={5000} rows={5} value={content} onChange={(event) => setContent(event.target.value)} placeholder="Thêm bối cảnh để mọi người có thể bình chọn có căn cứ…" /></label>
       <div className="composer-footer"><span>{content.length}/5000</span><button className="primary-button" type="submit" disabled={submitting || !title.trim() || !content.trim()}>{submitting ? 'Đang đăng…' : 'Đăng chủ đề'}</button></div>
     </form>
@@ -157,23 +217,32 @@ function PostComposer({ session, onRequireAuth, onCreated, onError }: ComposerPr
 
 interface PostCardProps {
   post: Post;
-  busy: boolean;
+  owned: boolean;
+  voteBusy: boolean;
+  mutationBusy: boolean;
   onVote: (post: Post, type: VoteType) => void;
   onShare: (post: Post) => void;
+  onEdit: (post: Post) => void;
+  onDelete: (post: Post) => void;
 }
 
-function PostCard({ post, busy, onVote, onShare }: PostCardProps) {
+function PostCard({ post, owned, voteBusy, mutationBusy, onVote, onShare, onEdit, onDelete }: PostCardProps) {
+  const busy = voteBusy || mutationBusy;
   return (
-    <article className="post-card" id={`post-${post.id}`}>
+    <article className={mutationBusy ? 'post-card mutating' : 'post-card'} id={`post-${post.id}`} aria-busy={mutationBusy}>
       <div className="vote-rail" aria-label={`Điểm bình chọn: ${post.voteScore}`}>
         <button type="button" className={post.myVote === 'UP' ? 'vote-button active up' : 'vote-button'} disabled={busy} onClick={() => onVote(post, 'UP')} aria-label="Upvote" aria-pressed={post.myVote === 'UP'}><ArrowIcon direction="up" /></button>
         <strong>{post.voteScore}</strong>
         <button type="button" className={post.myVote === 'DOWN' ? 'vote-button active down' : 'vote-button'} disabled={busy} onClick={() => onVote(post, 'DOWN')} aria-label="Downvote" aria-pressed={post.myVote === 'DOWN'}><ArrowIcon direction="down" /></button>
       </div>
       <div className="post-body">
-        <div className="post-meta"><span className="avatar">{post.authorId.slice(0, 1).toUpperCase()}</span><div><strong>{`member-${post.authorId.slice(0, 6)}`}</strong><span>{formatRelativeTime(post.createdAt)}</span></div><span className="topic-badge">Thảo luận</span></div>
+        <div className="post-meta">
+          <span className="avatar">{post.authorId.slice(0, 1).toUpperCase()}</span>
+          <div><strong>{owned ? 'Bạn' : `member-${post.authorId.slice(0, 6)}`}</strong><span>{formatRelativeTime(post.createdAt)}{wasEdited(post) ? ' · đã chỉnh sửa' : ''}</span></div>
+          <div className="post-meta-actions"><span className="topic-badge">{owned ? 'Của bạn' : 'Thảo luận'}</span>{owned && <div className="owner-actions"><button type="button" onClick={() => onEdit(post)} disabled={busy} aria-label="Chỉnh sửa bài viết" title="Chỉnh sửa"><EditIcon /></button><button className="danger" type="button" onClick={() => onDelete(post)} disabled={busy} aria-label="Xóa bài viết" title="Xóa"><TrashIcon /></button></div>}</div>
+        </div>
         <h2>{post.title}</h2><p>{post.content}</p>
-        <div className="post-actions"><button type="button" onClick={() => onShare(post)}>Chia sẻ</button><span>{post.myVote ? `Bạn đã ${post.myVote === 'UP' ? 'upvote' : 'downvote'}` : 'Chưa bình chọn'}</span></div>
+        <div className="post-actions"><button type="button" onClick={() => onShare(post)}>Chia sẻ</button><span>{mutationBusy ? 'Đang cập nhật…' : post.myVote ? `Bạn đã ${post.myVote === 'UP' ? 'upvote' : 'downvote'}` : 'Chưa bình chọn'}</span></div>
       </div>
     </article>
   );
@@ -191,6 +260,8 @@ export default function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
   const [busyVotes, setBusyVotes] = useState<Set<string>>(() => new Set());
+  const [busyPosts, setBusyPosts] = useState<Set<string>>(() => new Set());
+  const [editingPost, setEditingPost] = useState<Post | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
 
   function notify(message: string, tone: ToastTone = 'success') {
@@ -200,6 +271,16 @@ export default function App() {
   function clearSession() {
     saveSession(null);
     setSession(null);
+    setEditingPost(null);
+  }
+
+  function handleUnauthorized(caught: unknown): boolean {
+    if (!(caught instanceof ApiError) || caught.status !== 401) return false;
+    clearSession();
+    setAuthMode('login');
+    setAuthOpen(true);
+    notify('Phiên đăng nhập đã hết hạn.', 'error');
+    return true;
   }
 
   useEffect(() => {
@@ -221,8 +302,7 @@ export default function App() {
       })
       .catch((caught: unknown) => {
         if (!active) return;
-        if (caught instanceof ApiError && caught.status === 401) clearSession();
-        notify(caught instanceof Error ? caught.message : 'Không thể tải bảng tin.', 'error');
+        if (!handleUnauthorized(caught)) notify(caught instanceof Error ? caught.message : 'Không thể tải bảng tin.', 'error');
       })
       .finally(() => active && setLoading(false));
     return () => { active = false; };
@@ -254,7 +334,7 @@ export default function App() {
       setPage(nextPage);
       setHasMore(!result.last);
     } catch (caught) {
-      notify(caught instanceof Error ? caught.message : 'Không thể tải thêm bài viết.', 'error');
+      if (!handleUnauthorized(caught)) notify(caught instanceof Error ? caught.message : 'Không thể tải thêm bài viết.', 'error');
     } finally {
       setLoadingMore(false);
     }
@@ -262,7 +342,7 @@ export default function App() {
 
   async function handleVote(post: Post, type: VoteType) {
     if (!session) return requireAuth();
-    if (busyVotes.has(post.id)) return;
+    if (busyVotes.has(post.id) || busyPosts.has(post.id)) return;
     const previous = post;
     const removing = previous.myVote === type;
     const nextVote = removing ? undefined : type;
@@ -275,13 +355,41 @@ export default function App() {
       setPosts((current) => current.map((item) => item.id === post.id ? { ...item, voteScore: result.voteScore, myVote: result.myVote } : item));
     } catch (caught) {
       setPosts((current) => current.map((item) => item.id === post.id ? previous : item));
-      if (caught instanceof ApiError && caught.status === 401) {
-        clearSession();
-        requireAuth();
-        notify('Phiên đăng nhập đã hết hạn.', 'error');
-      } else notify(caught instanceof Error ? caught.message : 'Không thể cập nhật bình chọn.', 'error');
+      if (!handleUnauthorized(caught)) notify(caught instanceof Error ? caught.message : 'Không thể cập nhật bình chọn.', 'error');
     } finally {
       setBusyVotes((current) => { const next = new Set(current); next.delete(post.id); return next; });
+    }
+  }
+
+  async function updatePost(post: Post, payload: UpdatePostPayload) {
+    if (!session || busyPosts.has(post.id)) return;
+    setBusyPosts((current) => new Set(current).add(post.id));
+    try {
+      const updated = await api.updatePost(post.id, payload, session.accessToken);
+      setPosts((current) => current.map((item) => item.id === post.id ? updated : item));
+      setEditingPost(null);
+      notify('Đã lưu thay đổi bài viết.');
+    } catch (caught) {
+      if (!handleUnauthorized(caught)) notify(caught instanceof Error ? caught.message : 'Không thể cập nhật bài viết.', 'error');
+    } finally {
+      setBusyPosts((current) => { const next = new Set(current); next.delete(post.id); return next; });
+    }
+  }
+
+  async function deletePost(post: Post) {
+    if (!session || busyPosts.has(post.id)) return;
+    if (!window.confirm(`Xóa chủ đề “${post.title}”? Toàn bộ bình chọn của bài viết cũng sẽ bị xóa.`)) return;
+    setBusyPosts((current) => new Set(current).add(post.id));
+    try {
+      await api.deletePost(post.id, session.accessToken);
+      setPosts((current) => current.filter((item) => item.id !== post.id));
+      setTotalElements((current) => Math.max(0, current - 1));
+      if (editingPost?.id === post.id) setEditingPost(null);
+      notify('Đã xóa bài viết.');
+    } catch (caught) {
+      if (!handleUnauthorized(caught)) notify(caught instanceof Error ? caught.message : 'Không thể xóa bài viết.', 'error');
+    } finally {
+      setBusyPosts((current) => { const next = new Set(current); next.delete(post.id); return next; });
     }
   }
 
@@ -303,14 +411,15 @@ export default function App() {
           <div className="feed-column">
             <PostComposer session={session} onRequireAuth={requireAuth} onCreated={(post) => { setPosts((current) => [post, ...current]); setTotalElements((current) => current + 1); notify('Chủ đề đã được đăng.'); }} onError={(message) => notify(message, 'error')} />
             <div className="feed-toolbar"><div><p className="eyebrow">Cộng đồng đang nói gì</p><h2>Bảng tin mới nhất</h2></div><label className="search-box"><SearchIcon /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm trong bài đã tải" aria-label="Tìm bài viết" /></label></div>
-            {loading ? <div className="skeleton-list" aria-label="Đang tải bài viết">{[0, 1, 2].map((item) => <div className="post-skeleton" key={item}><span /><div><i /><i /><i /></div></div>)}</div> : visiblePosts.length ? <div className="post-list">{visiblePosts.map((post) => <PostCard key={post.id} post={post} busy={busyVotes.has(post.id)} onVote={handleVote} onShare={sharePost} />)}</div> : <div className="empty-state"><LogoMark /><h3>{search ? 'Không tìm thấy chủ đề phù hợp' : 'Chưa có chủ đề nào'}</h3><p>{search ? 'Thử một từ khóa khác.' : 'Hãy là người bắt đầu cuộc thảo luận đầu tiên.'}</p></div>}
+            {loading ? <div className="skeleton-list" aria-label="Đang tải bài viết">{[0, 1, 2].map((item) => <div className="post-skeleton" key={item}><span /><div><i /><i /><i /></div></div>)}</div> : visiblePosts.length ? <div className="post-list">{visiblePosts.map((post) => <PostCard key={post.id} post={post} owned={session?.userId === post.authorId} voteBusy={busyVotes.has(post.id)} mutationBusy={busyPosts.has(post.id)} onVote={handleVote} onShare={sharePost} onEdit={setEditingPost} onDelete={deletePost} />)}</div> : <div className="empty-state"><LogoMark /><h3>{search ? 'Không tìm thấy chủ đề phù hợp' : 'Chưa có chủ đề nào'}</h3><p>{search ? 'Thử một từ khóa khác.' : 'Hãy là người bắt đầu cuộc thảo luận đầu tiên.'}</p></div>}
             {!search && hasMore && <button className="load-more" type="button" onClick={loadMore} disabled={loadingMore}>{loadingMore ? 'Đang tải…' : 'Xem thêm chủ đề'}</button>}
           </div>
-          <aside className="sidebar" id="about"><section className="sidebar-card community-card"><span className="status-dot" /><p className="eyebrow">Cộng đồng đang hoạt động</p><h2>Một không gian để ý kiến được lắng nghe.</h2><p>Vote không chỉ là con số. Nó giúp những góc nhìn hữu ích nổi bật và tạo nên các cuộc thảo luận có chất lượng.</p>{!session && <button className="primary-button full-width" type="button" onClick={() => { setAuthMode('register'); setAuthOpen(true); }}>Tham gia PulseVote</button>}</section><section className="sidebar-card rules-card"><p className="eyebrow">Cách hoạt động</p><ol><li><span>01</span><div><strong>Đăng chủ đề</strong><p>Nêu rõ câu hỏi và bối cảnh.</p></div></li><li><span>02</span><div><strong>Bình chọn</strong><p>Upvote, downvote hoặc đổi ý bất kỳ lúc nào.</p></div></li><li><span>03</span><div><strong>Đọc tín hiệu</strong><p>Điểm số được cập nhật ngay và lưu an toàn.</p></div></li></ol></section><p className="sidebar-note">Built with Spring Boot 3 · PostgreSQL · React</p></aside>
+          <aside className="sidebar" id="about"><section className="sidebar-card community-card"><span className="status-dot" /><p className="eyebrow">Cộng đồng đang hoạt động</p><h2>Một không gian để ý kiến được lắng nghe.</h2><p>Vote không chỉ là con số. Nó giúp những góc nhìn hữu ích nổi bật và tạo nên các cuộc thảo luận có chất lượng.</p>{!session && <button className="primary-button full-width" type="button" onClick={() => { setAuthMode('register'); setAuthOpen(true); }}>Tham gia PulseVote</button>}</section><section className="sidebar-card rules-card"><p className="eyebrow">Cách hoạt động</p><ol><li><span>01</span><div><strong>Đăng chủ đề</strong><p>Nêu rõ câu hỏi và bối cảnh.</p></div></li><li><span>02</span><div><strong>Bình chọn</strong><p>Upvote, downvote hoặc đổi ý bất kỳ lúc nào.</p></div></li><li><span>03</span><div><strong>Quản lý nội dung</strong><p>Tác giả có thể sửa hoặc xóa chủ đề của mình.</p></div></li></ol></section><p className="sidebar-note">Built with Spring Boot 3 · PostgreSQL · React</p></aside>
         </section>
       </main>
       <footer><a className="brand" href="#top"><LogoMark /><span>PulseVote</span></a><p>Side project production-oriented by Hưng.</p></footer>
       <AuthModal open={authOpen} mode={authMode} onModeChange={setAuthMode} onClose={() => setAuthOpen(false)} onAuthenticated={handleAuthenticated} />
+      <PostEditorModal post={editingPost} busy={editingPost ? busyPosts.has(editingPost.id) : false} onClose={() => setEditingPost(null)} onSave={updatePost} />
       {toast && <div className={`toast ${toast.tone}`} role="status">{toast.message}</div>}
     </div>
   );
