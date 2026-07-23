@@ -19,6 +19,7 @@ spring:
     time-zone: UTC
 
 server:
+  port: ${PORT:8080}
   shutdown: graceful
   forward-headers-strategy: framework
 
