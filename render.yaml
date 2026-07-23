@@ -18,5 +18,7 @@ services:
         generateValue: true
       - key: JWT_ISSUER
         value: vote-system
+      - key: REFRESH_COOKIE_SECURE
+        value: "true"
       - key: JAVA_TOOL_OPTIONS
         value: -XX:MaxRAMPercentage=75.0
