@@ -3,6 +3,7 @@ package com.hungtvb.votesystem.post.dto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.hungtvb.votesystem.post.Post;
 import com.hungtvb.votesystem.vote.VoteType;
+import com.hungtvb.votesystem.vote.dto.VoteSummary;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -13,17 +14,23 @@ public record PostResponse(
         UUID authorId,
         String title,
         String content,
-        long voteScore,
-        VoteType myVote,
+        VoteSummary votes,
         Instant createdAt,
         Instant updatedAt
 ) {
-    public static PostResponse from(Post post) {
-        return from(post, null);
+    public static PostResponse from(Post post, int verdictThreshold) {
+        return from(post, null, verdictThreshold);
     }
 
-    public static PostResponse from(Post post, VoteType myVote) {
-        return new PostResponse(post.getId(), post.getAuthorId(), post.getTitle(), post.getContent(),
-                post.getVoteScore(), myVote, post.getCreatedAt(), post.getUpdatedAt());
+    public static PostResponse from(Post post, VoteType myVote, int verdictThreshold) {
+        return new PostResponse(
+                post.getId(),
+                post.getAuthorId(),
+                post.getTitle(),
+                post.getContent(),
+                VoteSummary.from(post, myVote, verdictThreshold),
+                post.getCreatedAt(),
+                post.getUpdatedAt()
+        );
     }
 }
