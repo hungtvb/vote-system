@@ -6,7 +6,6 @@ import com.hungtvb.votesystem.post.PostRepository;
 import com.hungtvb.votesystem.ranking.RankingChangedEvent;
 import com.hungtvb.votesystem.user.UserRepository;
 import com.hungtvb.votesystem.vote.dto.VoteResponse;
-import com.hungtvb.votesystem.vote.dto.VoteSummary;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,7 +51,7 @@ public class VoteService {
         Post updatedPost = delta.isEmpty() ? post : incrementTotals(postId, delta);
         eventPublisher.publishEvent(RankingChangedEvent.upsert(
                 postId, updatedPost.getVoteScore(), updatedPost.getCreatedAt()));
-        return response(updatedPost, requestedType);
+        return VoteResponse.from(updatedPost, requestedType, votePolicy.verdictThreshold());
     }
 
     @Transactional
@@ -63,7 +62,7 @@ public class VoteService {
         Vote vote = voteRepository.findByUserIdAndPostId(userId, postId).orElse(null);
         if (vote == null) {
             eventPublisher.publishEvent(RankingChangedEvent.upsert(postId, post.getVoteScore(), post.getCreatedAt()));
-            return response(post, null);
+            return VoteResponse.from(post, null, votePolicy.verdictThreshold());
         }
 
         VoteDelta delta = VoteDelta.remove(vote.getType());
@@ -71,7 +70,7 @@ public class VoteService {
         Post updatedPost = incrementTotals(postId, delta);
         eventPublisher.publishEvent(RankingChangedEvent.upsert(
                 postId, updatedPost.getVoteScore(), updatedPost.getCreatedAt()));
-        return response(updatedPost, null);
+        return VoteResponse.from(updatedPost, null, votePolicy.verdictThreshold());
     }
 
     private void lockUser(UUID userId) {
@@ -90,13 +89,6 @@ public class VoteService {
             throw new IllegalStateException("Vote aggregate update would produce invalid counts");
         }
         return findPost(postId);
-    }
-
-    private VoteResponse response(Post post, VoteType myVote) {
-        return new VoteResponse(
-                post.getId(),
-                VoteSummary.from(post, myVote, votePolicy.verdictThreshold())
-        );
     }
 
     private record VoteDelta(int scoreDelta, int upDelta, int downDelta) {
