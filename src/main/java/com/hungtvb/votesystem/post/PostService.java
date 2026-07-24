@@ -9,6 +9,7 @@ import com.hungtvb.votesystem.ranking.FeedType;
 import com.hungtvb.votesystem.ranking.RankingChangedEvent;
 import com.hungtvb.votesystem.ranking.RankingService;
 import com.hungtvb.votesystem.vote.Vote;
+import com.hungtvb.votesystem.vote.VotePolicy;
 import com.hungtvb.votesystem.vote.VoteRepository;
 import com.hungtvb.votesystem.vote.VoteType;
 import org.springframework.context.ApplicationEventPublisher;
@@ -27,20 +28,25 @@ public class PostService {
     private final VoteRepository voteRepository;
     private final RankingService rankingService;
     private final ApplicationEventPublisher eventPublisher;
+    private final VotePolicy votePolicy;
 
-    public PostService(PostRepository postRepository, VoteRepository voteRepository,
-                       RankingService rankingService, ApplicationEventPublisher eventPublisher) {
+    public PostService(PostRepository postRepository,
+                       VoteRepository voteRepository,
+                       RankingService rankingService,
+                       ApplicationEventPublisher eventPublisher,
+                       VotePolicy votePolicy) {
         this.postRepository = postRepository;
         this.voteRepository = voteRepository;
         this.rankingService = rankingService;
         this.eventPublisher = eventPublisher;
+        this.votePolicy = votePolicy;
     }
 
     @Transactional
     public PostResponse create(UUID authorId, CreatePostRequest request) {
         Post post = postRepository.saveAndFlush(Post.create(authorId, request.title().trim(), request.content().trim()));
         eventPublisher.publishEvent(RankingChangedEvent.upsert(post.getId(), post.getVoteScore(), post.getCreatedAt()));
-        return PostResponse.from(post);
+        return response(post, null);
     }
 
     @Transactional
@@ -49,7 +55,7 @@ public class PostService {
         post.update(request.title().trim(), request.content().trim());
         postRepository.saveAndFlush(post);
         VoteType myVote = voteRepository.findByUserIdAndPostId(authorId, postId).map(Vote::getType).orElse(null);
-        return PostResponse.from(post, myVote);
+        return response(post, myVote);
     }
 
     @Transactional
@@ -66,19 +72,23 @@ public class PostService {
                 .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
         VoteType myVote = userId == null ? null : voteRepository.findByUserIdAndPostId(userId, postId)
                 .map(Vote::getType).orElse(null);
-        return PostResponse.from(post, myVote);
+        return response(post, myVote);
     }
 
     @Transactional(readOnly = true)
     public Page<PostResponse> list(Pageable pageable, UUID userId, FeedType feed) {
         Page<Post> posts = rankingService.list(feed, pageable);
         if (userId == null || posts.isEmpty()) {
-            return posts.map(PostResponse::from);
+            return posts.map(post -> response(post, null));
         }
         Map<UUID, VoteType> votesByPostId = voteRepository.findByUserIdAndPostIdIn(
                         userId, posts.getContent().stream().map(Post::getId).toList())
                 .stream().collect(Collectors.toMap(Vote::getPostId, Vote::getType, (first, ignored) -> first));
-        return posts.map(post -> PostResponse.from(post, votesByPostId.get(post.getId())));
+        return posts.map(post -> response(post, votesByPostId.get(post.getId())));
+    }
+
+    private PostResponse response(Post post, VoteType myVote) {
+        return PostResponse.from(post, myVote, votePolicy.verdictThreshold());
     }
 
     private Post findOwnedPost(UUID authorId, UUID postId) {
