@@ -3,6 +3,7 @@ package com.hungtvb.votesystem.post;
 import com.hungtvb.votesystem.post.dto.CreatePostRequest;
 import com.hungtvb.votesystem.post.dto.PostResponse;
 import com.hungtvb.votesystem.post.dto.UpdatePostRequest;
+import com.hungtvb.votesystem.ranking.FeedType;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -48,10 +49,14 @@ public class PostController {
 
     @GetMapping
     Page<PostResponse> list(@AuthenticationPrincipal Jwt jwt,
+                            @RequestParam(defaultValue = "LATEST") FeedType feed,
                             @RequestParam(defaultValue = "0") int page,
                             @RequestParam(defaultValue = "20") int size) {
         int safeSize = Math.min(Math.max(size, 1), 100);
-        return postService.list(PageRequest.of(Math.max(page, 0), safeSize), currentUserId(jwt));
+        return postService.list(
+                PageRequest.of(Math.max(page, 0), safeSize),
+                currentUserId(jwt),
+                feed);
     }
 
     private UUID currentUserId(Jwt jwt) {
