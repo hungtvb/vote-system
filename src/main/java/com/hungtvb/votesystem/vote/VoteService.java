@@ -1,9 +1,12 @@
 package com.hungtvb.votesystem.vote;
 
 import com.hungtvb.votesystem.common.error.ResourceNotFoundException;
+import com.hungtvb.votesystem.post.Post;
 import com.hungtvb.votesystem.post.PostRepository;
+import com.hungtvb.votesystem.ranking.RankingChangedEvent;
 import com.hungtvb.votesystem.user.UserRepository;
 import com.hungtvb.votesystem.vote.dto.VoteResponse;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,18 +17,22 @@ public class VoteService {
     private final UserRepository userRepository;
     private final PostRepository postRepository;
     private final VoteRepository voteRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public VoteService(UserRepository userRepository, PostRepository postRepository,
-                       VoteRepository voteRepository) {
+    public VoteService(UserRepository userRepository,
+                       PostRepository postRepository,
+                       VoteRepository voteRepository,
+                       ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.postRepository = postRepository;
         this.voteRepository = voteRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
     public VoteResponse cast(UUID userId, UUID postId, VoteType requestedType) {
         lockUser(userId);
-        ensurePostExists(postId);
+        Post post = findPost(postId);
 
         Vote vote = voteRepository.findByUserIdAndPostId(userId, postId).orElse(null);
         int delta = 0;
@@ -39,22 +46,27 @@ public class VoteService {
         }
 
         long score = delta == 0 ? currentScore(postId) : incrementScore(postId, delta);
+        eventPublisher.publishEvent(RankingChangedEvent.upsert(postId, score, post.getCreatedAt()));
         return new VoteResponse(postId, score, requestedType);
     }
 
     @Transactional
     public VoteResponse remove(UUID userId, UUID postId) {
         lockUser(userId);
-        ensurePostExists(postId);
+        Post post = findPost(postId);
 
         Vote vote = voteRepository.findByUserIdAndPostId(userId, postId).orElse(null);
         if (vote == null) {
-            return new VoteResponse(postId, currentScore(postId), null);
+            long score = currentScore(postId);
+            eventPublisher.publishEvent(RankingChangedEvent.upsert(postId, score, post.getCreatedAt()));
+            return new VoteResponse(postId, score, null);
         }
 
         int delta = -vote.getType().delta();
         voteRepository.delete(vote);
-        return new VoteResponse(postId, incrementScore(postId, delta), null);
+        long score = incrementScore(postId, delta);
+        eventPublisher.publishEvent(RankingChangedEvent.upsert(postId, score, post.getCreatedAt()));
+        return new VoteResponse(postId, score, null);
     }
 
     private void lockUser(UUID userId) {
@@ -62,10 +74,9 @@ public class VoteService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
     }
 
-    private void ensurePostExists(UUID postId) {
-        if (!postRepository.existsById(postId)) {
-            throw new ResourceNotFoundException("Post not found");
-        }
+    private Post findPost(UUID postId) {
+        return postRepository.findById(postId)
+                .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
     }
 
     private long incrementScore(UUID postId, int delta) {
