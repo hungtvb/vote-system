@@ -55,7 +55,7 @@ public class RedisSlidingWindowRateLimiter {
 
     public RateLimitDecision check(String rule, String subject, RateLimitProperties.Policy policy) {
         if (!properties.enabled()) {
-            return RateLimitDecision.allowed();
+            return RateLimitDecision.permit();
         }
 
         long now = clock.millis();
@@ -78,15 +78,15 @@ public class RedisSlidingWindowRateLimiter {
             boolean isAllowed = ((Number) result.get(0)).longValue() == 1;
             if (isAllowed) {
                 allowed.increment();
-                return RateLimitDecision.allowed();
+                return RateLimitDecision.permit();
             }
             rejected.increment();
             long retryMillis = ((Number) result.get(1)).longValue();
-            return RateLimitDecision.rejected(Duration.ofMillis(retryMillis).toSeconds() + 1);
+            return RateLimitDecision.deny(Duration.ofMillis(retryMillis).toSeconds() + 1);
         } catch (RedisConnectionFailureException | IllegalStateException exception) {
             errors.increment();
             if (properties.failOpen()) {
-                return RateLimitDecision.allowed();
+                return RateLimitDecision.permit();
             }
             throw exception;
         }
