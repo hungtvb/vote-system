@@ -5,6 +5,15 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/vote_system}
     username: ${DB_USERNAME:vote}
     password: ${DB_PASSWORD:vote}
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
+      timeout: ${REDIS_COMMAND_TIMEOUT:2s}
+      repositories:
+        enabled: false
+  cache:
+    type: redis
   jpa:
     open-in-view: false
     hibernate:
@@ -32,8 +41,13 @@ management:
     health:
       probes:
         enabled: true
+  health:
+    redis:
+      enabled: ${REDIS_HEALTH_ENABLED:true}
 
 app:
+  cache:
+    default-ttl: ${CACHE_DEFAULT_TTL:PT30S}
   security:
     jwt:
       issuer: ${JWT_ISSUER:vote-system}
