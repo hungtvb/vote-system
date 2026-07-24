@@ -20,5 +20,7 @@ services:
         value: vote-system
       - key: REFRESH_COOKIE_SECURE
         value: "true"
+      - key: REDIS_HEALTH_ENABLED
+        value: "false"
       - key: JAVA_TOOL_OPTIONS
         value: -XX:MaxRAMPercentage=75.0
