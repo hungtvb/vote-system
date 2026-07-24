@@ -6,6 +6,7 @@ import com.hungtvb.votesystem.post.PostRepository;
 import com.hungtvb.votesystem.ranking.RankingChangedEvent;
 import com.hungtvb.votesystem.user.UserRepository;
 import com.hungtvb.votesystem.vote.dto.VoteResponse;
+import com.hungtvb.votesystem.vote.dto.VoteSummary;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,15 +19,18 @@ public class VoteService {
     private final PostRepository postRepository;
     private final VoteRepository voteRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final VotePolicy votePolicy;
 
     public VoteService(UserRepository userRepository,
                        PostRepository postRepository,
                        VoteRepository voteRepository,
-                       ApplicationEventPublisher eventPublisher) {
+                       ApplicationEventPublisher eventPublisher,
+                       VotePolicy votePolicy) {
         this.userRepository = userRepository;
         this.postRepository = postRepository;
         this.voteRepository = voteRepository;
         this.eventPublisher = eventPublisher;
+        this.votePolicy = votePolicy;
     }
 
     @Transactional
@@ -35,19 +39,20 @@ public class VoteService {
         Post post = findPost(postId);
 
         Vote vote = voteRepository.findByUserIdAndPostId(userId, postId).orElse(null);
-        int delta = 0;
+        VoteDelta delta = VoteDelta.none();
 
         if (vote == null) {
             voteRepository.save(Vote.create(userId, postId, requestedType));
-            delta = requestedType.delta();
+            delta = VoteDelta.add(requestedType);
         } else if (vote.getType() != requestedType) {
-            delta = requestedType.delta() - vote.getType().delta();
+            delta = VoteDelta.change(vote.getType(), requestedType);
             vote.changeTo(requestedType);
         }
 
-        long score = delta == 0 ? currentScore(postId) : incrementScore(postId, delta);
-        eventPublisher.publishEvent(RankingChangedEvent.upsert(postId, score, post.getCreatedAt()));
-        return new VoteResponse(postId, score, requestedType);
+        Post updatedPost = delta.isEmpty() ? post : incrementTotals(postId, delta);
+        eventPublisher.publishEvent(RankingChangedEvent.upsert(
+                postId, updatedPost.getVoteScore(), updatedPost.getCreatedAt()));
+        return response(updatedPost, requestedType);
     }
 
     @Transactional
@@ -57,16 +62,16 @@ public class VoteService {
 
         Vote vote = voteRepository.findByUserIdAndPostId(userId, postId).orElse(null);
         if (vote == null) {
-            long score = currentScore(postId);
-            eventPublisher.publishEvent(RankingChangedEvent.upsert(postId, score, post.getCreatedAt()));
-            return new VoteResponse(postId, score, null);
+            eventPublisher.publishEvent(RankingChangedEvent.upsert(postId, post.getVoteScore(), post.getCreatedAt()));
+            return response(post, null);
         }
 
-        int delta = -vote.getType().delta();
+        VoteDelta delta = VoteDelta.remove(vote.getType());
         voteRepository.delete(vote);
-        long score = incrementScore(postId, delta);
-        eventPublisher.publishEvent(RankingChangedEvent.upsert(postId, score, post.getCreatedAt()));
-        return new VoteResponse(postId, score, null);
+        Post updatedPost = incrementTotals(postId, delta);
+        eventPublisher.publishEvent(RankingChangedEvent.upsert(
+                postId, updatedPost.getVoteScore(), updatedPost.getCreatedAt()));
+        return response(updatedPost, null);
     }
 
     private void lockUser(UUID userId) {
@@ -79,15 +84,50 @@ public class VoteService {
                 .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
     }
 
-    private long incrementScore(UUID postId, int delta) {
-        if (postRepository.incrementVoteScore(postId, delta) == 0) {
-            throw new ResourceNotFoundException("Post not found");
+    private Post incrementTotals(UUID postId, VoteDelta delta) {
+        if (postRepository.incrementVoteTotals(
+                postId, delta.scoreDelta(), delta.upDelta(), delta.downDelta()) == 0) {
+            throw new IllegalStateException("Vote aggregate update would produce invalid counts");
         }
-        return currentScore(postId);
+        return findPost(postId);
     }
 
-    private long currentScore(UUID postId) {
-        return postRepository.findVoteScoreById(postId)
-                .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
+    private VoteResponse response(Post post, VoteType myVote) {
+        return new VoteResponse(
+                post.getId(),
+                VoteSummary.from(post, myVote, votePolicy.verdictThreshold())
+        );
+    }
+
+    private record VoteDelta(int scoreDelta, int upDelta, int downDelta) {
+        static VoteDelta none() {
+            return new VoteDelta(0, 0, 0);
+        }
+
+        static VoteDelta add(VoteType type) {
+            return type == VoteType.UP
+                    ? new VoteDelta(1, 1, 0)
+                    : new VoteDelta(-1, 0, 1);
+        }
+
+        static VoteDelta remove(VoteType type) {
+            return type == VoteType.UP
+                    ? new VoteDelta(-1, -1, 0)
+                    : new VoteDelta(1, 0, -1);
+        }
+
+        static VoteDelta change(VoteType previous, VoteType requested) {
+            VoteDelta remove = remove(previous);
+            VoteDelta add = add(requested);
+            return new VoteDelta(
+                    remove.scoreDelta + add.scoreDelta,
+                    remove.upDelta + add.upDelta,
+                    remove.downDelta + add.downDelta
+            );
+        }
+
+        boolean isEmpty() {
+            return scoreDelta == 0 && upDelta == 0 && downDelta == 0;
+        }
     }
 }
