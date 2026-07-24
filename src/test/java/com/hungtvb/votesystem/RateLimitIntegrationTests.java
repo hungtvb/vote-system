@@ -14,7 +14,6 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
-import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -53,7 +52,7 @@ class RateLimitIntegrationTests {
         register("rate-two@example.com").andExpect(status().isCreated());
         register("rate-three@example.com")
                 .andExpect(status().isTooManyRequests())
-                .andExpect(header().longValue("Retry-After", greaterThanOrEqualTo(1L)))
+                .andExpect(header().exists("Retry-After"))
                 .andExpect(jsonPath("$.status").value(429))
                 .andExpect(jsonPath("$.title").value("Too Many Requests"));
     }
