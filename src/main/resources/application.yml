@@ -46,6 +46,8 @@ management:
       enabled: ${REDIS_HEALTH_ENABLED:true}
 
 app:
+  vote:
+    verdict-threshold: ${VOTE_VERDICT_THRESHOLD:70}
   cache:
     default-ttl: ${CACHE_DEFAULT_TTL:PT30S}
   rate-limit:
