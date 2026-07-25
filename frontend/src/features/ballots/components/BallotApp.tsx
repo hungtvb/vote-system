@@ -11,8 +11,9 @@ import type { Ballot, BallotStatus, BallotVoteUpdate, FeedType, VoteType } from 
 import {
   applyOptimisticVote,
   applyStreamUpdate,
-  applyVoteResponse,
   mergeUniqueBallots,
+  reconcileAuthoritativeBallot,
+  reconcileVoteResponse,
   rollbackVoteSnapshot
 } from '@/shared/ballot/ballot-state';
 import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue';
@@ -130,11 +131,13 @@ export function BallotApp() {
         ballot.myVote === type
           ? ballotApi.removeVote(ballot.id, active.accessToken)
           : ballotApi.castVote(ballot.id, type, active.accessToken));
-      setBallots(current => current.map(item => item.id === ballot.id ? applyVoteResponse(item, response) : item));
+      setBallots(current => current.map(item =>
+        item.id === ballot.id ? reconcileVoteResponse(item, response, snapshot.updatedAt) : item));
     } catch (error) {
       try {
         const authoritative = await runAuthorized(active => ballotApi.get(ballot.id, active.accessToken));
-        setBallots(current => current.map(item => item.id === ballot.id ? authoritative : item));
+        setBallots(current => current.map(item =>
+          item.id === ballot.id ? reconcileAuthoritativeBallot(item, authoritative) : item));
       } catch {
         setBallots(current => current.map(item =>
           item.id === ballot.id ? rollbackVoteSnapshot(item, snapshot) : item));
