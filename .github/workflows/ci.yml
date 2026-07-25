@@ -93,24 +93,29 @@ jobs:
             "$CHROME" "${common[@]}" --dump-dom "$url" > "visual-qa/${name}.html"
             grep -q 'data-qa-overflow="false"' "visual-qa/${name}.html"
             grep -q 'data-qa-cards="3"' "visual-qa/${name}.html"
-            grep -q 'data-qa-authors="3"' "visual-qa/${name}.html"
           }
 
           capture mobile-feed 375 812 feed
           capture tablet-feed 768 1024 feed
           capture desktop-feed 1440 1000 feed
+          grep -q 'data-qa-authors="3"' visual-qa/mobile-feed.html
+          grep -q 'data-qa-authors="3"' visual-qa/tablet-feed.html
+          grep -q 'data-qa-authors="3"' visual-qa/desktop-feed.html
           grep -q 'data-qa-guest="true"' visual-qa/desktop-feed.html
           grep -q 'data-qa-voter="false"' visual-qa/desktop-feed.html
 
           capture mobile-detail 375 812 detail
           grep -q 'data-qa-dialog="true"' visual-qa/mobile-detail.html
           grep -q 'data-qa-dialog-overflow="false"' visual-qa/mobile-detail.html
+          grep -q 'data-qa-authors="4"' visual-qa/mobile-detail.html
 
           capture desktop-auth 1440 1000 auth
+          grep -q 'data-qa-authors="3"' visual-qa/desktop-auth.html
           grep -q 'data-qa-voter="true"' visual-qa/desktop-auth.html
           grep -q 'data-qa-guest="false"' visual-qa/desktop-auth.html
 
           capture mobile-auth-menu 375 812 auth-menu
+          grep -q 'data-qa-authors="3"' visual-qa/mobile-auth-menu.html
           grep -q 'data-qa-voter="true"' visual-qa/mobile-auth-menu.html
           grep -q 'data-qa-menu="true"' visual-qa/mobile-auth-menu.html
           grep -q 'data-qa-guest="false"' visual-qa/mobile-auth-menu.html
