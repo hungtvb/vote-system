@@ -38,8 +38,14 @@ export function VoterMasthead({
       </a>
 
       <label className={styles.search}>
-        <span>SEARCH LOADED RECORDS</span>
-        <input value={query} onChange={event => onQueryChange(event.target.value)} placeholder="Tìm trong các hồ sơ đã tải..." />
+        <span>SEARCH PUBLIC REGISTRY</span>
+        <input
+          type="search"
+          maxLength={200}
+          value={query}
+          onChange={event => onQueryChange(event.target.value)}
+          placeholder="Title, content or ballot number..."
+        />
       </label>
 
       <div className={styles.actions}>
