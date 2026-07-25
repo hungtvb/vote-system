@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthDialog } from '@/features/auth/components/AuthDialog';
 import { useSession } from '@/features/auth/hooks/useSession';
 import { api, ApiError } from '@/shared/api/client';
@@ -19,8 +19,8 @@ function optimisticVote(ballot: Ballot, type: VoteType): Ballot {
   let upVotes = ballot.upVotes;
   let downVotes = ballot.downVotes;
   const removing = ballot.myVote === type;
-  if (ballot.myVote === 'UP') upVotes -= 1;
-  if (ballot.myVote === 'DOWN') downVotes -= 1;
+  if (ballot.myVote === 'UP') upVotes = Math.max(0, upVotes - 1);
+  if (ballot.myVote === 'DOWN') downVotes = Math.max(0, downVotes - 1);
   if (!removing && type === 'UP') upVotes += 1;
   if (!removing && type === 'DOWN') downVotes += 1;
   return { ...ballot, upVotes, downVotes, totalVotes: upVotes + downVotes, voteScore: upVotes - downVotes, myVote: removing ? undefined : type };
@@ -34,10 +34,11 @@ export function BallotApp() {
   const [page, setPage] = useState(0);
   const [lastPage, setLastPage] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set());
   const [message, setMessage] = useState('');
   const [authOpen, setAuthOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const requestSequence = useRef(0);
 
   const withRefresh = useCallback(async <T,>(operation: (activeSession: Session | null) => Promise<T>) => {
     try {
@@ -57,21 +58,27 @@ export function BallotApp() {
 
   const load = useCallback(async (nextPage = 0, append = false) => {
     if (restoring) return;
+    const sequence = ++requestSequence.current;
     setLoading(true);
     setMessage('');
     try {
       const response = await withRefresh(active => api.listBallots(feed, nextPage, PAGE_SIZE, active?.accessToken));
-      setBallots(current => append ? [...current, ...response.content] : response.content);
+      if (sequence !== requestSequence.current) return;
+      setBallots(current => append ? [...current, ...response.content.filter(item => !current.some(existing => existing.id === item.id))] : response.content);
       setPage(response.number);
       setLastPage(response.last);
     } catch (error) {
+      if (sequence !== requestSequence.current) return;
       setMessage(error instanceof Error ? error.message : 'Không thể tải sổ phiếu.');
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   }, [feed, restoring, withRefresh]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    return () => { requestSequence.current += 1; };
+  }, [load]);
 
   const visible = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -81,9 +88,9 @@ export function BallotApp() {
 
   async function vote(ballot: Ballot, type: VoteType) {
     if (!session) return setAuthOpen(true);
-    if (ballot.status === 'CLOSED') return;
+    if (ballot.status === 'CLOSED' || busyIds.has(ballot.id)) return;
     const snapshot = ballot;
-    setBusyId(ballot.id);
+    setBusyIds(current => new Set(current).add(ballot.id));
     setBallots(current => current.map(item => item.id === ballot.id ? optimisticVote(item, type) : item));
     try {
       const response = await withRefresh(active => {
@@ -95,7 +102,7 @@ export function BallotApp() {
       setBallots(current => current.map(item => item.id === ballot.id ? snapshot : item));
       setMessage(error instanceof ApiError && error.status === 429 && error.retryAfter ? `Đã đạt giới hạn. Thử lại sau ${error.retryAfter} giây.` : error instanceof Error ? error.message : 'Không thể ghi nhận phiếu.');
     } finally {
-      setBusyId(null);
+      setBusyIds(current => { const next = new Set(current); next.delete(ballot.id); return next; });
     }
   }
 
@@ -104,7 +111,7 @@ export function BallotApp() {
       if (!active) throw new ApiError('Authentication required.', 401);
       return api.createBallot({ title, content }, active.accessToken);
     });
-    setBallots(current => [created, ...current]);
+    setBallots(current => [created, ...current.filter(item => item.id !== created.id)]);
     setCreateOpen(false);
     setMessage('Hồ sơ đã được ghi vào sổ công khai.');
   }
@@ -128,7 +135,7 @@ export function BallotApp() {
         {message && <div className={styles.notice} role="status">{message}</div>}
         {loading && ballots.length === 0 && <BallotSkeleton />}
         {!loading && visible.length === 0 && <div className={styles.empty}><strong>NO RECORDS FOUND</strong><span>Không có hồ sơ phù hợp với điều kiện hiện tại.</span></div>}
-        <section className={styles.feed} aria-live="polite">{visible.map(ballot => <BallotCard key={ballot.id} ballot={ballot} busy={busyId === ballot.id} onVote={type => void vote(ballot, type)} />)}</section>
+        <section className={styles.feed} aria-live="polite">{visible.map(ballot => <BallotCard key={ballot.id} ballot={ballot} busy={busyIds.has(ballot.id)} onVote={type => void vote(ballot, type)} />)}</section>
         {!lastPage && <button className={styles.loadMore} disabled={loading} onClick={() => void load(page + 1, true)}>{loading ? 'LOADING...' : 'LOAD MORE RECORDS'}</button>}
       </main>
 
