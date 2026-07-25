@@ -6,6 +6,7 @@ import { useSession } from '@/features/auth/hooks/useSession';
 import { api, ApiError } from '@/shared/api/client';
 import type { Ballot, FeedType, Session, VoteResponse, VoteType } from '@/shared/api/types';
 import { BallotCard } from './BallotCard';
+import { BallotDetailDialog } from './BallotDetailDialog';
 import { CreateBallotDialog } from './CreateBallotDialog';
 import { EditBallotDialog } from './EditBallotDialog';
 import styles from './BallotApp.module.scss';
@@ -40,7 +41,10 @@ export function BallotApp() {
   const [authOpen, setAuthOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Ballot | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const requestSequence = useRef(0);
+
+  const selected = selectedId ? ballots.find(ballot => ballot.id === selectedId) ?? null : null;
 
   const withRefresh = useCallback(async <T,>(operation: (activeSession: Session | null) => Promise<T>) => {
     try {
@@ -117,13 +121,13 @@ export function BallotApp() {
   }
 
   async function createBallot(title: string, content: string) {
-    const created = await withRefresh(active => {
+    await withRefresh(active => {
       if (!active) throw new ApiError('Authentication required.', 401);
       return api.createBallot({ title, content }, active.accessToken);
     });
-    setBallots(current => [created, ...current.filter(item => item.id !== created.id)]);
     setCreateOpen(false);
-    setMessage('Hồ sơ đã được ghi vào sổ công khai.');
+    await load(0, false);
+    setMessage('Hồ sơ đã được ghi vào sổ công khai. Feed hiện tại đã được tải lại từ máy chủ.');
   }
 
   async function updateBallot(ballot: Ballot, title: string, content: string) {
@@ -150,6 +154,7 @@ export function BallotApp() {
         return api.deleteBallot(ballot.id, active.accessToken);
       });
       setBallots(current => current.filter(item => item.id !== ballot.id));
+      setSelectedId(current => current === ballot.id ? null : current);
       setMessage('Hồ sơ đã được xóa khỏi sổ công khai.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Không thể xóa hồ sơ.');
@@ -194,13 +199,14 @@ export function BallotApp() {
         {message && <div className={styles.notice} role="status">{message}</div>}
         {loading && ballots.length === 0 && <BallotSkeleton />}
         {!loading && visible.length === 0 && <div className={styles.empty}><strong>NO RECORDS FOUND</strong><span>Không có hồ sơ phù hợp với điều kiện hiện tại.</span></div>}
-        <section className={styles.feed} aria-live="polite">{visible.map(ballot => <BallotCard key={ballot.id} ballot={ballot} busy={busyIds.has(ballot.id)} owned={session?.userId === ballot.authorId} onVote={type => void vote(ballot, type)} onEdit={() => setEditing(ballot)} onDelete={() => void deleteBallot(ballot)} onCloseBallot={() => void closeBallot(ballot)} />)}</section>
+        <section className={styles.feed} aria-live="polite">{visible.map(ballot => <BallotCard key={ballot.id} ballot={ballot} busy={busyIds.has(ballot.id)} owned={session?.userId === ballot.authorId} onOpen={() => setSelectedId(ballot.id)} onVote={type => void vote(ballot, type)} onEdit={() => setEditing(ballot)} onDelete={() => void deleteBallot(ballot)} onCloseBallot={() => void closeBallot(ballot)} />)}</section>
         {!lastPage && <button className={styles.loadMore} disabled={loading} onClick={() => void load(page + 1, true)}>{loading ? 'LOADING...' : 'LOAD MORE RECORDS'}</button>}
       </main>
 
       {authOpen && <AuthDialog onClose={() => setAuthOpen(false)} onAuthenticated={next => { saveSession(next); setAuthOpen(false); }} />}
       {createOpen && <CreateBallotDialog onClose={() => setCreateOpen(false)} onCreate={createBallot} />}
       {editing && <EditBallotDialog ballot={editing} onClose={() => setEditing(null)} onSave={(title, content) => updateBallot(editing, title, content)} />}
+      {selected && <BallotDetailDialog ballot={selected} busy={busyIds.has(selected.id)} owned={session?.userId === selected.authorId} onClose={() => setSelectedId(null)} onVote={type => void vote(selected, type)} onEdit={() => { setSelectedId(null); setEditing(selected); }} onDelete={() => void deleteBallot(selected)} onCloseBallot={() => void closeBallot(selected)} />}
     </div>
   );
 }
