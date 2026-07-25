@@ -1,6 +1,9 @@
 import type { Ballot, VoteType } from '@/shared/api/types';
-import { VoteControl } from './VoteControl';
-import styles from './BallotApp.module.scss';
+import { BallotActions } from './BallotActions';
+import { BallotHeader } from './BallotHeader';
+import { BallotOptions } from './BallotOptions';
+import { BallotStamp } from './BallotStamp';
+import styles from './BallotCard.module.scss';
 
 interface BallotCardProps {
   ballot: Ballot;
@@ -16,38 +19,39 @@ interface BallotCardProps {
 export function BallotCard({ ballot, busy, owned, onOpen, onVote, onEdit, onDelete, onCloseBallot }: BallotCardProps) {
   return (
     <article className={styles.ballotCard} aria-busy={busy}>
-      <header className={styles.cardHeader}>
-        <div><span>{ballot.ballotNumber}</span><span>{new Date(ballot.createdAt).toLocaleDateString('vi-VN')}</span></div>
-        <div className={styles.cardHeaderActions}>
-          {owned && <span className={styles.ownerMark}>YOUR RECORD</span>}
-          <span className={ballot.status === 'CLOSED' ? styles.closed : styles.open}>{ballot.status}</span>
-        </div>
-      </header>
-      <div className={styles.cardBody}>
+      <BallotHeader ballot={ballot} owned={owned} />
+
+      <div className={styles.body}>
         <div className={styles.copy}>
           <p className={styles.category}>{ballot.category}</p>
           <button type="button" className={styles.titleButton} onClick={onOpen} aria-label={`Open ballot ${ballot.title}`}>
             <h2>{ballot.title}</h2>
           </button>
-          <p>{ballot.content}</p>
+          <p className={styles.excerpt}>{ballot.content}</p>
+
           <div className={styles.authorLine} data-qa-author>
             <span className={styles.authorInitials} aria-hidden="true">{ballot.author.initials}</span>
-            <span><strong>FILED BY {ballot.author.displayName}</strong><small>{ballot.totalVotes} REGISTERED VOTES</small></span>
+            <span className={styles.authorCopy}>
+              <strong>FILED BY {ballot.author.displayName}</strong>
+              <small>{ballot.totalVotes} REGISTERED VOTES</small>
+            </span>
           </div>
-          <div className={styles.cardActions}>
-            <button type="button" onClick={onOpen}>VIEW FULL RECORD</button>
-            {owned && (
-              <div className={styles.ownerActions} aria-label="Owner actions">
-                <button type="button" onClick={onEdit} disabled={busy || ballot.status === 'CLOSED'}>EDIT</button>
-                <button type="button" onClick={onCloseBallot} disabled={busy || ballot.status === 'CLOSED'}>CLOSE BALLOT</button>
-                <button type="button" className={styles.dangerButton} onClick={onDelete} disabled={busy}>DELETE</button>
-              </div>
-            )}
-          </div>
+
+          <BallotActions
+            owned={owned}
+            busy={busy}
+            closed={ballot.status === 'CLOSED'}
+            onOpen={onOpen}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onCloseBallot={onCloseBallot}
+          />
         </div>
-        <VoteControl ballot={ballot} busy={busy} onVote={onVote} />
+
+        <BallotOptions ballot={ballot} busy={busy} onVote={onVote} />
       </div>
-      {ballot.verdict !== 'UNDECIDED' && <div className={styles.verdict}>{ballot.finalVerdict ? 'FINAL' : 'CURRENT'} VERDICT: {ballot.verdict}</div>}
+
+      <BallotStamp verdict={ballot.verdict} finalVerdict={ballot.finalVerdict} />
     </article>
   );
 }

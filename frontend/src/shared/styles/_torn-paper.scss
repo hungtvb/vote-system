@@ -1,0 +1,16 @@
+@mixin masked-edges($tooth-size: 12px) {
+  --torn-tooth: #{$tooth-size};
+  padding-block: var(--torn-tooth);
+  -webkit-mask:
+    linear-gradient(#000 0 0) center / 100% calc(100% - (var(--torn-tooth) * 2)) no-repeat,
+    conic-gradient(from 135deg at top, transparent, #000 1deg 89deg, transparent 90deg)
+      top / var(--torn-tooth) var(--torn-tooth) repeat-x,
+    conic-gradient(from -45deg at bottom, transparent, #000 1deg 89deg, transparent 90deg)
+      bottom / var(--torn-tooth) var(--torn-tooth) repeat-x;
+  mask:
+    linear-gradient(#000 0 0) center / 100% calc(100% - (var(--torn-tooth) * 2)) no-repeat,
+    conic-gradient(from 135deg at top, transparent, #000 1deg 89deg, transparent 90deg)
+      top / var(--torn-tooth) var(--torn-tooth) repeat-x,
+    conic-gradient(from -45deg at bottom, transparent, #000 1deg 89deg, transparent 90deg)
+      bottom / var(--torn-tooth) var(--torn-tooth) repeat-x;
+}

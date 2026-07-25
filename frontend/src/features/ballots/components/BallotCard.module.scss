@@ -1,0 +1,120 @@
+@use '../../../shared/styles/torn-paper' as torn;
+
+.ballotCard {
+  @include torn.masked-edges(11px);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 16% 22%, color-mix(in srgb, var(--kraft) 14%, transparent) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 72% 68%, color-mix(in srgb, var(--navy) 8%, transparent) 0 1px, transparent 1.5px),
+    var(--paper);
+  background-size: 29px 31px, 37px 41px, auto;
+  border-inline: 2px solid var(--navy);
+  filter: drop-shadow(4px 5px 0 color-mix(in srgb, var(--kraft) 70%, transparent));
+}
+
+.ballotCard[aria-busy='true'] { opacity: .72; }
+
+.header {
+  min-height: 42px;
+  padding: 9px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: color-mix(in srgb, var(--kraft) 20%, var(--paper));
+  border-block: 2px solid var(--navy);
+}
+
+.headerMeta, .headerState {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font: 500 11px/1.2 'JetBrains Mono', monospace;
+}
+
+.ballotNumber { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--navy); font-weight: 700; }
+.headerState { justify-content: flex-end; }
+.ownerMark { color: var(--seal); font-weight: 700; }
+.status { padding: 4px 8px; border: 1px solid var(--navy); color: var(--navy); font: 700 10px 'Public Sans', sans-serif; letter-spacing: .08em; }
+.statusClosed { background: var(--navy); color: var(--bone); }
+
+.body { display: grid; grid-template-columns: minmax(0, 1fr) 250px; }
+.copy { min-width: 0; padding: 22px 190px 24px 24px; }
+.category { margin: 0 0 8px; color: var(--seal); font: 700 11px/1.3 'JetBrains Mono', monospace; letter-spacing: .08em; text-transform: uppercase; }
+.titleButton { width: 100%; border: 0; padding: 0; background: transparent; text-align: left; }
+.titleButton h2 { margin: 0 0 10px; color: var(--navy); font: 600 clamp(23px, 3vw, 31px)/1.08 'Playfair Display', serif; overflow-wrap: anywhere; }
+.titleButton:hover h2, .titleButton:focus-visible h2 { text-decoration: underline; text-underline-offset: 4px; }
+.excerpt { display: -webkit-box; overflow: hidden; margin: 0 0 18px; color: var(--graphite); line-height: 1.55; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow-wrap: anywhere; }
+
+.authorLine { min-width: 0; display: flex; align-items: center; gap: 10px; padding-top: 12px; border-top: 2px dashed color-mix(in srgb, var(--navy) 45%, transparent); color: var(--navy); }
+.authorInitials { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; border: 2px solid var(--seal); color: var(--seal); font: 700 10px 'JetBrains Mono', monospace; transform: rotate(-3deg); }
+.authorCopy { min-width: 0; display: grid; gap: 2px; }
+.authorCopy strong, .authorCopy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.authorCopy strong { font: 700 11px 'JetBrains Mono', monospace; letter-spacing: .04em; }
+.authorCopy small { color: var(--muted); font: 500 9px 'JetBrains Mono', monospace; letter-spacing: .05em; }
+
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+.actions button { min-height: 40px; padding: 8px 11px; border: 1px solid var(--navy); background: transparent; color: var(--navy); font-size: 10px; font-weight: 700; letter-spacing: .07em; }
+.ownerActions { display: flex; flex-wrap: wrap; gap: 8px; }
+.actions button:disabled { cursor: not-allowed; opacity: .5; }
+.actions .danger { border-color: var(--seal); color: var(--seal); }
+
+.votePanel { min-width: 0; padding: 18px; display: grid; align-content: center; gap: 10px; border-left: 2px solid var(--navy); background: color-mix(in srgb, var(--kraft) 14%, var(--paper)); }
+.voteLabel { color: var(--muted); text-align: center; font: 700 11px 'JetBrains Mono', monospace; letter-spacing: .08em; }
+.counter { padding: 10px; border: 2px solid var(--navy); background: var(--kraft); color: var(--navy); text-align: center; font: 700 26px 'JetBrains Mono', monospace; letter-spacing: .08em; }
+.option { min-height: 58px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 9px 11px; border: 2px solid var(--navy); background: transparent; color: var(--navy); text-align: left; }
+.optionName { font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+.optionCount { font: 700 16px 'JetBrains Mono', monospace; }
+.optionPercent { min-width: 38px; text-align: right; font: 700 11px 'JetBrains Mono', monospace; }
+.track { grid-column: 1 / -1; height: 5px; overflow: hidden; border: 1px solid currentColor; background: color-mix(in srgb, currentColor 12%, transparent); }
+.fill { display: block; height: 100%; width: var(--vote-share); background: currentColor; transition: width .22s ease; }
+.selectedUp { background: var(--navy); color: var(--bone); }
+.selectedDown { border-color: var(--seal); background: var(--seal); color: var(--bone); }
+.option:disabled { cursor: not-allowed; opacity: .55; }
+.optionHint { margin: 0; color: var(--muted); font: 500 9px/1.45 'JetBrains Mono', monospace; text-align: center; }
+
+.stamp { z-index: 2; display: inline-grid; justify-items: center; gap: 2px; padding: 7px 13px; border: 4px double var(--seal); background: color-mix(in srgb, var(--paper) 90%, transparent); color: var(--seal); font-family: 'Playfair Display', serif; letter-spacing: .08em; text-transform: uppercase; transform: rotate(-5deg); }
+.cardStamp { position: absolute; top: 68px; right: 266px; }
+.detailStamp { position: static; margin-top: 18px; transform: rotate(-2deg); }
+.stampEyebrow { font: 700 9px 'JetBrains Mono', monospace; letter-spacing: .12em; }
+.stampLabel { font-size: 18px; font-weight: 800; }
+.finalStamp { background: var(--seal); color: var(--bone); box-shadow: 3px 3px 0 color-mix(in srgb, var(--seal) 28%, transparent); }
+.neutralStamp { border-color: var(--navy); color: var(--navy); }
+.finalStamp.neutralStamp { background: var(--navy); color: var(--bone); }
+.stampAnimating { animation: stamp-in .46s cubic-bezier(.2, .85, .28, 1.25); }
+
+@keyframes stamp-in {
+  0% { opacity: 0; transform: translateY(-20px) scale(1.55) rotate(-12deg); }
+  70% { opacity: 1; transform: translateY(2px) scale(.96) rotate(-4deg); }
+  100% { transform: translateY(0) scale(1) rotate(-5deg); }
+}
+
+@media (max-width: 850px) {
+  .body { grid-template-columns: minmax(0, 1fr); }
+  .copy { padding-right: 22px; }
+  .votePanel { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border-top: 2px solid var(--navy); border-left: 0; }
+  .voteLabel, .counter, .optionHint { grid-column: 1 / -1; }
+  .cardStamp { position: static; margin: 0 18px 18px auto; }
+}
+
+@media (max-width: 480px) {
+  .ballotCard { --torn-tooth: 9px; }
+  .headerMeta time, .ownerMark { display: none; }
+  .copy { padding: 16px; }
+  .titleButton h2 { font-size: 24px; }
+  .actions, .ownerActions { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  .actions > button, .ownerActions .danger { grid-column: 1 / -1; }
+  .authorCopy strong { font-size: 10px; }
+  .votePanel { grid-template-columns: minmax(0, 1fr); }
+  .voteLabel, .counter, .optionHint { grid-column: auto; }
+  .cardStamp { margin-inline: 16px; justify-self: end; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fill { transition: none; }
+  .stampAnimating { animation: none; }
+}

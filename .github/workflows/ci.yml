@@ -97,6 +97,15 @@ jobs:
             grep -q 'data-qa-cards="3"' "visual-qa/${name}.html"
           }
 
+          assert_feed_boundaries() {
+            file=$1
+            grep -q 'data-qa-vote-splits="100/0,50/50,0/0"' "$file"
+            grep -q 'data-qa-stamps="2"' "$file"
+            grep -q 'data-qa-current-stamps="1"' "$file"
+            grep -q 'data-qa-final-stamps="1"' "$file"
+            grep -q 'data-qa-stamp-animating="0"' "$file"
+          }
+
           capture mobile-feed 375 812 feed
           capture tablet-feed 768 1024 feed
           capture desktop-feed 1440 1000 feed
@@ -105,6 +114,9 @@ jobs:
           grep -q 'data-qa-authors="3"' visual-qa/desktop-feed.html
           grep -q 'data-qa-guest="true"' visual-qa/desktop-feed.html
           grep -q 'data-qa-voter="false"' visual-qa/desktop-feed.html
+          assert_feed_boundaries visual-qa/mobile-feed.html
+          assert_feed_boundaries visual-qa/tablet-feed.html
+          assert_feed_boundaries visual-qa/desktop-feed.html
 
           capture mobile-detail 375 812 detail
           grep -q 'data-qa-dialog="true"' visual-qa/mobile-detail.html
@@ -115,12 +127,20 @@ jobs:
           grep -q 'data-qa-authors="3"' visual-qa/desktop-auth.html
           grep -q 'data-qa-voter="true"' visual-qa/desktop-auth.html
           grep -q 'data-qa-guest="false"' visual-qa/desktop-auth.html
+          assert_feed_boundaries visual-qa/desktop-auth.html
 
           capture mobile-auth-menu 375 812 auth-menu
           grep -q 'data-qa-authors="3"' visual-qa/mobile-auth-menu.html
           grep -q 'data-qa-voter="true"' visual-qa/mobile-auth-menu.html
           grep -q 'data-qa-menu="true"' visual-qa/mobile-auth-menu.html
           grep -q 'data-qa-guest="false"' visual-qa/mobile-auth-menu.html
+
+          capture tablet-stamp-transition 768 1024 auth-stamp
+          grep -q 'data-qa-voter="true"' visual-qa/tablet-stamp-transition.html
+          grep -q 'data-qa-stamps="3"' visual-qa/tablet-stamp-transition.html
+          grep -q 'data-qa-current-stamps="2"' visual-qa/tablet-stamp-transition.html
+          grep -q 'data-qa-final-stamps="1"' visual-qa/tablet-stamp-transition.html
+          grep -q 'data-qa-stamp-animating="1"' visual-qa/tablet-stamp-transition.html
       - name: Upload visual QA evidence
         if: always()
         uses: actions/upload-artifact@v4

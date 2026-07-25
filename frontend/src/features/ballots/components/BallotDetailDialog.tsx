@@ -2,7 +2,9 @@
 
 import { useModalDialog } from '@/shared/hooks/useModalDialog';
 import type { Ballot, VoteType } from '@/shared/api/types';
-import { VoteControl } from './VoteControl';
+import { BallotActions } from './BallotActions';
+import { BallotOptions } from './BallotOptions';
+import { BallotStamp } from './BallotStamp';
 import styles from './BallotApp.module.scss';
 
 interface BallotDetailDialogProps {
@@ -44,18 +46,18 @@ export function BallotDetailDialog({ ballot, busy, owned, onClose, onVote, onEdi
               <span className={styles.authorInitials} aria-hidden="true">{ballot.author.initials}</span>
               <span><strong>FILED BY {ballot.author.displayName}</strong><small>PUBLIC AUTHOR RECORD</small></span>
             </div>
-            {owned && (
-              <div className={styles.ownerActions} aria-label="Owner actions">
-                <button type="button" onClick={onEdit} disabled={busy || ballot.status === 'CLOSED'}>EDIT</button>
-                <button type="button" onClick={onCloseBallot} disabled={busy || ballot.status === 'CLOSED'}>CLOSE BALLOT</button>
-                <button type="button" className={styles.dangerButton} onClick={onDelete} disabled={busy}>DELETE</button>
-              </div>
-            )}
+            <BallotActions
+              owned={owned}
+              busy={busy}
+              closed={ballot.status === 'CLOSED'}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onCloseBallot={onCloseBallot}
+            />
+            <BallotStamp verdict={ballot.verdict} finalVerdict={ballot.finalVerdict} placement="detail" />
           </div>
-          <VoteControl ballot={ballot} busy={busy} onVote={onVote} />
+          <BallotOptions ballot={ballot} busy={busy} onVote={onVote} />
         </div>
-
-        {ballot.verdict !== 'UNDECIDED' && <div className={styles.detailVerdict}>{ballot.finalVerdict ? 'FINAL' : 'CURRENT'} VERDICT: {ballot.verdict}</div>}
       </section>
     </div>
   );
