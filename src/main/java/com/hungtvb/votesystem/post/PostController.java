@@ -36,6 +36,11 @@ public class PostController {
         return postService.update(UUID.fromString(jwt.getSubject()), postId, request);
     }
 
+    @PostMapping("/{postId}/close")
+    PostResponse close(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID postId) {
+        return postService.close(UUID.fromString(jwt.getSubject()), postId);
+    }
+
     @DeleteMapping("/{postId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void delete(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID postId) {
