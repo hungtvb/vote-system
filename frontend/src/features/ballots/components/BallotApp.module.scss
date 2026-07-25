@@ -29,7 +29,9 @@
 .ballotCard { position: relative; overflow: hidden; background: var(--paper); border: 2px solid var(--navy); box-shadow: 4px 4px 0 color-mix(in srgb, var(--kraft) 65%, transparent); }
 .ballotCard[aria-busy='true'] { opacity: .72; }
 .cardHeader { min-height: 42px; padding: 9px 16px; display: flex; align-items: center; justify-content: space-between; background: color-mix(in srgb, var(--kraft) 18%, var(--paper)); border-bottom: 2px solid var(--navy); }
-.cardHeader div { display: flex; gap: 12px; color: var(--muted); font: 500 11px 'JetBrains Mono', monospace; }
+.cardHeader > div { display: flex; align-items: center; gap: 12px; color: var(--muted); font: 500 11px 'JetBrains Mono', monospace; }
+.cardHeaderActions { justify-content: flex-end; }
+.ownerMark { color: var(--seal); font-weight: 700; }
 .open, .closed { padding: 4px 8px; border: 1px solid var(--navy); font: 700 10px 'Public Sans', sans-serif; letter-spacing: .08em; }
 .closed { background: var(--navy); color: var(--bone); }
 .cardBody { display: grid; grid-template-columns: minmax(0, 1fr) 240px; }
@@ -38,6 +40,10 @@
 .copy h2 { margin: 0 0 10px; color: var(--navy); font: 600 clamp(23px, 3vw, 31px)/1.08 'Playfair Display', serif; }
 .copy > p:not(.category) { display: -webkit-box; overflow: hidden; margin: 0 0 18px; color: var(--graphite); line-height: 1.55; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .meta { padding-top: 12px; border-top: 2px dashed color-mix(in srgb, var(--navy) 45%, transparent); color: var(--muted); }
+.ownerActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.ownerActions button { min-height: 38px; padding: 8px 10px; border: 1px solid var(--navy); background: transparent; color: var(--navy); font-size: 10px; font-weight: 700; letter-spacing: .07em; }
+.ownerActions button:disabled { cursor: not-allowed; opacity: .5; }
+.ownerActions .dangerButton { border-color: var(--seal); color: var(--seal); }
 .votePanel { display: grid; align-content: center; gap: 8px; padding: 18px; border-left: 2px solid var(--navy); background: color-mix(in srgb, var(--kraft) 14%, var(--paper)); }
 .voteLabel { color: var(--muted); text-align: center; }
 .counter { padding: 10px; border: 2px solid var(--navy); background: var(--kraft); color: var(--navy); text-align: center; font: 700 26px 'JetBrains Mono', monospace; letter-spacing: .08em; }
@@ -88,7 +94,9 @@
   .hero h1 { font-size: 38px; }
   .copy { padding: 16px; }
   .copy h2 { font-size: 24px; }
-  .cardHeader div span:last-child { display: none; }
+  .cardHeader > div:first-child span:last-child, .ownerMark { display: none; }
+  .ownerActions { display: grid; grid-template-columns: 1fr 1fr; }
+  .ownerActions .dangerButton { grid-column: 1 / -1; }
   .formActions { flex-direction: column-reverse; }
   .formActions button { width: 100%; }
 }
