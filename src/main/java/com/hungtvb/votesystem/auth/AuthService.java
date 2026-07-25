@@ -47,7 +47,7 @@ public class AuthService {
         }
 
         AppUser saved = userRepository.saveAndFlush(
-                AppUser.create(email, passwordEncoder.encode(request.password()))
+                AppUser.create(email, request.displayName(), passwordEncoder.encode(request.password()))
         );
         return issueSession(AuthenticatedUser.from(saved));
     }
