@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { api } from '@/shared/api/client';
+import { authApi } from '@/shared/api/auth-api';
 import { useModalDialog } from '@/shared/hooks/useModalDialog';
 import type { Session } from '@/shared/api/types';
 import styles from '@/features/ballots/components/BallotApp.module.scss';
@@ -37,8 +37,8 @@ export function AuthDialog({ initialMode = 'login', onClose, onAuthenticated }: 
     setError('');
     try {
       const session = mode === 'login'
-        ? await api.login(email, password)
-        : await api.register(email, password, displayName);
+        ? await authApi.login(email, password)
+        : await authApi.register(email, password, displayName);
       await onAuthenticated(session);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Authorization denied.');
