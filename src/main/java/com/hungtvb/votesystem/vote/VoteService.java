@@ -7,6 +7,8 @@ import com.hungtvb.votesystem.post.PostRepository;
 import com.hungtvb.votesystem.ranking.RankingChangedEvent;
 import com.hungtvb.votesystem.user.UserRepository;
 import com.hungtvb.votesystem.vote.dto.VoteResponse;
+import com.hungtvb.votesystem.vote.stream.BallotVoteChangedEvent;
+import com.hungtvb.votesystem.vote.stream.BallotVoteUpdate;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,6 +54,9 @@ public class VoteService {
         Post updatedPost = delta.isEmpty() ? post : incrementTotals(postId, delta);
         eventPublisher.publishEvent(RankingChangedEvent.upsert(
                 postId, updatedPost.getVoteScore(), updatedPost.getCreatedAt()));
+        if (!delta.isEmpty()) {
+            eventPublisher.publishEvent(new BallotVoteChangedEvent(BallotVoteUpdate.from(updatedPost)));
+        }
         return VoteResponse.from(updatedPost, requestedType, updatedPost.getVerdictThreshold());
     }
 
@@ -72,6 +77,7 @@ public class VoteService {
         Post updatedPost = incrementTotals(postId, delta);
         eventPublisher.publishEvent(RankingChangedEvent.upsert(
                 postId, updatedPost.getVoteScore(), updatedPost.getCreatedAt()));
+        eventPublisher.publishEvent(new BallotVoteChangedEvent(BallotVoteUpdate.from(updatedPost)));
         return VoteResponse.from(updatedPost, null, updatedPost.getVerdictThreshold());
     }
 
@@ -92,8 +98,9 @@ public class VoteService {
     }
 
     private Post incrementTotals(UUID postId, VoteDelta delta) {
+        Instant updatedAt = Instant.now();
         if (postRepository.incrementVoteTotals(
-                postId, delta.scoreDelta(), delta.upDelta(), delta.downDelta()) == 0) {
+                postId, delta.scoreDelta(), delta.upDelta(), delta.downDelta(), updatedAt) == 0) {
             throw new IllegalStateException("Vote aggregate update would produce invalid counts");
         }
         return findPost(postId);
