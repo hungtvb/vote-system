@@ -14,6 +14,11 @@ const FOCUSABLE = [
 
 export function useModalDialog(onClose: () => void) {
   const dialogRef = useRef<HTMLElement>(null);
+  const closeRef = useRef(onClose);
+
+  useEffect(() => {
+    closeRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -21,14 +26,15 @@ export function useModalDialog(onClose: () => void) {
     document.body.style.overflow = 'hidden';
 
     const frame = window.requestAnimationFrame(() => {
+      const autofocus = dialogRef.current?.querySelector<HTMLElement>('[autofocus]');
       const first = dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE);
-      (first ?? dialogRef.current)?.focus();
+      (autofocus ?? first ?? dialogRef.current)?.focus();
     });
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        closeRef.current();
       }
     }
 
@@ -39,7 +45,7 @@ export function useModalDialog(onClose: () => void) {
       document.body.style.overflow = previousOverflow;
       previous?.focus();
     };
-  }, [onClose]);
+  }, []);
 
   function onDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
     if (event.key !== 'Tab') return;
@@ -63,7 +69,7 @@ export function useModalDialog(onClose: () => void) {
   }
 
   function onBackdropMouseDown(event: ReactMouseEvent<HTMLDivElement>) {
-    if (event.target === event.currentTarget) onClose();
+    if (event.target === event.currentTarget) closeRef.current();
   }
 
   return { dialogRef, onDialogKeyDown, onBackdropMouseDown };
