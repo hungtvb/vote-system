@@ -51,6 +51,63 @@ jobs:
         run: |
           set -o pipefail
           npm run build 2>&1 | tee frontend-build.log
+      - name: Run visual QA
+        run: |
+          set -euo pipefail
+          mkdir -p visual-qa
+          python3 scripts/visual_qa_server.py > visual-qa/server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          for attempt in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 40 ]; then
+              cat visual-qa/server.log
+              exit 1
+            fi
+            sleep 0.25
+          done
+
+          CHROME=''
+          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              CHROME=$(command -v "$candidate")
+              break
+            fi
+          done
+          if [ -z "$CHROME" ]; then
+            echo 'No headless Chrome binary is available on the runner.'
+            exit 1
+          fi
+
+          capture() {
+            name=$1
+            width=$2
+            height=$3
+            mode=$4
+            url="http://127.0.0.1:4173/?qa=${mode}"
+            common=(--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --run-all-compositor-stages-before-draw --virtual-time-budget=7000 --window-size="${width},${height}")
+            "$CHROME" "${common[@]}" --screenshot="visual-qa/${name}.png" "$url"
+            "$CHROME" "${common[@]}" --dump-dom "$url" > "visual-qa/${name}.html"
+            grep -q 'data-qa-overflow="false"' "visual-qa/${name}.html"
+            grep -q 'data-qa-cards="3"' "visual-qa/${name}.html"
+          }
+
+          capture mobile-feed 375 812 feed
+          capture tablet-feed 768 1024 feed
+          capture desktop-feed 1440 1000 feed
+          capture mobile-detail 375 812 detail
+          grep -q 'data-qa-dialog="true"' visual-qa/mobile-detail.html
+      - name: Upload visual QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-visual-qa
+          path: frontend/visual-qa/**
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload frontend diagnostics
         if: always()
         uses: actions/upload-artifact@v4
