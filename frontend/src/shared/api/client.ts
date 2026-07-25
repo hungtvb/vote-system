@@ -1,6 +1,7 @@
 import type { Ballot, FeedType, PageResponse, Session, VoteResponse, VoteType } from './types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
+let refreshPromise: Promise<Session> | null = null;
 
 export class ApiError extends Error {
   constructor(message: string, public readonly status: number, public readonly retryAfter?: number) {
@@ -37,6 +38,14 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
   return response.json() as Promise<T>;
 }
 
+function refreshSession(): Promise<Session> {
+  if (!refreshPromise) {
+    refreshPromise = request<Session>('/api/v1/auth/refresh', { method: 'POST' })
+      .finally(() => { refreshPromise = null; });
+  }
+  return refreshPromise;
+}
+
 export const api = {
   register(email: string, password: string) {
     return request<Session>('/api/v1/auth/register', { method: 'POST', body: JSON.stringify({ email, password }) });
@@ -44,9 +53,7 @@ export const api = {
   login(email: string, password: string) {
     return request<Session>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
   },
-  refresh() {
-    return request<Session>('/api/v1/auth/refresh', { method: 'POST' });
-  },
+  refresh: refreshSession,
   logout(token: string) {
     return request<void>('/api/v1/auth/logout', { method: 'POST' }, token);
   },
