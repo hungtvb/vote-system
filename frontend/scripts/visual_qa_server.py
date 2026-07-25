@@ -90,9 +90,11 @@ QA_SCRIPT = r"""
   const mode = new URLSearchParams(location.search).get('qa');
   const finish = () => {
     const root = document.documentElement;
+    const dialog = document.querySelector('[role="dialog"]');
     root.dataset.qaOverflow = String(root.scrollWidth > root.clientWidth);
     root.dataset.qaCards = String(document.querySelectorAll('article').length);
-    root.dataset.qaDialog = String(Boolean(document.querySelector('[role="dialog"]')));
+    root.dataset.qaDialog = String(Boolean(dialog));
+    root.dataset.qaDialogOverflow = String(Boolean(dialog) && dialog.scrollWidth > dialog.clientWidth);
   };
   const waitForCards = (attempt = 0) => {
     const openButton = [...document.querySelectorAll('button')]
