@@ -19,12 +19,8 @@
   "include": [
     "next-env.d.ts",
     ".next/types/**/*.ts",
-    "src/app/**/*.ts",
-    "src/app/**/*.tsx",
-    "src/features/**/*.ts",
-    "src/features/**/*.tsx",
-    "src/shared/**/*.ts",
-    "src/shared/**/*.tsx"
+    "src/**/*.ts",
+    "src/**/*.tsx"
   ],
-  "exclude": ["node_modules", "src/App.tsx", "src/main.tsx", "src/api.ts", "src/session.ts", "src/types.ts"]
+  "exclude": ["node_modules"]
 }
