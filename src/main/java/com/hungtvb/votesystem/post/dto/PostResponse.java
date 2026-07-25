@@ -13,6 +13,7 @@ import java.util.UUID;
 public record PostResponse(
         UUID id,
         UUID authorId,
+        AuthorSummary author,
         String ballotNumber,
         String title,
         String content,
@@ -32,12 +33,17 @@ public record PostResponse(
         Instant updatedAt
 ) {
     public static PostResponse from(Post post, VoteType myVote) {
+        return from(post, myVote, AuthorSummary.technical(post.getAuthorId()));
+    }
+
+    public static PostResponse from(Post post, VoteType myVote, AuthorSummary author) {
         VoteVerdict verdict = post.getFinalVerdict() != null
                 ? post.getFinalVerdict()
                 : VoteVerdict.from(post.getUpVotes(), post.getDownVotes(), post.getVerdictThreshold());
         return new PostResponse(
                 post.getId(),
                 post.getAuthorId(),
+                author,
                 post.getBallotNumber(),
                 post.getTitle(),
                 post.getContent(),
