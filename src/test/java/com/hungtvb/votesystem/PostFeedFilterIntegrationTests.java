@@ -17,6 +17,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.hamcrest.Matchers.everyItem;
@@ -31,6 +32,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = "app.rate-limit.enabled=false")
 @AutoConfigureMockMvc
 class PostFeedFilterIntegrationTests {
+    private static final String RANKING_CATEGORY = "RANKING_TEST";
+
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17-alpine");
 
@@ -95,6 +98,7 @@ class PostFeedFilterIntegrationTests {
     void mineRequiresAuthenticationAndReturnsOnlyTheCurrentAuthorsBallots() throws Exception {
         String ownerA = register("mine-owner-a@example.com");
         String ownerB = register("mine-owner-b@example.com");
+        String ownerAId = userId(ownerA);
         String firstA = createPost(ownerA, "Owner A first", "Mine feed", "GENERAL");
         String secondA = createPost(ownerA, "Owner A second", "Mine feed", "TECHNOLOGY");
         createPost(ownerB, "Owner B only", "Other owner", "GENERAL");
@@ -109,12 +113,12 @@ class PostFeedFilterIntegrationTests {
                         .param("size", "20"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(2))
-                .andExpect(jsonPath("$.content[*].authorId", everyItem(is(userId(ownerA)))))
+                .andExpect(jsonPath("$.content[*].authorId", everyItem(is(ownerAId))))
                 .andReturn();
 
-        List<String> ids = objectMapper.readTree(result.getResponse().getContentAsString())
-                .get("content")
-                .findValuesAsText("id");
+        JsonNode content = objectMapper.readTree(result.getResponse().getContentAsString()).get("content");
+        List<String> ids = new ArrayList<>();
+        content.forEach(post -> ids.add(post.get("id").asText()));
         org.junit.jupiter.api.Assertions.assertTrue(ids.containsAll(List.of(firstA, secondA)));
     }
 
@@ -126,19 +130,19 @@ class PostFeedFilterIntegrationTests {
         String voter3 = register("hot-filter-voter-3@example.com");
         String voter4 = register("hot-filter-voter-4@example.com");
 
-        String highestTech = createPost(author, "Highest technology", "Ranked filter", "TECHNOLOGY");
-        String middleTech = createPost(author, "Middle technology", "Ranked filter", "TECHNOLOGY");
-        String lowestTech = createPost(author, "Lowest technology", "Ranked filter", "TECHNOLOGY");
+        String highestRanked = createPost(author, "Highest ranked match", "Ranked filter", RANKING_CATEGORY);
+        String middleRanked = createPost(author, "Middle ranked match", "Ranked filter", RANKING_CATEGORY);
+        String lowestRanked = createPost(author, "Lowest ranked match", "Ranked filter", RANKING_CATEGORY);
         String excludedFinance = createPost(author, "Excluded finance", "Ranked filter", "FINANCE");
 
-        vote(voter1, highestTech); vote(voter2, highestTech); vote(voter3, highestTech);
-        vote(voter1, middleTech); vote(voter2, middleTech);
-        vote(voter1, lowestTech);
+        vote(voter1, highestRanked); vote(voter2, highestRanked); vote(voter3, highestRanked);
+        vote(voter1, middleRanked); vote(voter2, middleRanked);
+        vote(voter1, lowestRanked);
         vote(voter1, excludedFinance); vote(voter2, excludedFinance); vote(voter3, excludedFinance); vote(voter4, excludedFinance);
 
-        assertHotPage("0", highestTech, 3, 3);
-        assertHotPage("1", middleTech, 3, 3);
-        assertHotPage("2", lowestTech, 3, 3);
+        assertHotPage("0", highestRanked, 3, 3);
+        assertHotPage("1", middleRanked, 3, 3);
+        assertHotPage("2", lowestRanked, 3, 3);
     }
 
     @Test
@@ -154,7 +158,7 @@ class PostFeedFilterIntegrationTests {
     private void assertHotPage(String page, String expectedId, int totalElements, int totalPages) throws Exception {
         mockMvc.perform(get("/api/v1/posts")
                         .param("feed", "HOT")
-                        .param("category", "TECHNOLOGY")
+                        .param("category", RANKING_CATEGORY)
                         .param("size", "1")
                         .param("page", page))
                 .andExpect(status().isOk())
