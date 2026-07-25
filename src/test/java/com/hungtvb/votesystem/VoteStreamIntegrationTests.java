@@ -5,13 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hungtvb.votesystem.vote.stream.BallotVoteStreamService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -29,6 +29,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -119,6 +120,35 @@ class VoteStreamIntegrationTests {
         awaitSubscriberCount(postUuid, 0);
     }
 
+    @Test
+    void concurrentVotesProduceStrictlyIncreasingEventIdsAndFinalCounts() throws Exception {
+        String authorToken = register("stream-concurrent-author@example.com");
+        String firstVoterToken = register("stream-concurrent-one@example.com");
+        String secondVoterToken = register("stream-concurrent-two@example.com");
+        String postId = createPost(authorToken, "Concurrent realtime ballot");
+        UUID postUuid = UUID.fromString(postId);
+
+        try (SseConnection client = connect(postId, null)) {
+            client.readDataEvent();
+            awaitSubscriberCount(postUuid, 1);
+
+            CompletableFuture<Integer> firstVote = CompletableFuture.supplyAsync(
+                    () -> voteOverHttp(firstVoterToken, postId, "UP"));
+            CompletableFuture<Integer> secondVote = CompletableFuture.supplyAsync(
+                    () -> voteOverHttp(secondVoterToken, postId, "UP"));
+            assertEquals(200, firstVote.get(5, TimeUnit.SECONDS));
+            assertEquals(200, secondVote.get(5, TimeUnit.SECONDS));
+
+            SseEvent firstUpdate = client.readDataEvent();
+            SseEvent secondUpdate = client.readDataEvent();
+            assertVoteUpdate(firstUpdate, postId, 1, 0, 1, "UP");
+            assertVoteUpdate(secondUpdate, postId, 2, 0, 2, "UP");
+            assertTrue(Instant.parse(secondUpdate.id()).isAfter(Instant.parse(firstUpdate.id())));
+        }
+
+        awaitSubscriberCount(postUuid, 0);
+    }
+
     private SseConnection connect(String postId, String lastEventId) throws Exception {
         HttpRequest.Builder request = HttpRequest.newBuilder()
                 .uri(URI.create("http://127.0.0.1:" + port + "/api/v1/posts/" + postId + "/events"))
@@ -135,6 +165,22 @@ class VoteStreamIntegrationTests {
         assertEquals("no-store", response.headers().firstValue("Cache-Control").orElse(""));
         assertEquals("no", response.headers().firstValue("X-Accel-Buffering").orElse(""));
         return new SseConnection(response.body(), objectMapper);
+    }
+
+    private int voteOverHttp(String token, String postId, String type) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("http://127.0.0.1:" + port + "/api/v1/posts/" + postId + "/vote"))
+                    .timeout(Duration.ofSeconds(10))
+                    .header("Authorization", "Bearer " + token)
+                    .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                    .PUT(HttpRequest.BodyPublishers.ofString("{\"type\":\"" + type + "\"}"))
+                    .build();
+            return httpClient.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();
+        } catch (IOException | InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(exception);
+        }
     }
 
     private void assertVoteUpdate(SseEvent event, String postId,
