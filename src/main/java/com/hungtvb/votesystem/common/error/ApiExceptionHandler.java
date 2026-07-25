@@ -1,6 +1,7 @@
 package com.hungtvb.votesystem.common.error;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -52,6 +53,17 @@ public class ApiExceptionHandler {
         Map<String, String> errors = new LinkedHashMap<>();
         exception.getBindingResult().getFieldErrors()
                 .forEach(error -> errors.putIfAbsent(error.getField(), error.getDefaultMessage()));
+        detail.setProperty("errors", errors);
+        return ResponseEntity.badRequest().body(detail);
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    ResponseEntity<ProblemDetail> handleConstraintViolation(ConstraintViolationException exception,
+                                                            HttpServletRequest request) {
+        ProblemDetail detail = baseProblem(HttpStatus.BAD_REQUEST, "Request validation failed", request);
+        Map<String, String> errors = new LinkedHashMap<>();
+        exception.getConstraintViolations().forEach(violation ->
+                errors.putIfAbsent(violation.getPropertyPath().toString(), violation.getMessage()));
         detail.setProperty("errors", errors);
         return ResponseEntity.badRequest().body(detail);
     }
