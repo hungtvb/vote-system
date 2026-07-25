@@ -2,32 +2,50 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '@/shared/api/client';
-import type { Session } from '@/shared/api/types';
+import type { Session, UserProfile } from '@/shared/api/types';
 
 export function useSession() {
   const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [restoring, setRestoring] = useState(true);
+
+  const clearSession = useCallback(() => {
+    setSession(null);
+    setProfile(null);
+  }, []);
+
+  const saveSession = useCallback(async (next: Session) => {
+    setSession(next);
+    try {
+      const nextProfile = await api.currentUser(next.accessToken);
+      setProfile(nextProfile);
+      return nextProfile;
+    } catch (error) {
+      clearSession();
+      throw error;
+    }
+  }, [clearSession]);
 
   useEffect(() => {
     let active = true;
     void api.refresh()
-      .then(next => { if (active) setSession(next); })
+      .then(async next => {
+        const nextProfile = await api.currentUser(next.accessToken);
+        if (active) {
+          setSession(next);
+          setProfile(nextProfile);
+        }
+      })
       .catch(error => {
-        if (active && (!(error instanceof ApiError) || (error.status !== 401 && error.status !== 403))) {
+        if (!active) return;
+        clearSession();
+        if (!(error instanceof ApiError) || (error.status !== 401 && error.status !== 403)) {
           console.error('Session restore failed', error);
         }
       })
       .finally(() => { if (active) setRestoring(false); });
     return () => { active = false; };
-  }, []);
-
-  const saveSession = useCallback((next: Session) => {
-    setSession(next);
-  }, []);
-
-  const clearSession = useCallback(() => {
-    setSession(null);
-  }, []);
+  }, [clearSession]);
 
   const logout = useCallback(async () => {
     if (session) {
@@ -50,5 +68,5 @@ export function useSession() {
     }
   }, [clearSession, session]);
 
-  return { session, restoring, saveSession, clearSession, logout, logoutAll };
+  return { session, profile, restoring, saveSession, clearSession, logout, logoutAll };
 }
