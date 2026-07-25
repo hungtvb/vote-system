@@ -68,7 +68,7 @@ public class RedisRankingRepository {
             case HOT -> HOT_KEY;
             case TOP_DAY -> dayKey(now);
             case TOP_WEEK -> weekKey(now);
-            case LATEST -> throw new IllegalArgumentException("LATEST is database-backed");
+            case LATEST, MINE -> throw new IllegalArgumentException(feed + " is database-backed");
         };
     }
 
