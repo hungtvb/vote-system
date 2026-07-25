@@ -2,12 +2,25 @@ import type { Ballot, VoteType } from '@/shared/api/types';
 import { VoteControl } from './VoteControl';
 import styles from './BallotApp.module.scss';
 
-export function BallotCard({ ballot, busy, onVote }: { ballot: Ballot; busy: boolean; onVote: (type: VoteType) => void }) {
+interface BallotCardProps {
+  ballot: Ballot;
+  busy: boolean;
+  owned: boolean;
+  onVote: (type: VoteType) => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onCloseBallot: () => void;
+}
+
+export function BallotCard({ ballot, busy, owned, onVote, onEdit, onDelete, onCloseBallot }: BallotCardProps) {
   return (
     <article className={styles.ballotCard} aria-busy={busy}>
       <header className={styles.cardHeader}>
         <div><span>{ballot.ballotNumber}</span><span>{new Date(ballot.createdAt).toLocaleDateString('vi-VN')}</span></div>
-        <span className={ballot.status === 'CLOSED' ? styles.closed : styles.open}>{ballot.status}</span>
+        <div className={styles.cardHeaderActions}>
+          {owned && <span className={styles.ownerMark}>YOUR RECORD</span>}
+          <span className={ballot.status === 'CLOSED' ? styles.closed : styles.open}>{ballot.status}</span>
+        </div>
       </header>
       <div className={styles.cardBody}>
         <div className={styles.copy}>
@@ -15,6 +28,13 @@ export function BallotCard({ ballot, busy, onVote }: { ballot: Ballot; busy: boo
           <h2>{ballot.title}</h2>
           <p>{ballot.content}</p>
           <div className={styles.meta}>AUTHOR ID: {ballot.authorId.slice(0, 8).toUpperCase()} · {ballot.totalVotes} REGISTERED VOTES</div>
+          {owned && (
+            <div className={styles.ownerActions} aria-label="Owner actions">
+              <button type="button" onClick={onEdit} disabled={busy || ballot.status === 'CLOSED'}>EDIT</button>
+              <button type="button" onClick={onCloseBallot} disabled={busy || ballot.status === 'CLOSED'}>CLOSE BALLOT</button>
+              <button type="button" className={styles.dangerButton} onClick={onDelete} disabled={busy}>DELETE</button>
+            </div>
+          )}
         </div>
         <VoteControl ballot={ballot} busy={busy} onVote={onVote} />
       </div>
