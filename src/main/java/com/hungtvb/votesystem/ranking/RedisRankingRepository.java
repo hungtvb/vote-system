@@ -44,7 +44,7 @@ public class RedisRankingRepository {
         redis.opsForZSet().remove(weekKey(now), member);
     }
 
-    public List<UUID> range(FeedType feed, int offset, int size, Instant now) {
+    public List<UUID> range(FeedType feed, long offset, int size, Instant now) {
         Set<String> members = redis.opsForZSet().reverseRange(key(feed, now), offset, offset + size - 1L);
         if (members == null) return List.of();
         return new LinkedHashSet<>(members).stream().map(UUID::fromString).toList();
