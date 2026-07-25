@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { FormEvent } from 'react';
+import { useModalDialog } from '@/shared/hooks/useModalDialog';
 import styles from './BallotApp.module.scss';
 
 export function CreateBallotDialog({ onClose, onCreate }: { onClose: () => void; onCreate: (title: string, content: string) => Promise<void> | void }) {
@@ -9,6 +10,7 @@ export function CreateBallotDialog({ onClose, onCreate }: { onClose: () => void;
   const [content, setContent] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const modal = useModalDialog(onClose);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -24,12 +26,12 @@ export function CreateBallotDialog({ onClose, onCreate }: { onClose: () => void;
   }
 
   return (
-    <div className={styles.backdrop} onMouseDown={event => event.target === event.currentTarget && onClose()}>
-      <section className={`${styles.dialog} ${styles.createDialog}`} role="dialog" aria-modal="true" aria-labelledby="create-title">
+    <div className={styles.backdrop} onMouseDown={modal.onBackdropMouseDown}>
+      <section ref={modal.dialogRef} tabIndex={-1} className={`${styles.dialog} ${styles.createDialog}`} role="dialog" aria-modal="true" aria-labelledby="create-title" onKeyDown={modal.onDialogKeyDown}>
         <p className={styles.formTab}>FORM-8A: SUBMISSION</p>
         <h2 id="create-title">Official entry</h2>
         <form onSubmit={submit}>
-          <label>TITLE OF ENTRY<input required maxLength={200} value={title} onChange={event => setTitle(event.target.value)} /></label>
+          <label>TITLE OF ENTRY<input required autoFocus maxLength={200} value={title} onChange={event => setTitle(event.target.value)} /></label>
           <label>DETAILED STATEMENT<textarea required maxLength={20000} rows={10} value={content} onChange={event => setContent(event.target.value)} /></label>
           <small>{content.length} / 20,000</small>
           {error && <span className={styles.error} role="alert">{error}</span>}
