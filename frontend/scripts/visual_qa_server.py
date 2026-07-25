@@ -45,10 +45,10 @@ BALLOTS = [
         "category": "TECHNOLOGY",
         "status": "OPEN",
         "closesAt": "2026-08-01T12:00:00Z",
-        "voteScore": 126,
-        "upVotes": 184,
-        "downVotes": 58,
-        "totalVotes": 242,
+        "voteScore": 200,
+        "upVotes": 200,
+        "downVotes": 0,
+        "totalVotes": 200,
         "verdictThreshold": 70,
         "verdict": "UP",
         "finalVerdict": False,
@@ -64,9 +64,9 @@ BALLOTS = [
         "content": "Teams report different outcomes depending on staffing, release cadence, and operational responsibilities.",
         "category": "WORK",
         "status": "OPEN",
-        "voteScore": -8,
-        "upVotes": 46,
-        "downVotes": 54,
+        "voteScore": 0,
+        "upVotes": 50,
+        "downVotes": 50,
         "totalVotes": 100,
         "verdictThreshold": 70,
         "verdict": "UNDECIDED",
@@ -79,17 +79,17 @@ BALLOTS = [
         "authorId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
         "author": {"id": "cccccccc-cccc-cccc-cccc-cccccccccccc", "displayName": "Voter CCCCCCCC", "initials": "VC"},
         "ballotNumber": "BALLOT-2026-0003",
-        "title": "Should AI-generated code require mandatory human review before production deployment?",
-        "content": "This closed record verifies final-verdict styling and disabled voting controls.",
-        "category": "AI POLICY",
+        "title": "Should an archived ballot with no recorded votes remain visibly undecided?",
+        "content": "This closed zero-vote record verifies the final undecided stamp, disabled controls, and zero percentage boundaries.",
+        "category": "PUBLIC RECORD",
         "status": "CLOSED",
         "closedAt": "2026-07-25T01:00:00Z",
-        "voteScore": 91,
-        "upVotes": 120,
-        "downVotes": 29,
-        "totalVotes": 149,
+        "voteScore": 0,
+        "upVotes": 0,
+        "downVotes": 0,
+        "totalVotes": 0,
         "verdictThreshold": 70,
-        "verdict": "UP",
+        "verdict": "UNDECIDED",
         "finalVerdict": True,
         "createdAt": "2026-07-20T09:00:00Z",
         "updatedAt": "2026-07-25T01:00:00Z",
@@ -115,6 +115,7 @@ QA_SCRIPT = r"""
     const root = document.documentElement;
     const dialog = document.querySelector('[role="dialog"]');
     const voter = document.querySelector('[data-qa-voter-id]');
+    const stamps = [...document.querySelectorAll('[data-qa-verdict-stamp]')];
     root.dataset.qaOverflow = String(root.scrollWidth > root.clientWidth);
     root.dataset.qaCards = String(document.querySelectorAll('article').length);
     root.dataset.qaAuthors = String(document.querySelectorAll('[data-qa-author]').length);
@@ -123,6 +124,12 @@ QA_SCRIPT = r"""
     root.dataset.qaVoter = String(Boolean(voter));
     root.dataset.qaGuest = String(Boolean(document.querySelector('[data-qa-guest-actions]')));
     root.dataset.qaMenu = String(Boolean(voter && voter.hasAttribute('open')));
+    root.dataset.qaVoteSplits = [...document.querySelectorAll('[data-qa-vote-split]')]
+      .map(element => element.getAttribute('data-qa-vote-split')).join(',');
+    root.dataset.qaStamps = String(stamps.length);
+    root.dataset.qaCurrentStamps = String(stamps.filter(stamp => stamp.getAttribute('data-verdict-kind') === 'current').length);
+    root.dataset.qaFinalStamps = String(stamps.filter(stamp => stamp.getAttribute('data-verdict-kind') === 'final').length);
+    root.dataset.qaStampAnimating = String(stamps.filter(stamp => stamp.getAttribute('data-verdict-animate') === 'true').length);
   };
   const waitForReady = (attempt = 0) => {
     const openButton = [...document.querySelectorAll('button')]
@@ -134,6 +141,13 @@ QA_SCRIPT = r"""
     }
     if (mode === 'detail' && openButton) openButton.click();
     if (mode === 'auth-menu' && voter) voter.querySelector('summary')?.click();
+    if (mode === 'auth-stamp') {
+      const secondCard = document.querySelectorAll('article')[1];
+      const endorse = [...(secondCard?.querySelectorAll('button') || [])]
+        .find(button => button.textContent && button.textContent.includes('ENDORSE'));
+      endorse?.click();
+      return setTimeout(finish, 220);
+    }
     setTimeout(finish, mode === 'feed' ? 150 : 500);
   };
   waitForReady();
@@ -164,6 +178,25 @@ class Handler(SimpleHTTPRequestHandler):
                 self._json(200, SESSION)
             else:
                 self._json(401, {"title": "No QA session", "detail": "Guest fixture"})
+            return
+        self._json(404, {"title": "Not found"})
+
+    def do_PUT(self) -> None:  # noqa: N802
+        path = urlparse(self.path).path
+        content_length = int(self.headers.get("Content-Length") or 0)
+        if content_length:
+            self.rfile.read(content_length)
+        if path == "/api/v1/posts/22222222-2222-2222-2222-222222222222/vote" and self._authenticated_fixture():
+            self._json(200, {
+                "postId": "22222222-2222-2222-2222-222222222222",
+                "voteScore": 100,
+                "upVotes": 100,
+                "downVotes": 0,
+                "totalVotes": 100,
+                "myVote": "UP",
+                "verdictThreshold": 70,
+                "verdict": "UP",
+            })
             return
         self._json(404, {"title": "Not found"})
 
