@@ -5,15 +5,20 @@ import com.hungtvb.votesystem.post.dto.PostResponse;
 import com.hungtvb.votesystem.post.dto.UpdatePostRequest;
 import com.hungtvb.votesystem.ranking.FeedType;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
+@Validated
 @RestController
 @RequestMapping("/api/v1/posts")
 public class PostController {
@@ -55,13 +60,17 @@ public class PostController {
     @GetMapping
     Page<PostResponse> list(@AuthenticationPrincipal Jwt jwt,
                             @RequestParam(defaultValue = "LATEST") FeedType feed,
-                            @RequestParam(defaultValue = "0") int page,
-                            @RequestParam(defaultValue = "20") int size) {
-        int safeSize = Math.min(Math.max(size, 1), 100);
+                            @RequestParam(required = false) @Size(max = 200) String query,
+                            @RequestParam(required = false) @Size(max = 50) String category,
+                            @RequestParam(required = false) BallotStatus status,
+                            @RequestParam(defaultValue = "0") @Min(0) int page,
+                            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        UUID userId = currentUserId(jwt);
         return postService.list(
-                PageRequest.of(Math.max(page, 0), safeSize),
-                currentUserId(jwt),
-                feed);
+                PageRequest.of(page, size),
+                userId,
+                feed,
+                new PostFilter(query, category, status, null));
     }
 
     private UUID currentUserId(Jwt jwt) {

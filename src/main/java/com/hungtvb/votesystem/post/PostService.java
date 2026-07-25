@@ -3,6 +3,7 @@ package com.hungtvb.votesystem.post;
 import com.hungtvb.votesystem.common.error.ConflictException;
 import com.hungtvb.votesystem.common.error.ForbiddenException;
 import com.hungtvb.votesystem.common.error.ResourceNotFoundException;
+import com.hungtvb.votesystem.common.error.UnauthorizedException;
 import com.hungtvb.votesystem.post.dto.AuthorSummary;
 import com.hungtvb.votesystem.post.dto.CreatePostRequest;
 import com.hungtvb.votesystem.post.dto.PostResponse;
@@ -117,7 +118,20 @@ public class PostService {
 
     @Transactional(readOnly = true)
     public Page<PostResponse> list(Pageable pageable, UUID userId, FeedType feed) {
-        Page<Post> posts = rankingService.list(feed, pageable);
+        return list(pageable, userId, feed, PostFilter.empty());
+    }
+
+    @Transactional(readOnly = true)
+    public Page<PostResponse> list(Pageable pageable, UUID userId, FeedType feed, PostFilter filter) {
+        PostFilter effectiveFilter = filter;
+        if (feed == FeedType.MINE) {
+            if (userId == null) {
+                throw new UnauthorizedException("Authentication is required for the MINE feed");
+            }
+            effectiveFilter = filter.withAuthorId(userId);
+        }
+
+        Page<Post> posts = rankingService.list(feed, pageable, effectiveFilter);
         if (posts.isEmpty()) {
             return posts.map(post -> response(post, null, AuthorSummary.technical(post.getAuthorId())));
         }

@@ -4,5 +4,6 @@ public enum FeedType {
     LATEST,
     HOT,
     TOP_DAY,
-    TOP_WEEK
+    TOP_WEEK,
+    MINE
 }

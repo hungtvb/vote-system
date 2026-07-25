@@ -44,7 +44,7 @@ public class RedisRankingRepository {
         redis.opsForZSet().remove(weekKey(now), member);
     }
 
-    public List<UUID> range(FeedType feed, int offset, int size, Instant now) {
+    public List<UUID> range(FeedType feed, long offset, int size, Instant now) {
         Set<String> members = redis.opsForZSet().reverseRange(key(feed, now), offset, offset + size - 1L);
         if (members == null) return List.of();
         return new LinkedHashSet<>(members).stream().map(UUID::fromString).toList();
@@ -68,7 +68,7 @@ public class RedisRankingRepository {
             case HOT -> HOT_KEY;
             case TOP_DAY -> dayKey(now);
             case TOP_WEEK -> weekKey(now);
-            case LATEST -> throw new IllegalArgumentException("LATEST is database-backed");
+            case LATEST, MINE -> throw new IllegalArgumentException(feed + " is database-backed");
         };
     }
 
