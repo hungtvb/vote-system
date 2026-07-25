@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthDialog } from '@/features/auth/components/AuthDialog';
 import { VoterMasthead } from '@/features/auth/components/VoterMasthead';
 import { useSession } from '@/features/auth/hooks/useSession';
-import { api, ApiError } from '@/shared/api/client';
-import type { Ballot, FeedType, Session, VoteResponse, VoteType } from '@/shared/api/types';
+import { ballotApi } from '@/shared/api/ballot-api';
+import { ApiError } from '@/shared/api/transport';
+import type { Ballot, FeedType, VoteResponse, VoteType } from '@/shared/api/types';
 import { BallotCard } from './BallotCard';
 import { BallotDetailDialog } from './BallotDetailDialog';
 import { CreateBallotDialog } from './CreateBallotDialog';
@@ -31,7 +32,7 @@ function optimisticVote(ballot: Ballot, type: VoteType): Ballot {
 }
 
 export function BallotApp() {
-  const { session, profile, restoring, saveSession, clearSession, logout, logoutAll } = useSession();
+  const { session, profile, restoring, saveSession, runAuthorized, logout, logoutAll } = useSession();
   const [ballots, setBallots] = useState<Ballot[]>([]);
   const [feed, setFeed] = useState<FeedType>('LATEST');
   const [query, setQuery] = useState('');
@@ -54,29 +55,15 @@ export function BallotApp() {
     setAuthOpen(true);
   }, []);
 
-  const withRefresh = useCallback(async <T,>(operation: (activeSession: Session | null) => Promise<T>) => {
-    try {
-      return await operation(session);
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status !== 401 || !session) throw error;
-      try {
-        const refreshed = await api.refresh();
-        await saveSession(refreshed);
-        return await operation(refreshed);
-      } catch (refreshError) {
-        clearSession();
-        throw refreshError;
-      }
-    }
-  }, [clearSession, saveSession, session]);
-
   const load = useCallback(async (nextPage = 0, append = false) => {
     if (restoring) return;
     const sequence = ++requestSequence.current;
     setLoading(true);
     setMessage('');
     try {
-      const response = await withRefresh(active => api.listBallots(feed, nextPage, PAGE_SIZE, active?.accessToken));
+      const response = session
+        ? await runAuthorized(active => ballotApi.list(feed, nextPage, PAGE_SIZE, active.accessToken))
+        : await ballotApi.list(feed, nextPage, PAGE_SIZE);
       if (sequence !== requestSequence.current) return;
       setBallots(current => append ? [...current, ...response.content.filter(item => !current.some(existing => existing.id === item.id))] : response.content);
       setPage(response.number);
@@ -87,7 +74,7 @@ export function BallotApp() {
     } finally {
       if (sequence === requestSequence.current) setLoading(false);
     }
-  }, [feed, restoring, withRefresh]);
+  }, [feed, restoring, runAuthorized, session]);
 
   useEffect(() => {
     void load();
@@ -115,24 +102,21 @@ export function BallotApp() {
     markBusy(ballot.id, true);
     setBallots(current => current.map(item => item.id === ballot.id ? optimisticVote(item, type) : item));
     try {
-      const response = await withRefresh(active => {
-        if (!active) throw new ApiError('Authentication required.', 401);
-        return ballot.myVote === type ? api.removeVote(ballot.id, active.accessToken) : api.castVote(ballot.id, type, active.accessToken);
-      });
+      const response = await runAuthorized(active =>
+        ballot.myVote === type
+          ? ballotApi.removeVote(ballot.id, active.accessToken)
+          : ballotApi.castVote(ballot.id, type, active.accessToken));
       setBallots(current => current.map(item => item.id === ballot.id ? applyVoteResponse(item, response) : item));
     } catch (error) {
       setBallots(current => current.map(item => item.id === ballot.id ? snapshot : item));
-      setMessage(error instanceof ApiError && error.status === 429 && error.retryAfter ? `Đã đạt giới hạn. Thử lại sau ${error.retryAfter} giây.` : error instanceof Error ? error.message : 'Không thể ghi nhận phiếu.');
+      setMessage(error instanceof ApiError && error.status === 429 && error.retryAfter !== undefined ? `Đã đạt giới hạn. Thử lại sau ${error.retryAfter} giây.` : error instanceof Error ? error.message : 'Không thể ghi nhận phiếu.');
     } finally {
       markBusy(ballot.id, false);
     }
   }
 
   async function createBallot(title: string, content: string) {
-    await withRefresh(active => {
-      if (!active) throw new ApiError('Authentication required.', 401);
-      return api.createBallot({ title, content }, active.accessToken);
-    });
+    await runAuthorized(active => ballotApi.create({ title, content }, active.accessToken));
     setCreateOpen(false);
     await load(0, false);
     setMessage('Hồ sơ đã được ghi vào sổ công khai. Feed hiện tại đã được tải lại từ máy chủ.');
@@ -141,10 +125,8 @@ export function BallotApp() {
   async function updateBallot(ballot: Ballot, title: string, content: string) {
     markBusy(ballot.id, true);
     try {
-      const updated = await withRefresh(active => {
-        if (!active) throw new ApiError('Authentication required.', 401);
-        return api.updateBallot(ballot.id, { title, content }, active.accessToken);
-      });
+      const updated = await runAuthorized(active =>
+        ballotApi.update(ballot.id, { title, content }, active.accessToken));
       setBallots(current => current.map(item => item.id === ballot.id ? updated : item));
       setEditing(null);
       setMessage('Hồ sơ đã được cập nhật.');
@@ -157,10 +139,7 @@ export function BallotApp() {
     if (!window.confirm(`Delete ballot ${ballot.ballotNumber}? This cannot be undone.`)) return;
     markBusy(ballot.id, true);
     try {
-      await withRefresh(active => {
-        if (!active) throw new ApiError('Authentication required.', 401);
-        return api.deleteBallot(ballot.id, active.accessToken);
-      });
+      await runAuthorized(active => ballotApi.delete(ballot.id, active.accessToken));
       setBallots(current => current.filter(item => item.id !== ballot.id));
       setSelectedId(current => current === ballot.id ? null : current);
       setMessage('Hồ sơ đã được xóa khỏi sổ công khai.');
@@ -175,10 +154,7 @@ export function BallotApp() {
     if (!window.confirm(`Close ballot ${ballot.ballotNumber}? Voting will stop permanently.`)) return;
     markBusy(ballot.id, true);
     try {
-      const closed = await withRefresh(active => {
-        if (!active) throw new ApiError('Authentication required.', 401);
-        return api.closeBallot(ballot.id, active.accessToken);
-      });
+      const closed = await runAuthorized(active => ballotApi.close(ballot.id, active.accessToken));
       setBallots(current => current.map(item => item.id === ballot.id ? closed : item));
       setMessage('Lá phiếu đã được đóng và kết quả cuối cùng đã được chốt.');
     } catch (error) {

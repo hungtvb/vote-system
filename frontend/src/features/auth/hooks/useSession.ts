@@ -1,38 +1,47 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError } from '@/shared/api/client';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { authApi } from '@/shared/api/auth-api';
+import { runAuthorizedRequest } from '@/shared/api/authorized-request';
+import { ApiError } from '@/shared/api/transport';
 import type { Session, UserProfile } from '@/shared/api/types';
+import { userApi } from '@/shared/api/user-api';
 
 export function useSession() {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [restoring, setRestoring] = useState(true);
+  const sessionRef = useRef<Session | null>(null);
 
-  const clearSession = useCallback(() => {
-    setSession(null);
-    setProfile(null);
+  const commitSession = useCallback((next: Session | null) => {
+    sessionRef.current = next;
+    setSession(next);
   }, []);
 
+  const clearSession = useCallback(() => {
+    commitSession(null);
+    setProfile(null);
+  }, [commitSession]);
+
   const saveSession = useCallback(async (next: Session) => {
-    setSession(next);
     try {
-      const nextProfile = await api.currentUser(next.accessToken);
+      const nextProfile = await userApi.current(next.accessToken);
+      commitSession(next);
       setProfile(nextProfile);
       return nextProfile;
     } catch (error) {
       clearSession();
       throw error;
     }
-  }, [clearSession]);
+  }, [clearSession, commitSession]);
 
   useEffect(() => {
     let active = true;
-    void api.refresh()
+    void authApi.refresh()
       .then(async next => {
-        const nextProfile = await api.currentUser(next.accessToken);
+        const nextProfile = await userApi.current(next.accessToken);
         if (active) {
-          setSession(next);
+          commitSession(next);
           setProfile(nextProfile);
         }
       })
@@ -45,28 +54,37 @@ export function useSession() {
       })
       .finally(() => { if (active) setRestoring(false); });
     return () => { active = false; };
-  }, [clearSession]);
+  }, [clearSession, commitSession]);
+
+  const runAuthorized = useCallback(<T,>(operation: (activeSession: Session) => Promise<T>) =>
+    runAuthorizedRequest(operation, {
+      getSession: () => sessionRef.current,
+      refresh: authApi.refresh,
+      setSession: commitSession,
+      clearSession
+    }), [clearSession, commitSession]);
 
   const logout = useCallback(async () => {
-    if (session) {
-      try {
-        await api.logout(session.accessToken);
-      } finally {
-        clearSession();
-      }
-      return;
-    }
-    clearSession();
-  }, [clearSession, session]);
-
-  const logoutAll = useCallback(async () => {
-    if (!session) return clearSession();
+    const active = sessionRef.current;
     try {
-      await api.logoutAll(session.accessToken);
+      if (active) await authApi.logout(active.accessToken);
+    } catch (error) {
+      console.error('Logout request failed', error);
     } finally {
       clearSession();
     }
-  }, [clearSession, session]);
+  }, [clearSession]);
 
-  return { session, profile, restoring, saveSession, clearSession, logout, logoutAll };
+  const logoutAll = useCallback(async () => {
+    const active = sessionRef.current;
+    try {
+      if (active) await authApi.logoutAll(active.accessToken);
+    } catch (error) {
+      console.error('Logout-all request failed', error);
+    } finally {
+      clearSession();
+    }
+  }, [clearSession]);
+
+  return { session, profile, restoring, saveSession, clearSession, runAuthorized, logout, logoutAll };
 }

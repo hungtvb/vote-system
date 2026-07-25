@@ -69,6 +69,8 @@ app:
       limit: ${RATE_LIMIT_VOTE_LIMIT:30}
       window: ${RATE_LIMIT_VOTE_WINDOW:PT1M}
   security:
+    cors:
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
     jwt:
       issuer: ${JWT_ISSUER:vote-system}
       secret: ${JWT_SECRET:dev-only-change-me-0123456789abcdef}

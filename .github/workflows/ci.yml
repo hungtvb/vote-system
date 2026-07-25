@@ -47,6 +47,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
+      - name: Test API lifecycle
+        run: npm test
       - name: Build frontend
         run: |
           set -o pipefail
