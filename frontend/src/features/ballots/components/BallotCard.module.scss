@@ -43,7 +43,7 @@
 .statusClosed { background: var(--navy); color: var(--bone); }
 
 .body { display: grid; grid-template-columns: minmax(0, 1fr) 250px; }
-.copy { min-width: 0; padding: 22px 24px 24px; }
+.copy { min-width: 0; padding: 22px 190px 24px 24px; }
 .category { margin: 0 0 8px; color: var(--seal); font: 700 11px/1.3 'JetBrains Mono', monospace; letter-spacing: .08em; text-transform: uppercase; }
 .titleButton { width: 100%; border: 0; padding: 0; background: transparent; text-align: left; }
 .titleButton h2 { margin: 0 0 10px; color: var(--navy); font: 600 clamp(23px, 3vw, 31px)/1.08 'Playfair Display', serif; overflow-wrap: anywhere; }
@@ -95,6 +95,7 @@
 
 @media (max-width: 850px) {
   .body { grid-template-columns: minmax(0, 1fr); }
+  .copy { padding-right: 22px; }
   .votePanel { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border-top: 2px solid var(--navy); border-left: 0; }
   .voteLabel, .counter, .optionHint { grid-column: 1 / -1; }
   .cardStamp { position: static; margin: 0 18px 18px auto; }
