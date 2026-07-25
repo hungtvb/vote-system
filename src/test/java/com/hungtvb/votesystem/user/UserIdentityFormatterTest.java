@@ -3,20 +3,23 @@ package com.hungtvb.votesystem.user;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class UserIdentityFormatterTest {
     @Test
-    void derivesReadableDisplayNameAndInitialsFromEmail() {
-        String displayName = UserIdentityFormatter.displayName("jane-doe_99@example.com");
+    void normalizesExplicitDisplayNamesAndInitials() {
+        String displayName = UserIdentityFormatter.normalizeDisplayName("  Jane   Doe  99 ");
 
         assertEquals("Jane Doe 99", displayName);
         assertEquals("JD", UserIdentityFormatter.initials(displayName));
     }
 
     @Test
-    void fallsBackForMissingOrEmptyIdentity() {
-        assertEquals("Voter", UserIdentityFormatter.displayName(null));
-        assertEquals("Voter", UserIdentityFormatter.displayName("@example.com"));
+    void generatesAPseudonymWhenNoPublicNameIsProvided() {
+        String displayName = UserIdentityFormatter.normalizeDisplayName(null);
+
+        assertTrue(displayName.matches("Voter [A-F0-9]{8}"));
+        assertTrue(UserIdentityFormatter.initials(displayName).matches("V[A-F0-9]"));
         assertEquals("V", UserIdentityFormatter.initials(""));
     }
 }
