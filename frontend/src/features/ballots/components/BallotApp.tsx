@@ -77,6 +77,9 @@ export function BallotApp() {
       if (sequence !== requestSequence.current) return;
 
       setBallots(current => append ? mergeUniqueBallots(current, response.content) : response.content);
+      if (!append) {
+        setSelectedId(current => current && !response.content.some(ballot => ballot.id === current) ? null : current);
+      }
       setPage(response.number);
       setTotalPages(response.totalPages);
       setTotalElements(response.totalElements);
