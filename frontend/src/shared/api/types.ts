@@ -1,7 +1,7 @@
 export type VoteType = 'UP' | 'DOWN';
 export type VoteVerdict = 'UP' | 'DOWN' | 'UNDECIDED';
 export type BallotStatus = 'OPEN' | 'CLOSED';
-export type FeedType = 'LATEST' | 'HOT' | 'TOP_DAY' | 'TOP_WEEK';
+export type FeedType = 'LATEST' | 'HOT' | 'TOP_DAY' | 'TOP_WEEK' | 'MINE';
 
 export interface Session {
   tokenType: string;
