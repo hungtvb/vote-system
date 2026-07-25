@@ -14,6 +14,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -38,7 +40,7 @@ class UserIdentityApiTest {
 
     @Test
     void exposesPrivateCurrentProfileAndSafePublicAuthorSummary() throws Exception {
-        AuthSession session = register("hung.tran@example.com");
+        AuthSession session = register("hung.tran@example.com", "  Hung   Tran  ");
 
         mockMvc.perform(get("/api/v1/users/me")
                         .header("Authorization", "Bearer " + session.accessToken()))
@@ -75,19 +77,37 @@ class UserIdentityApiTest {
 
         mockMvc.perform(get("/api/v1/posts"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].author.displayName").value("Hung Tran"))
-                .andExpect(jsonPath("$.content[0].author.initials").value("HT"))
-                .andExpect(jsonPath("$.content[0].author.email").doesNotExist());
+                .andExpect(jsonPath("$.content[*].author.displayName", hasItem("Hung Tran")))
+                .andExpect(jsonPath("$.content[*].author.initials", hasItem("HT")))
+                .andExpect(jsonPath("$.content[*].author.email").doesNotExist());
     }
 
-    private AuthSession register(String email) throws Exception {
+    @Test
+    void registrationWithoutDisplayNameUsesAPseudonymInsteadOfEmailIdentity() throws Exception {
+        AuthSession session = register("sensitive.login@example.com", null);
+
+        mockMvc.perform(get("/api/v1/users/me")
+                        .header("Authorization", "Bearer " + session.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("sensitive.login@example.com"))
+                .andExpect(jsonPath("$.displayName", matchesPattern("Voter [A-F0-9]{8}")))
+                .andExpect(jsonPath("$.initials", matchesPattern("V[A-F0-9]")));
+    }
+
+    private AuthSession register(String email, String displayName) throws Exception {
+        String payload = displayName == null
+                ? objectMapper.writeValueAsString(new Registration(email, null, "strong-password"))
+                : objectMapper.writeValueAsString(new Registration(email, displayName, "strong-password"));
         MvcResult result = mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"strong-password\"}"))
+                        .content(payload))
                 .andExpect(status().isCreated())
                 .andReturn();
         JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
         return new AuthSession(response.get("accessToken").asText(), response.get("userId").asText());
+    }
+
+    private record Registration(String email, String displayName, String password) {
     }
 
     private record AuthSession(String accessToken, String userId) {
