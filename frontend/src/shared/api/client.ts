@@ -75,6 +75,9 @@ export const api = {
   deleteBallot(postId: string, token: string) {
     return request<void>(`/api/v1/posts/${postId}`, { method: 'DELETE' }, token);
   },
+  closeBallot(postId: string, token: string) {
+    return request<Ballot>(`/api/v1/posts/${postId}/close`, { method: 'POST' }, token);
+  },
   castVote(postId: string, type: VoteType, token: string) {
     return request<VoteResponse>(`/api/v1/posts/${postId}/vote`, { method: 'PUT', body: JSON.stringify({ type }) }, token);
   },
