@@ -1,10 +1,33 @@
-import type { Ballot, FeedType, PageResponse, VoteResponse, VoteType } from './types';
+import type { Ballot, BallotStatus, FeedType, PageResponse, VoteResponse, VoteType } from './types';
 import { http, type ApiRequester } from './transport';
+
+export interface BallotListParams {
+  feed: FeedType;
+  page: number;
+  size: number;
+  query?: string;
+  category?: string;
+  status?: BallotStatus;
+}
+
+export function buildBallotListPath(params: BallotListParams): string {
+  const search = new URLSearchParams({
+    feed: params.feed,
+    page: String(params.page),
+    size: String(params.size)
+  });
+  const query = params.query?.trim();
+  const category = params.category?.trim();
+  if (query) search.set('query', query);
+  if (category) search.set('category', category);
+  if (params.status) search.set('status', params.status);
+  return `/api/v1/posts?${search.toString()}`;
+}
 
 export function createBallotApi(request: ApiRequester = http.request) {
   return {
-    list(feed: FeedType, page: number, size: number, token?: string) {
-      return request<PageResponse<Ballot>>(`/api/v1/posts?feed=${feed}&page=${page}&size=${size}`, {}, token);
+    list(params: BallotListParams, token?: string) {
+      return request<PageResponse<Ballot>>(buildBallotListPath(params), {}, token);
     },
 
     get(postId: string, token?: string) {
