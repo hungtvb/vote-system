@@ -20,6 +20,9 @@
 }
 
 @media (max-width: 480px) {
+  .tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: visible; }
+  .tabs button { width: 100%; min-width: 0; padding-inline: 6px; }
+  .tabs .active { margin-bottom: 0; border-bottom: 2px solid var(--navy); }
   .filters { grid-template-columns: minmax(0, 1fr); }
   .reset { grid-column: auto; }
 }
