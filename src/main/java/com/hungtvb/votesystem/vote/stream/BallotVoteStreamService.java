@@ -52,8 +52,10 @@ public class BallotVoteStreamService {
             client.send(SseEmitter.event()
                     .comment("connected")
                     .reconnectTime(RECONNECT_DELAY_MILLIS));
-            if (lastEventId == null || lastEventId.isBlank() || !lastEventId.equals(snapshot.eventId())) {
-                sendUpdate(client, snapshot);
+            if (lastEventId != null && lastEventId.equals(snapshot.eventId())) {
+                client.markDelivered(snapshot.updatedAt());
+            } else {
+                client.sendUpdate(snapshot);
             }
         } catch (IOException | IllegalStateException exception) {
             cleanup.run();
@@ -69,7 +71,7 @@ public class BallotVoteStreamService {
         }
         clients.forEach((clientId, client) -> {
             try {
-                sendUpdate(client, update);
+                client.sendUpdate(update);
             } catch (IOException | IllegalStateException exception) {
                 remove(update.postId(), clientId);
                 client.completeWithError(exception);
@@ -94,14 +96,6 @@ public class BallotVoteStreamService {
         return clients == null ? 0 : clients.size();
     }
 
-    private void sendUpdate(StreamClient client, BallotVoteUpdate update) throws IOException {
-        client.send(SseEmitter.event()
-                .name("vote-update")
-                .id(update.eventId())
-                .reconnectTime(RECONNECT_DELAY_MILLIS)
-                .data(update));
-    }
-
     private void remove(UUID postId, UUID clientId) {
         clientsByPost.computeIfPresent(postId, (ignored, clients) -> {
             clients.remove(clientId);
@@ -111,9 +105,28 @@ public class BallotVoteStreamService {
 
     private static final class StreamClient {
         private final SseEmitter emitter;
+        private Instant lastDeliveredAt;
 
         private StreamClient(SseEmitter emitter) {
             this.emitter = emitter;
+        }
+
+        private synchronized void markDelivered(Instant deliveredAt) {
+            if (lastDeliveredAt == null || deliveredAt.isAfter(lastDeliveredAt)) {
+                lastDeliveredAt = deliveredAt;
+            }
+        }
+
+        private synchronized void sendUpdate(BallotVoteUpdate update) throws IOException {
+            if (lastDeliveredAt != null && !update.updatedAt().isAfter(lastDeliveredAt)) {
+                return;
+            }
+            emitter.send(SseEmitter.event()
+                    .name("vote-update")
+                    .id(update.eventId())
+                    .reconnectTime(RECONNECT_DELAY_MILLIS)
+                    .data(update));
+            lastDeliveredAt = update.updatedAt();
         }
 
         private synchronized void send(SseEmitter.SseEventBuilder event) throws IOException {
