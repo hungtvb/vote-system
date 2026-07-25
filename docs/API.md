@@ -70,6 +70,21 @@ For filtered ranked feeds, filtering is applied across the complete ranked set b
 
 If Redis is unavailable, ranked feeds use the existing database fallback and return matching ballots in latest-first order. This is a degraded availability mode; the response remains filtered and paginated correctly, but rank order is temporarily unavailable.
 
+## Realtime vote updates
+
+An active ballot exposes a public Server-Sent Events endpoint:
+
+```http
+GET /api/v1/posts/{postId}/events
+Accept: text/event-stream
+```
+
+The server immediately sends the current authoritative aggregate unless the request's `Last-Event-ID` already matches the current ballot update timestamp. Committed vote changes produce `vote-update` events containing shared counts, score, threshold, verdict, and `updatedAt`. Events deliberately exclude `myVote` and account data.
+
+The stream sends heartbeat comments, recommends a three-second reconnect delay, disables caching/proxy buffering where supported, and removes disconnected emitters. Missing ballots return `404`; ballots that no longer accept votes return `409`.
+
+The SSE history is not persisted. Reconnection converges through the current database snapshot rather than replaying intermediate activity. Full payload, reconnect, deployment, frontend fallback, and scope details are documented in `docs/REALTIME-VOTES.md`.
+
 ## Source of truth
 
 Controller mappings and request/response DTOs are the source of truth for generated operations and schemas. Global API metadata and JWT security configuration are defined in:
