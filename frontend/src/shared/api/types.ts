@@ -62,6 +62,17 @@ export interface VoteResponse {
   verdict: VoteVerdict;
 }
 
+export interface BallotVoteUpdate {
+  postId: string;
+  voteScore: number;
+  upVotes: number;
+  downVotes: number;
+  totalVotes: number;
+  verdictThreshold: number;
+  verdict: VoteVerdict;
+  updatedAt: string;
+}
+
 export interface PageResponse<T> {
   content: T[];
   totalElements: number;
