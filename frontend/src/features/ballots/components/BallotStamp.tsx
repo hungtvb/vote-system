@@ -15,19 +15,17 @@ export function BallotStamp({ verdict, finalVerdict, placement = 'card' }: Ballo
   const transitionKey = verdictTransitionKey(verdict, finalVerdict);
   const previousKey = useRef(transitionKey);
   const [animating, setAnimating] = useState(false);
+  const [animationEpoch, setAnimationEpoch] = useState(0);
   const model = getVerdictStamp(verdict, finalVerdict);
 
   useEffect(() => {
     if (previousKey.current === transitionKey) return;
     previousKey.current = transitionKey;
-    setAnimating(false);
+    setAnimationEpoch(current => current + 1);
+    setAnimating(true);
 
-    const frame = window.requestAnimationFrame(() => setAnimating(true));
-    const timer = window.setTimeout(() => setAnimating(false), 650);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.clearTimeout(timer);
-    };
+    const timer = window.setTimeout(() => setAnimating(false), 900);
+    return () => window.clearTimeout(timer);
   }, [transitionKey]);
 
   if (!model) return null;
@@ -38,6 +36,7 @@ export function BallotStamp({ verdict, finalVerdict, placement = 'card' }: Ballo
 
   return (
     <div
+      key={animationEpoch}
       className={`${styles.stamp} ${placementClass} ${finalClass} ${neutralClass} ${animating ? styles.stampAnimating : ''}`}
       aria-live="polite"
       data-qa-verdict-stamp
