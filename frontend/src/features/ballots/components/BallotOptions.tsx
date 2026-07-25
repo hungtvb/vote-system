@@ -1,5 +1,6 @@
 'use client';
 
+import type { CSSProperties } from 'react';
 import { calculateVoteBreakdown } from '@/shared/ballot/ballot-view';
 import type { Ballot, VoteType } from '@/shared/api/types';
 import styles from './BallotCard.module.scss';
@@ -59,6 +60,7 @@ interface VoteOptionProps {
 
 function VoteOption({ type, label, count, percentage, selected, disabled, onVote }: VoteOptionProps) {
   const selectedClass = selected ? (type === 'UP' ? styles.selectedUp : styles.selectedDown) : '';
+  const shareStyle = { '--vote-share': `${percentage}%` } as CSSProperties;
 
   return (
     <button
@@ -73,7 +75,7 @@ function VoteOption({ type, label, count, percentage, selected, disabled, onVote
       <b className={styles.optionCount}>{count}</b>
       <span className={styles.optionPercent}>{percentage}%</span>
       <span className={styles.track} aria-hidden="true">
-        <span className={styles.fill} style={{ '--vote-share': `${percentage}%` } as React.CSSProperties} />
+        <span className={styles.fill} style={shareStyle} />
       </span>
     </button>
   );
