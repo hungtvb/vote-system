@@ -7,6 +7,7 @@ import { api, ApiError } from '@/shared/api/client';
 import type { Ballot, FeedType, Session, VoteResponse, VoteType } from '@/shared/api/types';
 import { BallotCard } from './BallotCard';
 import { CreateBallotDialog } from './CreateBallotDialog';
+import { EditBallotDialog } from './EditBallotDialog';
 import styles from './BallotApp.module.scss';
 
 const PAGE_SIZE = 8;
@@ -38,6 +39,7 @@ export function BallotApp() {
   const [message, setMessage] = useState('');
   const [authOpen, setAuthOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editing, setEditing] = useState<Ballot | null>(null);
   const requestSequence = useRef(0);
 
   const withRefresh = useCallback(async <T,>(operation: (activeSession: Session | null) => Promise<T>) => {
@@ -86,11 +88,19 @@ export function BallotApp() {
     return ballots.filter(ballot => `${ballot.title} ${ballot.content} ${ballot.ballotNumber}`.toLowerCase().includes(normalized));
   }, [ballots, query]);
 
+  function markBusy(id: string, busy: boolean) {
+    setBusyIds(current => {
+      const next = new Set(current);
+      if (busy) next.add(id); else next.delete(id);
+      return next;
+    });
+  }
+
   async function vote(ballot: Ballot, type: VoteType) {
     if (!session) return setAuthOpen(true);
     if (ballot.status === 'CLOSED' || busyIds.has(ballot.id)) return;
     const snapshot = ballot;
-    setBusyIds(current => new Set(current).add(ballot.id));
+    markBusy(ballot.id, true);
     setBallots(current => current.map(item => item.id === ballot.id ? optimisticVote(item, type) : item));
     try {
       const response = await withRefresh(active => {
@@ -102,7 +112,7 @@ export function BallotApp() {
       setBallots(current => current.map(item => item.id === ballot.id ? snapshot : item));
       setMessage(error instanceof ApiError && error.status === 429 && error.retryAfter ? `Đã đạt giới hạn. Thử lại sau ${error.retryAfter} giây.` : error instanceof Error ? error.message : 'Không thể ghi nhận phiếu.');
     } finally {
-      setBusyIds(current => { const next = new Set(current); next.delete(ballot.id); return next; });
+      markBusy(ballot.id, false);
     }
   }
 
@@ -114,6 +124,55 @@ export function BallotApp() {
     setBallots(current => [created, ...current.filter(item => item.id !== created.id)]);
     setCreateOpen(false);
     setMessage('Hồ sơ đã được ghi vào sổ công khai.');
+  }
+
+  async function updateBallot(ballot: Ballot, title: string, content: string) {
+    markBusy(ballot.id, true);
+    try {
+      const updated = await withRefresh(active => {
+        if (!active) throw new ApiError('Authentication required.', 401);
+        return api.updateBallot(ballot.id, { title, content }, active.accessToken);
+      });
+      setBallots(current => current.map(item => item.id === ballot.id ? updated : item));
+      setEditing(null);
+      setMessage('Hồ sơ đã được cập nhật.');
+    } finally {
+      markBusy(ballot.id, false);
+    }
+  }
+
+  async function deleteBallot(ballot: Ballot) {
+    if (!window.confirm(`Delete ballot ${ballot.ballotNumber}? This cannot be undone.`)) return;
+    markBusy(ballot.id, true);
+    try {
+      await withRefresh(active => {
+        if (!active) throw new ApiError('Authentication required.', 401);
+        return api.deleteBallot(ballot.id, active.accessToken);
+      });
+      setBallots(current => current.filter(item => item.id !== ballot.id));
+      setMessage('Hồ sơ đã được xóa khỏi sổ công khai.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Không thể xóa hồ sơ.');
+    } finally {
+      markBusy(ballot.id, false);
+    }
+  }
+
+  async function closeBallot(ballot: Ballot) {
+    if (!window.confirm(`Close ballot ${ballot.ballotNumber}? Voting will stop permanently.`)) return;
+    markBusy(ballot.id, true);
+    try {
+      const closed = await withRefresh(active => {
+        if (!active) throw new ApiError('Authentication required.', 401);
+        return api.closeBallot(ballot.id, active.accessToken);
+      });
+      setBallots(current => current.map(item => item.id === ballot.id ? closed : item));
+      setMessage('Lá phiếu đã được đóng và kết quả cuối cùng đã được chốt.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Không thể đóng lá phiếu.');
+    } finally {
+      markBusy(ballot.id, false);
+    }
   }
 
   return (
@@ -135,12 +194,13 @@ export function BallotApp() {
         {message && <div className={styles.notice} role="status">{message}</div>}
         {loading && ballots.length === 0 && <BallotSkeleton />}
         {!loading && visible.length === 0 && <div className={styles.empty}><strong>NO RECORDS FOUND</strong><span>Không có hồ sơ phù hợp với điều kiện hiện tại.</span></div>}
-        <section className={styles.feed} aria-live="polite">{visible.map(ballot => <BallotCard key={ballot.id} ballot={ballot} busy={busyIds.has(ballot.id)} onVote={type => void vote(ballot, type)} />)}</section>
+        <section className={styles.feed} aria-live="polite">{visible.map(ballot => <BallotCard key={ballot.id} ballot={ballot} busy={busyIds.has(ballot.id)} owned={session?.userId === ballot.authorId} onVote={type => void vote(ballot, type)} onEdit={() => setEditing(ballot)} onDelete={() => void deleteBallot(ballot)} onCloseBallot={() => void closeBallot(ballot)} />)}</section>
         {!lastPage && <button className={styles.loadMore} disabled={loading} onClick={() => void load(page + 1, true)}>{loading ? 'LOADING...' : 'LOAD MORE RECORDS'}</button>}
       </main>
 
       {authOpen && <AuthDialog onClose={() => setAuthOpen(false)} onAuthenticated={next => { saveSession(next); setAuthOpen(false); }} />}
       {createOpen && <CreateBallotDialog onClose={() => setCreateOpen(false)} onCreate={createBallot} />}
+      {editing && <EditBallotDialog ballot={editing} onClose={() => setEditing(null)} onSave={(title, content) => updateBallot(editing, title, content)} />}
     </div>
   );
 }
