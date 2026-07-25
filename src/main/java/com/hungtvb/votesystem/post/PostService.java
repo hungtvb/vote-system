@@ -3,12 +3,14 @@ package com.hungtvb.votesystem.post;
 import com.hungtvb.votesystem.common.error.ConflictException;
 import com.hungtvb.votesystem.common.error.ForbiddenException;
 import com.hungtvb.votesystem.common.error.ResourceNotFoundException;
+import com.hungtvb.votesystem.post.dto.AuthorSummary;
 import com.hungtvb.votesystem.post.dto.CreatePostRequest;
 import com.hungtvb.votesystem.post.dto.PostResponse;
 import com.hungtvb.votesystem.post.dto.UpdatePostRequest;
 import com.hungtvb.votesystem.ranking.FeedType;
 import com.hungtvb.votesystem.ranking.RankingChangedEvent;
 import com.hungtvb.votesystem.ranking.RankingService;
+import com.hungtvb.votesystem.user.UserRepository;
 import com.hungtvb.votesystem.vote.Vote;
 import com.hungtvb.votesystem.vote.VotePolicy;
 import com.hungtvb.votesystem.vote.VoteRepository;
@@ -29,17 +31,20 @@ import java.util.stream.Collectors;
 public class PostService {
     private final PostRepository postRepository;
     private final VoteRepository voteRepository;
+    private final UserRepository userRepository;
     private final RankingService rankingService;
     private final ApplicationEventPublisher eventPublisher;
     private final VotePolicy votePolicy;
 
     public PostService(PostRepository postRepository,
                        VoteRepository voteRepository,
+                       UserRepository userRepository,
                        RankingService rankingService,
                        ApplicationEventPublisher eventPublisher,
                        VotePolicy votePolicy) {
         this.postRepository = postRepository;
         this.voteRepository = voteRepository;
+        this.userRepository = userRepository;
         this.rankingService = rankingService;
         this.eventPublisher = eventPublisher;
         this.votePolicy = votePolicy;
@@ -113,17 +118,38 @@ public class PostService {
     @Transactional(readOnly = true)
     public Page<PostResponse> list(Pageable pageable, UUID userId, FeedType feed) {
         Page<Post> posts = rankingService.list(feed, pageable);
-        if (userId == null || posts.isEmpty()) {
-            return posts.map(post -> response(post, null));
+        if (posts.isEmpty()) {
+            return posts.map(post -> response(post, null, AuthorSummary.technical(post.getAuthorId())));
         }
-        Map<UUID, VoteType> votesByPostId = voteRepository.findByUserIdAndPostIdIn(
-                        userId, posts.getContent().stream().map(Post::getId).toList())
-                .stream().collect(Collectors.toMap(Vote::getPostId, Vote::getType, (first, ignored) -> first));
-        return posts.map(post -> response(post, votesByPostId.get(post.getId())));
+
+        Map<UUID, AuthorSummary> authorsById = userRepository.findAllById(
+                        posts.getContent().stream().map(Post::getAuthorId).distinct().toList())
+                .stream()
+                .map(AuthorSummary::from)
+                .collect(Collectors.toMap(AuthorSummary::id, author -> author));
+
+        Map<UUID, VoteType> votesByPostId = userId == null
+                ? Map.of()
+                : voteRepository.findByUserIdAndPostIdIn(
+                                userId, posts.getContent().stream().map(Post::getId).toList())
+                        .stream()
+                        .collect(Collectors.toMap(Vote::getPostId, Vote::getType, (first, ignored) -> first));
+
+        return posts.map(post -> response(
+                post,
+                votesByPostId.get(post.getId()),
+                authorsById.getOrDefault(post.getAuthorId(), AuthorSummary.technical(post.getAuthorId()))));
     }
 
     private PostResponse response(Post post, VoteType myVote) {
-        return PostResponse.from(post, myVote);
+        AuthorSummary author = userRepository.findById(post.getAuthorId())
+                .map(AuthorSummary::from)
+                .orElseGet(() -> AuthorSummary.technical(post.getAuthorId()));
+        return response(post, myVote, author);
+    }
+
+    private PostResponse response(Post post, VoteType myVote, AuthorSummary author) {
+        return PostResponse.from(post, myVote, author);
     }
 
     private Post findOwnedPost(UUID authorId, UUID postId) {
