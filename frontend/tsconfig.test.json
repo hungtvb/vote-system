@@ -4,16 +4,21 @@
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
     "module": "CommonJS",
     "moduleResolution": "Node",
-    "rootDir": "src/shared/api",
+    "rootDir": "src/shared",
     "outDir": ".test-dist",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
     "noEmit": false
   },
   "include": [
-    "src/shared/api/**/*.ts"
+    "src/shared/api/**/*.ts",
+    "src/shared/ballot/**/*.ts"
   ],
   "exclude": [
     "src/shared/api/client.ts"
