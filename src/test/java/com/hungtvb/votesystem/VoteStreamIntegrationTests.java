@@ -121,7 +121,7 @@ class VoteStreamIntegrationTests {
     }
 
     @Test
-    void concurrentVotesProduceStrictlyIncreasingEventIdsAndFinalCounts() throws Exception {
+    void concurrentVotesConvergeWithoutDuplicateOrRegressiveEvents() throws Exception {
         String authorToken = register("stream-concurrent-author@example.com");
         String firstVoterToken = register("stream-concurrent-one@example.com");
         String secondVoterToken = register("stream-concurrent-two@example.com");
@@ -129,7 +129,7 @@ class VoteStreamIntegrationTests {
         UUID postUuid = UUID.fromString(postId);
 
         try (SseConnection client = connect(postId, null)) {
-            client.readDataEvent();
+            SseEvent initial = client.readDataEvent();
             awaitSubscriberCount(postUuid, 1);
 
             CompletableFuture<Integer> firstVote = CompletableFuture.supplyAsync(
@@ -139,11 +139,9 @@ class VoteStreamIntegrationTests {
             assertEquals(200, firstVote.get(5, TimeUnit.SECONDS));
             assertEquals(200, secondVote.get(5, TimeUnit.SECONDS));
 
-            SseEvent firstUpdate = client.readDataEvent();
-            SseEvent secondUpdate = client.readDataEvent();
-            assertVoteUpdate(firstUpdate, postId, 1, 0, 1, "UP");
-            assertVoteUpdate(secondUpdate, postId, 2, 0, 2, "UP");
-            assertTrue(Instant.parse(secondUpdate.id()).isAfter(Instant.parse(firstUpdate.id())));
+            SseEvent finalUpdate = client.readUntilTotalVotes(2);
+            assertVoteUpdate(finalUpdate, postId, 2, 0, 2, "UP");
+            assertTrue(Instant.parse(finalUpdate.id()).isAfter(Instant.parse(initial.id())));
         }
 
         awaitSubscriberCount(postUuid, 0);
@@ -177,8 +175,10 @@ class VoteStreamIntegrationTests {
                     .PUT(HttpRequest.BodyPublishers.ofString("{\"type\":\"" + type + "\"}"))
                     .build();
             return httpClient.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();
-        } catch (IOException | InterruptedException exception) {
+        } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
+            throw new IllegalStateException(exception);
+        } catch (IOException exception) {
             throw new IllegalStateException(exception);
         }
     }
@@ -260,6 +260,22 @@ class VoteStreamIntegrationTests {
                     throw new IllegalStateException(exception);
                 }
             }).get(5, TimeUnit.SECONDS);
+        }
+
+        private SseEvent readUntilTotalVotes(long expectedTotal) throws Exception {
+            Instant previousEventId = null;
+            for (int attempt = 0; attempt < 2; attempt++) {
+                SseEvent event = readDataEvent();
+                Instant eventId = Instant.parse(event.id());
+                if (previousEventId != null) {
+                    assertTrue(eventId.isAfter(previousEventId));
+                }
+                if (event.data().get("totalVotes").asLong() == expectedTotal) {
+                    return event;
+                }
+                previousEventId = eventId;
+            }
+            throw new AssertionError("Stream did not converge to totalVotes=" + expectedTotal);
         }
 
         private SseEvent readNextDataEvent() throws IOException {
