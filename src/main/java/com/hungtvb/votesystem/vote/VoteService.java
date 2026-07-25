@@ -18,6 +18,8 @@ import java.util.UUID;
 
 @Service
 public class VoteService {
+    private static final long DATABASE_TIMESTAMP_TICK_NANOS = 1_000L;
+
     private final UserRepository userRepository;
     private final PostRepository postRepository;
     private final VoteRepository voteRepository;
@@ -37,7 +39,7 @@ public class VoteService {
     @Transactional
     public VoteResponse cast(UUID userId, UUID postId, VoteType requestedType) {
         lockUser(userId);
-        Post post = findPost(postId);
+        Post post = findPostForUpdate(postId);
         requireOpen(post);
 
         Vote vote = voteRepository.findByUserIdAndPostId(userId, postId).orElse(null);
@@ -51,7 +53,7 @@ public class VoteService {
             vote.changeTo(requestedType);
         }
 
-        Post updatedPost = delta.isEmpty() ? post : incrementTotals(postId, delta);
+        Post updatedPost = delta.isEmpty() ? post : incrementTotals(post, delta);
         eventPublisher.publishEvent(RankingChangedEvent.upsert(
                 postId, updatedPost.getVoteScore(), updatedPost.getCreatedAt()));
         if (!delta.isEmpty()) {
@@ -63,7 +65,7 @@ public class VoteService {
     @Transactional
     public VoteResponse remove(UUID userId, UUID postId) {
         lockUser(userId);
-        Post post = findPost(postId);
+        Post post = findPostForUpdate(postId);
         requireOpen(post);
 
         Vote vote = voteRepository.findByUserIdAndPostId(userId, postId).orElse(null);
@@ -74,7 +76,7 @@ public class VoteService {
 
         VoteDelta delta = VoteDelta.remove(vote.getType());
         voteRepository.delete(vote);
-        Post updatedPost = incrementTotals(postId, delta);
+        Post updatedPost = incrementTotals(post, delta);
         eventPublisher.publishEvent(RankingChangedEvent.upsert(
                 postId, updatedPost.getVoteScore(), updatedPost.getCreatedAt()));
         eventPublisher.publishEvent(new BallotVoteChangedEvent(BallotVoteUpdate.from(updatedPost)));
@@ -84,6 +86,11 @@ public class VoteService {
     private void lockUser(UUID userId) {
         userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+    }
+
+    private Post findPostForUpdate(UUID postId) {
+        return postRepository.findByIdForUpdate(postId)
+                .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
     }
 
     private Post findPost(UUID postId) {
@@ -97,13 +104,16 @@ public class VoteService {
         }
     }
 
-    private Post incrementTotals(UUID postId, VoteDelta delta) {
+    private Post incrementTotals(Post post, VoteDelta delta) {
         Instant updatedAt = Instant.now();
+        if (!updatedAt.isAfter(post.getUpdatedAt())) {
+            updatedAt = post.getUpdatedAt().plusNanos(DATABASE_TIMESTAMP_TICK_NANOS);
+        }
         if (postRepository.incrementVoteTotals(
-                postId, delta.scoreDelta(), delta.upDelta(), delta.downDelta(), updatedAt) == 0) {
+                post.getId(), delta.scoreDelta(), delta.upDelta(), delta.downDelta(), updatedAt) == 0) {
             throw new IllegalStateException("Vote aggregate update would produce invalid counts");
         }
-        return findPost(postId);
+        return findPost(post.getId());
     }
 
     private record VoteDelta(int scoreDelta, int upDelta, int downDelta) {
