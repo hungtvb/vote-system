@@ -3,6 +3,7 @@ package com.hungtvb.votesystem.post.dto;
 import com.hungtvb.votesystem.user.AppUser;
 import com.hungtvb.votesystem.user.UserIdentityFormatter;
 
+import java.util.Locale;
 import java.util.UUID;
 
 public record AuthorSummary(
@@ -11,16 +12,16 @@ public record AuthorSummary(
         String initials
 ) {
     public static AuthorSummary from(AppUser user) {
-        String displayName = UserIdentityFormatter.displayName(user.getEmail());
         return new AuthorSummary(
                 user.getId(),
-                displayName,
-                UserIdentityFormatter.initials(displayName)
+                user.getDisplayName(),
+                UserIdentityFormatter.initials(user.getDisplayName())
         );
     }
 
     public static AuthorSummary technical(UUID authorId) {
-        String suffix = authorId.toString().substring(0, 8).toUpperCase();
-        return new AuthorSummary(authorId, "Voter " + suffix, "V");
+        String suffix = authorId.toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
+        String displayName = "Voter " + suffix;
+        return new AuthorSummary(authorId, displayName, UserIdentityFormatter.initials(displayName));
     }
 }
