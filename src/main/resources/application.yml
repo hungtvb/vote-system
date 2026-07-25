@@ -48,6 +48,9 @@ management:
 app:
   vote:
     verdict-threshold: ${VOTE_VERDICT_THRESHOLD:70}
+  vote-stream:
+    heartbeat-ms: ${VOTE_STREAM_HEARTBEAT_MS:15000}
+    timeout-ms: ${VOTE_STREAM_TIMEOUT_MS:1800000}
   cache:
     default-ttl: ${CACHE_DEFAULT_TTL:PT30S}
   rate-limit:
