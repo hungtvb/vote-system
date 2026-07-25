@@ -1,5 +1,6 @@
 'use client';
 
+import { useModalDialog } from '@/shared/hooks/useModalDialog';
 import type { Ballot, VoteType } from '@/shared/api/types';
 import { VoteControl } from './VoteControl';
 import styles from './BallotApp.module.scss';
@@ -16,15 +17,17 @@ interface BallotDetailDialogProps {
 }
 
 export function BallotDetailDialog({ ballot, busy, owned, onClose, onVote, onEdit, onDelete, onCloseBallot }: BallotDetailDialogProps) {
+  const modal = useModalDialog(onClose);
+
   return (
-    <div className={styles.backdrop} onMouseDown={event => event.target === event.currentTarget && onClose()}>
-      <section className={`${styles.dialog} ${styles.detailDialog}`} role="dialog" aria-modal="true" aria-labelledby="ballot-detail-title">
+    <div className={styles.backdrop} onMouseDown={modal.onBackdropMouseDown}>
+      <section ref={modal.dialogRef} tabIndex={-1} className={`${styles.dialog} ${styles.detailDialog}`} role="dialog" aria-modal="true" aria-labelledby="ballot-detail-title" onKeyDown={modal.onDialogKeyDown}>
         <div className={styles.detailHeader}>
           <div>
             <p className={styles.formTab}>{ballot.ballotNumber}</p>
             <h2 id="ballot-detail-title">{ballot.title}</h2>
           </div>
-          <button type="button" className={styles.textButton} onClick={onClose}>CLOSE</button>
+          <button type="button" autoFocus className={styles.textButton} onClick={onClose}>CLOSE</button>
         </div>
 
         <div className={styles.detailMeta}>
