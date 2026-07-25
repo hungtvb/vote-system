@@ -24,6 +24,12 @@ public class Post {
     @Column(name = "vote_score", nullable = false)
     private long voteScore;
 
+    @Column(name = "up_votes", nullable = false)
+    private long upVotes;
+
+    @Column(name = "down_votes", nullable = false)
+    private long downVotes;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -38,6 +44,8 @@ public class Post {
         this.title = title;
         this.content = content;
         this.voteScore = 0;
+        this.upVotes = 0;
+        this.downVotes = 0;
     }
 
     public static Post create(UUID authorId, String title, String content) {
@@ -66,6 +74,9 @@ public class Post {
     public String getTitle() { return title; }
     public String getContent() { return content; }
     public long getVoteScore() { return voteScore; }
+    public long getUpVotes() { return upVotes; }
+    public long getDownVotes() { return downVotes; }
+    public long getTotalVotes() { return upVotes + downVotes; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }
