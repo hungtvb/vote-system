@@ -1,43 +1,36 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuthDialog } from '@/features/auth/components/AuthDialog';
 import { VoterMasthead } from '@/features/auth/components/VoterMasthead';
 import { useSession } from '@/features/auth/hooks/useSession';
-import { ballotApi } from '@/shared/api/ballot-api';
+import { ballotApi, type BallotListParams } from '@/shared/api/ballot-api';
 import { ApiError } from '@/shared/api/transport';
-import type { Ballot, FeedType, VoteResponse, VoteType } from '@/shared/api/types';
+import type { Ballot, BallotStatus, FeedType, VoteType } from '@/shared/api/types';
+import { applyOptimisticVote, applyVoteResponse, mergeUniqueBallots } from '@/shared/ballot/ballot-state';
+import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue';
 import { BallotCard } from './BallotCard';
 import { BallotDetailDialog } from './BallotDetailDialog';
 import { CreateBallotDialog } from './CreateBallotDialog';
 import { EditBallotDialog } from './EditBallotDialog';
+import { FeedControls } from './FeedControls';
 import styles from './BallotApp.module.scss';
 
 const PAGE_SIZE = 8;
 type AuthMode = 'login' | 'register';
 
-function applyVoteResponse(ballot: Ballot, response: VoteResponse): Ballot {
-  return { ...ballot, ...response, id: ballot.id };
-}
-
-function optimisticVote(ballot: Ballot, type: VoteType): Ballot {
-  let upVotes = ballot.upVotes;
-  let downVotes = ballot.downVotes;
-  const removing = ballot.myVote === type;
-  if (ballot.myVote === 'UP') upVotes = Math.max(0, upVotes - 1);
-  if (ballot.myVote === 'DOWN') downVotes = Math.max(0, downVotes - 1);
-  if (!removing && type === 'UP') upVotes += 1;
-  if (!removing && type === 'DOWN') downVotes += 1;
-  return { ...ballot, upVotes, downVotes, totalVotes: upVotes + downVotes, voteScore: upVotes - downVotes, myVote: removing ? undefined : type };
-}
-
 export function BallotApp() {
   const { session, profile, restoring, saveSession, runAuthorized, logout, logoutAll } = useSession();
   const [ballots, setBallots] = useState<Ballot[]>([]);
   const [feed, setFeed] = useState<FeedType>('LATEST');
-  const [query, setQuery] = useState('');
+  const [queryInput, setQueryInput] = useState('');
+  const [categoryInput, setCategoryInput] = useState('');
+  const [status, setStatus] = useState<BallotStatus | undefined>();
+  const query = useDebouncedValue(queryInput.trim(), 350);
+  const category = useDebouncedValue(categoryInput.trim(), 350);
   const [page, setPage] = useState(0);
-  const [lastPage, setLastPage] = useState(true);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
   const [loading, setLoading] = useState(true);
   const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set());
   const [message, setMessage] = useState('');
@@ -49,43 +42,56 @@ export function BallotApp() {
   const requestSequence = useRef(0);
 
   const selected = selectedId ? ballots.find(ballot => ballot.id === selectedId) ?? null : null;
+  const lastPage = totalPages === 0 || page + 1 >= totalPages;
 
   const openAuth = useCallback((mode: AuthMode) => {
     setAuthMode(mode);
     setAuthOpen(true);
   }, []);
 
+  useEffect(() => {
+    if (!restoring && feed === 'MINE' && !session) setFeed('LATEST');
+  }, [feed, restoring, session]);
+
   const load = useCallback(async (nextPage = 0, append = false) => {
     if (restoring) return;
+    if (feed === 'MINE' && !session) return;
+
     const sequence = ++requestSequence.current;
     setLoading(true);
     setMessage('');
+
+    const params: BallotListParams = {
+      feed,
+      page: nextPage,
+      size: PAGE_SIZE,
+      query: query || undefined,
+      category: category || undefined,
+      status
+    };
+
     try {
       const response = session
-        ? await runAuthorized(active => ballotApi.list(feed, nextPage, PAGE_SIZE, active.accessToken))
-        : await ballotApi.list(feed, nextPage, PAGE_SIZE);
+        ? await runAuthorized(active => ballotApi.list(params, active.accessToken))
+        : await ballotApi.list(params);
       if (sequence !== requestSequence.current) return;
-      setBallots(current => append ? [...current, ...response.content.filter(item => !current.some(existing => existing.id === item.id))] : response.content);
+
+      setBallots(current => append ? mergeUniqueBallots(current, response.content) : response.content);
       setPage(response.number);
-      setLastPage(response.last);
+      setTotalPages(response.totalPages);
+      setTotalElements(response.totalElements);
     } catch (error) {
       if (sequence !== requestSequence.current) return;
       setMessage(error instanceof Error ? error.message : 'Không thể tải sổ phiếu.');
     } finally {
       if (sequence === requestSequence.current) setLoading(false);
     }
-  }, [feed, restoring, runAuthorized, session]);
+  }, [category, feed, query, restoring, runAuthorized, session, status]);
 
   useEffect(() => {
-    void load();
+    void load(0, false);
     return () => { requestSequence.current += 1; };
   }, [load]);
-
-  const visible = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return ballots;
-    return ballots.filter(ballot => `${ballot.title} ${ballot.content} ${ballot.ballotNumber} ${ballot.author.displayName}`.toLowerCase().includes(normalized));
-  }, [ballots, query]);
 
   function markBusy(id: string, busy: boolean) {
     setBusyIds(current => {
@@ -98,9 +104,11 @@ export function BallotApp() {
   async function vote(ballot: Ballot, type: VoteType) {
     if (!session) return openAuth('login');
     if (ballot.status === 'CLOSED' || busyIds.has(ballot.id)) return;
+
     const snapshot = ballot;
     markBusy(ballot.id, true);
-    setBallots(current => current.map(item => item.id === ballot.id ? optimisticVote(item, type) : item));
+    setBallots(current => current.map(item => item.id === ballot.id ? applyOptimisticVote(item, type) : item));
+
     try {
       const response = await runAuthorized(active =>
         ballot.myVote === type
@@ -109,7 +117,9 @@ export function BallotApp() {
       setBallots(current => current.map(item => item.id === ballot.id ? applyVoteResponse(item, response) : item));
     } catch (error) {
       setBallots(current => current.map(item => item.id === ballot.id ? snapshot : item));
-      setMessage(error instanceof ApiError && error.status === 429 && error.retryAfter !== undefined ? `Đã đạt giới hạn. Thử lại sau ${error.retryAfter} giây.` : error instanceof Error ? error.message : 'Không thể ghi nhận phiếu.');
+      setMessage(error instanceof ApiError && error.status === 429 && error.retryAfter !== undefined
+        ? `Đã đạt giới hạn. Thử lại sau ${error.retryAfter} giây.`
+        : error instanceof Error ? error.message : 'Không thể ghi nhận phiếu.');
     } finally {
       markBusy(ballot.id, false);
     }
@@ -119,16 +129,19 @@ export function BallotApp() {
     await runAuthorized(active => ballotApi.create({ title, content }, active.accessToken));
     setCreateOpen(false);
     await load(0, false);
-    setMessage('Hồ sơ đã được ghi vào sổ công khai. Feed hiện tại đã được tải lại từ máy chủ.');
+    setMessage('Hồ sơ đã được ghi vào sổ công khai. Kết quả hiện tại đã được tải lại từ máy chủ.');
   }
 
   async function updateBallot(ballot: Ballot, title: string, content: string) {
     markBusy(ballot.id, true);
     try {
-      const updated = await runAuthorized(active =>
-        ballotApi.update(ballot.id, { title, content }, active.accessToken));
-      setBallots(current => current.map(item => item.id === ballot.id ? updated : item));
+      const updated = await runAuthorized(active => ballotApi.update(ballot.id, { title, content }, active.accessToken));
       setEditing(null);
+      if (query) {
+        await load(0, false);
+      } else {
+        setBallots(current => current.map(item => item.id === ballot.id ? updated : item));
+      }
       setMessage('Hồ sơ đã được cập nhật.');
     } finally {
       markBusy(ballot.id, false);
@@ -140,8 +153,8 @@ export function BallotApp() {
     markBusy(ballot.id, true);
     try {
       await runAuthorized(active => ballotApi.delete(ballot.id, active.accessToken));
-      setBallots(current => current.filter(item => item.id !== ballot.id));
       setSelectedId(current => current === ballot.id ? null : current);
+      await load(0, false);
       setMessage('Hồ sơ đã được xóa khỏi sổ công khai.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Không thể xóa hồ sơ.');
@@ -156,6 +169,7 @@ export function BallotApp() {
     try {
       const closed = await runAuthorized(active => ballotApi.close(ballot.id, active.accessToken));
       setBallots(current => current.map(item => item.id === ballot.id ? closed : item));
+      if (status) await load(0, false);
       setMessage('Lá phiếu đã được đóng và kết quả cuối cùng đã được chốt.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Không thể đóng lá phiếu.');
@@ -164,14 +178,20 @@ export function BallotApp() {
     }
   }
 
+  function clearFilters() {
+    setQueryInput('');
+    setCategoryInput('');
+    setStatus(undefined);
+  }
+
   return (
     <div className={styles.appShell}>
       <VoterMasthead
-        query={query}
+        query={queryInput}
         session={session}
         profile={profile}
         restoring={restoring}
-        onQueryChange={setQuery}
+        onQueryChange={setQueryInput}
         onLogin={() => openAuth('login')}
         onRegister={() => openAuth('register')}
         onCreate={() => session ? setCreateOpen(true) : openAuth('register')}
@@ -180,13 +200,56 @@ export function BallotApp() {
       />
 
       <main id="top" className={styles.main}>
-        <section className={styles.hero}><p>PUBLIC DECISION REGISTRY · CURRENT SESSION</p><h1>Official public record</h1><span>Browse active ballots, inspect totals, and cast a recorded decision.</span></section>
-        <nav className={styles.feedTabs} aria-label="Feed mode">{(['LATEST', 'HOT', 'TOP_DAY', 'TOP_WEEK'] as FeedType[]).map(item => <button key={item} className={feed === item ? styles.activeTab : ''} onClick={() => setFeed(item)}>{item.replace('_', ' ')}</button>)}</nav>
+        <section className={styles.hero}>
+          <p>PUBLIC DECISION REGISTRY · SERVER INDEX</p>
+          <h1>Official public record</h1>
+          <span>Search the complete registry, inspect ranked feeds, and cast a recorded decision.</span>
+        </section>
+
+        <FeedControls
+          feed={feed}
+          category={categoryInput}
+          status={status}
+          authenticated={Boolean(session && profile)}
+          loading={loading}
+          totalElements={totalElements}
+          page={page}
+          totalPages={totalPages}
+          query={queryInput}
+          onFeedChange={setFeed}
+          onCategoryChange={setCategoryInput}
+          onStatusChange={setStatus}
+          onReset={clearFilters}
+        />
+
         {message && <div className={styles.notice} role="status">{message}</div>}
         {loading && ballots.length === 0 && <BallotSkeleton />}
-        {!loading && visible.length === 0 && <div className={styles.empty}><strong>NO RECORDS FOUND</strong><span>Không có hồ sơ phù hợp với điều kiện hiện tại.</span></div>}
-        <section className={styles.feed} aria-live="polite">{visible.map(ballot => <BallotCard key={ballot.id} ballot={ballot} busy={busyIds.has(ballot.id)} owned={session?.userId === ballot.authorId} onOpen={() => setSelectedId(ballot.id)} onVote={type => void vote(ballot, type)} onEdit={() => setEditing(ballot)} onDelete={() => void deleteBallot(ballot)} onCloseBallot={() => void closeBallot(ballot)} />)}</section>
-        {!lastPage && <button className={styles.loadMore} disabled={loading} onClick={() => void load(page + 1, true)}>{loading ? 'LOADING...' : 'LOAD MORE RECORDS'}</button>}
+        {!loading && ballots.length === 0 && (
+          <div className={styles.empty}>
+            <strong>NO SERVER RECORDS FOUND</strong>
+            <span>Không có hồ sơ phù hợp với feed và bộ lọc hiện tại.</span>
+          </div>
+        )}
+        <section className={styles.feed} aria-live="polite" aria-busy={loading}>
+          {ballots.map(ballot => (
+            <BallotCard
+              key={ballot.id}
+              ballot={ballot}
+              busy={busyIds.has(ballot.id)}
+              owned={session?.userId === ballot.authorId}
+              onOpen={() => setSelectedId(ballot.id)}
+              onVote={type => void vote(ballot, type)}
+              onEdit={() => setEditing(ballot)}
+              onDelete={() => void deleteBallot(ballot)}
+              onCloseBallot={() => void closeBallot(ballot)}
+            />
+          ))}
+        </section>
+        {!lastPage && (
+          <button className={styles.loadMore} disabled={loading} onClick={() => void load(page + 1, true)}>
+            {loading ? 'LOADING SERVER PAGE...' : `LOAD PAGE ${page + 2} OF ${totalPages}`}
+          </button>
+        )}
       </main>
 
       {authOpen && <AuthDialog initialMode={authMode} onClose={() => setAuthOpen(false)} onAuthenticated={async next => { await saveSession(next); setAuthOpen(false); }} />}
@@ -197,4 +260,6 @@ export function BallotApp() {
   );
 }
 
-function BallotSkeleton() { return <div className={styles.skeleton} aria-label="Loading ballots"><span /><span /><span /></div>; }
+function BallotSkeleton() {
+  return <div className={styles.skeleton} aria-label="Loading ballots"><span /><span /><span /></div>;
+}
