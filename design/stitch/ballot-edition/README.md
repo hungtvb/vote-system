@@ -1,17 +1,16 @@
 # Ballot Edition Stitch reference
 
-This directory stores the approved Google Stitch export used as the visual reference for the Vote System public MVP.
+This directory records the approved Google Stitch direction used as the visual reference for the Vote System public MVP.
 
 ## Files
 
-- `stitch-design.md`: design tokens and style rationale exported by Stitch
-- `feed.html`: public feed reference
-- `post-detail.html`: post detail reference
-- `create-post.html`: create post reference
-- `auth.html`: login/register reference
+- `stitch-design.md`: approved design tokens, typography, motifs, and component language
+- `screens.md`: decisions extracted from the Feed, Post Detail, Create Post, Login/Register, and logo screens
 
-## Usage
+The root [`DESIGN.md`](../../../DESIGN.md) is the implementation source of truth. It limits the design to capabilities supported by the current backend and defines responsive, accessibility, and API-driven states.
 
-These files are reference artifacts, not production code. Rebuild the UI in Next.js, TypeScript, and SCSS Modules. Follow the root [`DESIGN.md`](../../../DESIGN.md) for product scope, responsive behavior, API-driven states, and implementation priority.
+## Original export
 
-The original export also contained PNG previews. The HTML references preserve the layouts and styling needed for implementation; screenshots can be regenerated from these files or the linked Stitch project when visual QA is needed.
+The reviewed source package was `stitch_ballot_edition_voting_system.zip`. It contained generated HTML and PNG previews for the approved screens. Those generated files are reference material rather than production code; the durable design decisions have been normalized into the documents in this directory.
+
+Production FE must rebuild the UI with semantic Next.js components, TypeScript models, and SCSS Modules. Do not copy Stitch-generated markup directly.
