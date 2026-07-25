@@ -44,14 +44,29 @@ export const api = {
   login(email: string, password: string) {
     return request<Session>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
   },
+  refresh() {
+    return request<Session>('/api/v1/auth/refresh', { method: 'POST' });
+  },
   logout(token: string) {
     return request<void>('/api/v1/auth/logout', { method: 'POST' }, token);
+  },
+  logoutAll(token: string) {
+    return request<void>('/api/v1/auth/logout-all', { method: 'POST' }, token);
   },
   listBallots(feed: FeedType, page: number, size: number, token?: string) {
     return request<PageResponse<Ballot>>(`/api/v1/posts?feed=${feed}&page=${page}&size=${size}`, {}, token);
   },
+  getBallot(postId: string, token?: string) {
+    return request<Ballot>(`/api/v1/posts/${postId}`, {}, token);
+  },
   createBallot(payload: { title: string; content: string }, token: string) {
     return request<Ballot>('/api/v1/posts', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  updateBallot(postId: string, payload: { title: string; content: string }, token: string) {
+    return request<Ballot>(`/api/v1/posts/${postId}`, { method: 'PUT', body: JSON.stringify(payload) }, token);
+  },
+  deleteBallot(postId: string, token: string) {
+    return request<void>(`/api/v1/posts/${postId}`, { method: 'DELETE' }, token);
   },
   castVote(postId: string, type: VoteType, token: string) {
     return request<VoteResponse>(`/api/v1/posts/${postId}/vote`, { method: 'PUT', body: JSON.stringify({ type }) }, token);
