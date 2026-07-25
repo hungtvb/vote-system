@@ -39,15 +39,21 @@ export function FeedControls({
 }: FeedControlsProps) {
   const feeds = authenticated ? [...PUBLIC_FEEDS, 'MINE' as const] : PUBLIC_FEEDS;
   const hasFilters = Boolean(query.trim() || category.trim() || status);
+  const tabsRef = useRef<HTMLElement | null>(null);
   const activeTabRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
-    activeTabRef.current?.scrollIntoView({ block: 'nearest', inline: 'center' });
+    const tabs = tabsRef.current;
+    const active = activeTabRef.current;
+    if (!tabs || !active) return;
+
+    const targetLeft = active.offsetLeft - ((tabs.clientWidth - active.offsetWidth) / 2);
+    tabs.scrollTo({ left: Math.max(0, targetLeft), behavior: 'auto' });
   }, [feed]);
 
   return (
     <section className={styles.controls} aria-label="Ballot feed controls">
-      <nav className={styles.tabs} aria-label="Feed mode">
+      <nav ref={tabsRef} className={styles.tabs} aria-label="Feed mode">
         {feeds.map(item => (
           <button
             key={item}
