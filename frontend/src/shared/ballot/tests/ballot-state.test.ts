@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { Ballot } from '@/shared/api/types';
-import { applyOptimisticVote, applyVoteResponse, mergeUniqueBallots } from '../ballot-state';
+import {
+  applyOptimisticVote,
+  applyStreamUpdate,
+  applyVoteResponse,
+  mergeUniqueBallots,
+  rollbackVoteSnapshot
+} from '../ballot-state';
 
 function ballot(overrides: Partial<Ballot> = {}): Ballot {
   return {
@@ -79,6 +85,59 @@ test('authoritative vote response reconciles optimistic values without replacing
   assert.equal(next.title, source.title);
   assert.equal(next.upVotes, 10);
   assert.equal(next.verdict, 'UP');
+});
+
+test('newer stream update replaces shared counts while preserving personal vote state', () => {
+  const source = ballot({ myVote: 'DOWN' });
+  const next = applyStreamUpdate(source, {
+    postId: source.id,
+    voteScore: 10,
+    upVotes: 12,
+    downVotes: 2,
+    totalVotes: 14,
+    verdictThreshold: 70,
+    verdict: 'UP',
+    updatedAt: '2026-07-25T00:00:01Z'
+  });
+  assert.equal(next.upVotes, 12);
+  assert.equal(next.downVotes, 2);
+  assert.equal(next.verdict, 'UP');
+  assert.equal(next.myVote, 'DOWN');
+});
+
+test('equal, older, invalid, and different-ballot stream updates are ignored', () => {
+  const source = ballot({ updatedAt: '2026-07-25T00:00:02Z' });
+  const shared = {
+    postId: source.id,
+    voteScore: 99,
+    upVotes: 99,
+    downVotes: 0,
+    totalVotes: 99,
+    verdictThreshold: 70,
+    verdict: 'UP' as const
+  };
+  assert.equal(applyStreamUpdate(source, { ...shared, updatedAt: source.updatedAt }), source);
+  assert.equal(applyStreamUpdate(source, { ...shared, updatedAt: '2026-07-25T00:00:01Z' }), source);
+  assert.equal(applyStreamUpdate(source, { ...shared, updatedAt: 'invalid' }), source);
+  assert.equal(applyStreamUpdate(source, { ...shared, postId: 'post-2', updatedAt: '2026-07-25T00:00:03Z' }), source);
+});
+
+test('rollback does not overwrite a newer stream update', () => {
+  const snapshot = ballot();
+  const optimistic = applyOptimisticVote(snapshot, 'UP');
+  assert.equal(rollbackVoteSnapshot(optimistic, snapshot), snapshot);
+
+  const streamed = applyStreamUpdate(optimistic, {
+    postId: snapshot.id,
+    voteScore: 3,
+    upVotes: 7,
+    downVotes: 4,
+    totalVotes: 11,
+    verdictThreshold: 70,
+    verdict: 'UNDECIDED',
+    updatedAt: '2026-07-25T00:00:01Z'
+  });
+  assert.equal(rollbackVoteSnapshot(streamed, snapshot), streamed);
 });
 
 test('load-more merge drops duplicate ballot IDs', () => {
