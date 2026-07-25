@@ -1,16 +1,28 @@
 # Ballot Edition Stitch reference
 
-This directory records the approved Google Stitch direction used as the visual reference for the Vote System public MVP.
+This directory stores the approved Google Stitch design reference for the Vote System public MVP.
 
-## Files
+## Source of truth
 
-- `stitch-design.md`: approved design tokens, typography, motifs, and component language
-- `screens.md`: decisions extracted from the Feed, Post Detail, Create Post, Login/Register, and logo screens
+1. Root [`DESIGN.md`](../../../DESIGN.md) — product scope, responsive behavior, accessibility, API-backed states, and implementation rules.
+2. [`stitch-design.md`](stitch-design.md) — approved visual tokens and Ballot Edition rationale from Stitch.
+3. [`screens.md`](screens.md) — screen-level decisions and review notes.
+4. [`IMPLEMENTATION-NOTES.md`](IMPLEMENTATION-NOTES.md) — required production adjustments and non-goals.
+5. [`EXPORT-MANIFEST.md`](EXPORT-MANIFEST.md) — original ZIP inventory and SHA-256 checksums.
+6. [`STITCH-PROJECT.md`](STITCH-PROJECT.md) — approved Stitch project link.
 
-The root [`DESIGN.md`](../../../DESIGN.md) is the implementation source of truth. It limits the design to capabilities supported by the current backend and defines responsive, accessibility, and API-driven states.
+## Approved export inventory
 
-## Original export
+The reviewed ZIP contains Feed, Post Detail, Create Post, Login/Register, stamped logo, generated HTML, desktop PNG previews, and Stitch design notes. Exact original paths and checksums are recorded in `EXPORT-MANIFEST.md`.
 
-The reviewed source package was `stitch_ballot_edition_voting_system.zip`. It contained generated HTML and PNG previews for the approved screens. Those generated files are reference material rather than production code; the durable design decisions have been normalized into the documents in this directory.
+## Usage
 
-Production FE must rebuild the UI with semantic Next.js components, TypeScript models, and SCSS Modules. Do not copy Stitch-generated markup directly.
+These artifacts are design references, not production code. Rebuild the UI in Next.js, TypeScript, and SCSS Modules.
+
+Use the original PNG previews for desktop visual QA. Use root `DESIGN.md` for mobile and tablet behavior because the export only supplied desktop previews.
+
+Generated HTML may be inspected to understand spacing and composition, but must not be copied wholesale into production components. Production semantics, accessibility, state handling, and API integration take precedence.
+
+## Scope guard
+
+The active UI scope is public web MVP only. Do not introduce admin pages, article images, comments, tags, bookmarks, sharing, or other unsupported product features.
