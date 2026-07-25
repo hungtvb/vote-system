@@ -1,5 +1,5 @@
 import type { Ballot, BallotStatus, FeedType, PageResponse, VoteResponse, VoteType } from './types';
-import { http, type ApiRequester } from './transport';
+import { http, resolveApiUrl, type ApiRequester } from './transport';
 
 export interface BallotListParams {
   feed: FeedType;
@@ -32,6 +32,10 @@ export function createBallotApi(request: ApiRequester = http.request) {
 
     get(postId: string, token?: string) {
       return request<Ballot>(`/api/v1/posts/${postId}`, {}, token);
+    },
+
+    streamUrl(postId: string) {
+      return resolveApiUrl(`/api/v1/posts/${postId}/events`);
     },
 
     create(payload: { title: string; content: string }, token: string) {

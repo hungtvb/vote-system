@@ -26,6 +26,12 @@ interface HttpClientOptions {
   now?: () => number;
 }
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
+
+export function resolveApiUrl(path: string): string {
+  return `${API_BASE_URL}${path}`;
+}
+
 export function createHttpClient({
   baseUrl = '',
   fetchImpl = fetch,
@@ -73,6 +79,4 @@ export function parseRetryAfter(value: string | null, nowMs = Date.now()): numbe
   return Math.max(0, Math.ceil((timestamp - nowMs) / 1000));
 }
 
-export const http = createHttpClient({
-  baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL ?? ''
-});
+export const http = createHttpClient({ baseUrl: API_BASE_URL });

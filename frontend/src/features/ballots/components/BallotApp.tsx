@@ -4,10 +4,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuthDialog } from '@/features/auth/components/AuthDialog';
 import { VoterMasthead } from '@/features/auth/components/VoterMasthead';
 import { useSession } from '@/features/auth/hooks/useSession';
+import { useBallotVoteStream } from '@/features/ballots/hooks/useBallotVoteStream';
 import { ballotApi, type BallotListParams } from '@/shared/api/ballot-api';
 import { ApiError } from '@/shared/api/transport';
-import type { Ballot, BallotStatus, FeedType, VoteType } from '@/shared/api/types';
-import { applyOptimisticVote, applyVoteResponse, mergeUniqueBallots } from '@/shared/ballot/ballot-state';
+import type { Ballot, BallotStatus, BallotVoteUpdate, FeedType, VoteType } from '@/shared/api/types';
+import {
+  applyOptimisticVote,
+  applyStreamUpdate,
+  mergeUniqueBallots,
+  reconcileAuthoritativeBallot,
+  reconcileVoteResponse,
+  rollbackVoteSnapshot
+} from '@/shared/ballot/ballot-state';
 import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue';
 import { BallotCard } from './BallotCard';
 import { BallotDetailDialog } from './BallotDetailDialog';
@@ -43,6 +51,12 @@ export function BallotApp() {
 
   const selected = selectedId ? ballots.find(ballot => ballot.id === selectedId) ?? null : null;
   const lastPage = totalPages === 0 || page + 1 >= totalPages;
+
+  const handleStreamUpdate = useCallback((update: BallotVoteUpdate) => {
+    setBallots(current => current.map(ballot =>
+      ballot.id === update.postId ? applyStreamUpdate(ballot, update) : ballot));
+  }, []);
+  useBallotVoteStream(selected, handleStreamUpdate);
 
   const openAuth = useCallback((mode: AuthMode) => {
     setAuthMode(mode);
@@ -117,9 +131,17 @@ export function BallotApp() {
         ballot.myVote === type
           ? ballotApi.removeVote(ballot.id, active.accessToken)
           : ballotApi.castVote(ballot.id, type, active.accessToken));
-      setBallots(current => current.map(item => item.id === ballot.id ? applyVoteResponse(item, response) : item));
+      setBallots(current => current.map(item =>
+        item.id === ballot.id ? reconcileVoteResponse(item, response, snapshot.updatedAt) : item));
     } catch (error) {
-      setBallots(current => current.map(item => item.id === ballot.id ? snapshot : item));
+      try {
+        const authoritative = await runAuthorized(active => ballotApi.get(ballot.id, active.accessToken));
+        setBallots(current => current.map(item =>
+          item.id === ballot.id ? reconcileAuthoritativeBallot(item, authoritative) : item));
+      } catch {
+        setBallots(current => current.map(item =>
+          item.id === ballot.id ? rollbackVoteSnapshot(item, snapshot) : item));
+      }
       setMessage(error instanceof ApiError && error.status === 429 && error.retryAfter !== undefined
         ? `Đã đạt giới hạn. Thử lại sau ${error.retryAfter} giây.`
         : error instanceof Error ? error.message : 'Không thể ghi nhận phiếu.');

@@ -1,7 +1,31 @@
-import type { Ballot, VoteResponse, VoteType } from '@/shared/api/types';
+import type { Ballot, BallotVoteUpdate, VoteResponse, VoteType } from '@/shared/api/types';
 
 export function applyVoteResponse(ballot: Ballot, response: VoteResponse): Ballot {
   return { ...ballot, ...response, id: ballot.id };
+}
+
+export function reconcileVoteResponse(
+  current: Ballot,
+  response: VoteResponse,
+  requestSnapshotUpdatedAt: string
+): Ballot {
+  if (current.updatedAt !== requestSnapshotUpdatedAt) {
+    return { ...current, myVote: response.myVote };
+  }
+  return applyVoteResponse(current, response);
+}
+
+export function reconcileAuthoritativeBallot(current: Ballot, authoritative: Ballot): Ballot {
+  if (current.id !== authoritative.id) return current;
+
+  const currentTimestamp = Date.parse(current.updatedAt);
+  const authoritativeTimestamp = Date.parse(authoritative.updatedAt);
+  if (Number.isFinite(currentTimestamp)
+      && Number.isFinite(authoritativeTimestamp)
+      && currentTimestamp > authoritativeTimestamp) {
+    return { ...current, myVote: authoritative.myVote };
+  }
+  return authoritative;
 }
 
 export function applyOptimisticVote(ballot: Ballot, type: VoteType): Ballot {
@@ -22,6 +46,30 @@ export function applyOptimisticVote(ballot: Ballot, type: VoteType): Ballot {
     voteScore: upVotes - downVotes,
     myVote: removing ? undefined : type
   };
+}
+
+export function applyStreamUpdate(ballot: Ballot, update: BallotVoteUpdate): Ballot {
+  if (update.postId !== ballot.id) return ballot;
+
+  const updateTimestamp = Date.parse(update.updatedAt);
+  const currentTimestamp = Date.parse(ballot.updatedAt);
+  if (!Number.isFinite(updateTimestamp)) return ballot;
+  if (Number.isFinite(currentTimestamp) && updateTimestamp <= currentTimestamp) return ballot;
+
+  return {
+    ...ballot,
+    voteScore: update.voteScore,
+    upVotes: update.upVotes,
+    downVotes: update.downVotes,
+    totalVotes: update.totalVotes,
+    verdictThreshold: update.verdictThreshold,
+    verdict: update.verdict,
+    updatedAt: update.updatedAt
+  };
+}
+
+export function rollbackVoteSnapshot(current: Ballot, snapshot: Ballot): Ballot {
+  return current.updatedAt === snapshot.updatedAt ? snapshot : current;
 }
 
 export function mergeUniqueBallots(current: Ballot[], incoming: Ballot[]): Ballot[] {
