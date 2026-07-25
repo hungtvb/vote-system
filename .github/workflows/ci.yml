@@ -89,12 +89,13 @@ jobs:
             width=$2
             height=$3
             mode=$4
+            expected_cards=${5:-3}
             url="http://127.0.0.1:4173/?qa=${mode}"
             common=(--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --run-all-compositor-stages-before-draw --virtual-time-budget=7000 --window-size="${width},${height}")
             "$CHROME" "${common[@]}" --screenshot="visual-qa/${name}.png" "$url"
             "$CHROME" "${common[@]}" --dump-dom "$url" > "visual-qa/${name}.html"
             grep -q 'data-qa-overflow="false"' "visual-qa/${name}.html"
-            grep -q 'data-qa-cards="3"' "visual-qa/${name}.html"
+            grep -q "data-qa-cards=\"${expected_cards}\"" "visual-qa/${name}.html"
           }
 
           assert_feed_boundaries() {
@@ -141,6 +142,19 @@ jobs:
           grep -q 'data-qa-current-stamps="2"' visual-qa/tablet-stamp-transition.html
           grep -q 'data-qa-final-stamps="1"' visual-qa/tablet-stamp-transition.html
           grep -q 'data-qa-stamp-animating="1"' visual-qa/tablet-stamp-transition.html
+
+          capture tablet-server-search 768 1024 server-search 1
+          grep -q 'Registry-wide server-only search result' visual-qa/tablet-server-search.html
+          grep -q 'data-qa-active-feed="LATEST"' visual-qa/tablet-server-search.html
+
+          capture desktop-pagination 1440 1000 pagination 3
+          grep -q 'PAGE 2 OF 2' visual-qa/desktop-pagination.html
+          grep -q 'data-qa-active-feed="LATEST"' visual-qa/desktop-pagination.html
+
+          capture mobile-my-ballots 375 812 auth-mine 1
+          grep -q 'data-qa-voter="true"' visual-qa/mobile-my-ballots.html
+          grep -q 'data-qa-active-feed="MY BALLOTS"' visual-qa/mobile-my-ballots.html
+          grep -q 'Should public software projects publish' visual-qa/mobile-my-ballots.html
       - name: Upload visual QA evidence
         if: always()
         uses: actions/upload-artifact@v4
