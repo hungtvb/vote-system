@@ -17,12 +17,11 @@ public record UserProfileResponse(
         Instant updatedAt
 ) {
     public static UserProfileResponse from(AppUser user) {
-        String displayName = UserIdentityFormatter.displayName(user.getEmail());
         return new UserProfileResponse(
                 user.getId(),
                 user.getEmail(),
-                displayName,
-                UserIdentityFormatter.initials(displayName),
+                user.getDisplayName(),
+                UserIdentityFormatter.initials(user.getDisplayName()),
                 user.getRole(),
                 user.getCreatedAt(),
                 user.getUpdatedAt()
