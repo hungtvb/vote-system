@@ -23,6 +23,8 @@ Use the original PNG previews for desktop visual QA. Use root `DESIGN.md` for mo
 
 Generated HTML may be inspected to understand spacing and composition, but must not be copied wholesale into production components. Production semantics, accessibility, state handling, and API integration take precedence.
 
+The original binary ZIP and PNG files are intentionally identified by checksum rather than converted to base64 text files. A future binary upload must preserve the paths and checksums listed in `EXPORT-MANIFEST.md`.
+
 ## Scope guard
 
 The active UI scope is public web MVP only. Do not introduce admin pages, article images, comments, tags, bookmarks, sharing, or other unsupported product features.
