@@ -83,7 +83,7 @@ class UserIdentityApiTest {
     }
 
     @Test
-    void registrationWithoutDisplayNameUsesAPseudonymInsteadOfEmailIdentity() throws Exception {
+    void legacyRegistrationWithoutDisplayNameUsesAPseudonymInsteadOfEmailIdentity() throws Exception {
         AuthSession session = register("sensitive.login@example.com", null);
 
         mockMvc.perform(get("/api/v1/users/me")
@@ -96,7 +96,7 @@ class UserIdentityApiTest {
 
     private AuthSession register(String email, String displayName) throws Exception {
         String payload = displayName == null
-                ? objectMapper.writeValueAsString(new Registration(email, null, "strong-password"))
+                ? objectMapper.writeValueAsString(new LegacyRegistration(email, "strong-password"))
                 : objectMapper.writeValueAsString(new Registration(email, displayName, "strong-password"));
         MvcResult result = mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -105,6 +105,9 @@ class UserIdentityApiTest {
                 .andReturn();
         JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
         return new AuthSession(response.get("accessToken").asText(), response.get("userId").asText());
+    }
+
+    private record LegacyRegistration(String email, String password) {
     }
 
     private record Registration(String email, String displayName, String password) {
