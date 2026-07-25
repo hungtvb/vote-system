@@ -14,7 +14,7 @@ COPY pom.xml ./
 RUN mvn --batch-mode --no-transfer-progress -DskipTests dependency:go-offline
 
 COPY src ./src
-COPY --from=frontend-build /workspace/frontend/dist ./src/main/resources/static
+COPY --from=frontend-build /workspace/frontend/out ./src/main/resources/static
 RUN mvn --batch-mode --no-transfer-progress -DskipTests package
 
 FROM eclipse-temurin:21-jre-jammy
@@ -25,5 +25,4 @@ COPY --from=backend-build /workspace/target/vote-system-0.0.1-SNAPSHOT.jar ./app
 
 USER app
 EXPOSE 10000
-
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
