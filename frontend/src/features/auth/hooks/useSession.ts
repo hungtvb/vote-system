@@ -1,34 +1,31 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { api } from '@/shared/api/client';
+import { api, ApiError } from '@/shared/api/client';
 import type { Session } from '@/shared/api/types';
-
-const SESSION_KEY = 'vote-system.session';
 
 export function useSession() {
   const [session, setSession] = useState<Session | null>(null);
   const [restoring, setRestoring] = useState(true);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(SESSION_KEY);
-    if (stored) {
-      try {
-        setSession(JSON.parse(stored) as Session);
-      } catch {
-        window.localStorage.removeItem(SESSION_KEY);
-      }
-    }
-    setRestoring(false);
+    let active = true;
+    void api.refresh()
+      .then(next => { if (active) setSession(next); })
+      .catch(error => {
+        if (active && (!(error instanceof ApiError) || (error.status !== 401 && error.status !== 403))) {
+          console.error('Session restore failed', error);
+        }
+      })
+      .finally(() => { if (active) setRestoring(false); });
+    return () => { active = false; };
   }, []);
 
   const saveSession = useCallback((next: Session) => {
     setSession(next);
-    window.localStorage.setItem(SESSION_KEY, JSON.stringify(next));
   }, []);
 
   const clearSession = useCallback(() => {
-    window.localStorage.removeItem(SESSION_KEY);
     setSession(null);
   }, []);
 
