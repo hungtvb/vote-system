@@ -1,4 +1,4 @@
-import type { Ballot, VoteResponse, VoteType } from '@/shared/api/types';
+import type { Ballot, BallotVoteUpdate, VoteResponse, VoteType } from '@/shared/api/types';
 
 export function applyVoteResponse(ballot: Ballot, response: VoteResponse): Ballot {
   return { ...ballot, ...response, id: ballot.id };
@@ -22,6 +22,30 @@ export function applyOptimisticVote(ballot: Ballot, type: VoteType): Ballot {
     voteScore: upVotes - downVotes,
     myVote: removing ? undefined : type
   };
+}
+
+export function applyStreamUpdate(ballot: Ballot, update: BallotVoteUpdate): Ballot {
+  if (update.postId !== ballot.id) return ballot;
+
+  const updateTimestamp = Date.parse(update.updatedAt);
+  const currentTimestamp = Date.parse(ballot.updatedAt);
+  if (!Number.isFinite(updateTimestamp)) return ballot;
+  if (Number.isFinite(currentTimestamp) && updateTimestamp <= currentTimestamp) return ballot;
+
+  return {
+    ...ballot,
+    voteScore: update.voteScore,
+    upVotes: update.upVotes,
+    downVotes: update.downVotes,
+    totalVotes: update.totalVotes,
+    verdictThreshold: update.verdictThreshold,
+    verdict: update.verdict,
+    updatedAt: update.updatedAt
+  };
+}
+
+export function rollbackVoteSnapshot(current: Ballot, snapshot: Ballot): Ballot {
+  return current.updatedAt === snapshot.updatedAt ? snapshot : current;
 }
 
 export function mergeUniqueBallots(current: Ballot[], incoming: Ballot[]): Ballot[] {
