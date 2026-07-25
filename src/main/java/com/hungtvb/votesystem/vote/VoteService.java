@@ -1,5 +1,6 @@
 package com.hungtvb.votesystem.vote;
 
+import com.hungtvb.votesystem.common.error.ConflictException;
 import com.hungtvb.votesystem.common.error.ResourceNotFoundException;
 import com.hungtvb.votesystem.post.Post;
 import com.hungtvb.votesystem.post.PostRepository;
@@ -10,6 +11,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Service
@@ -18,7 +20,6 @@ public class VoteService {
     private final PostRepository postRepository;
     private final VoteRepository voteRepository;
     private final ApplicationEventPublisher eventPublisher;
-    private final VotePolicy votePolicy;
 
     public VoteService(UserRepository userRepository,
                        PostRepository postRepository,
@@ -29,13 +30,13 @@ public class VoteService {
         this.postRepository = postRepository;
         this.voteRepository = voteRepository;
         this.eventPublisher = eventPublisher;
-        this.votePolicy = votePolicy;
     }
 
     @Transactional
     public VoteResponse cast(UUID userId, UUID postId, VoteType requestedType) {
         lockUser(userId);
         Post post = findPost(postId);
+        requireOpen(post);
 
         Vote vote = voteRepository.findByUserIdAndPostId(userId, postId).orElse(null);
         VoteDelta delta = VoteDelta.none();
@@ -51,18 +52,19 @@ public class VoteService {
         Post updatedPost = delta.isEmpty() ? post : incrementTotals(postId, delta);
         eventPublisher.publishEvent(RankingChangedEvent.upsert(
                 postId, updatedPost.getVoteScore(), updatedPost.getCreatedAt()));
-        return VoteResponse.from(updatedPost, requestedType, votePolicy.verdictThreshold());
+        return VoteResponse.from(updatedPost, requestedType, updatedPost.getVerdictThreshold());
     }
 
     @Transactional
     public VoteResponse remove(UUID userId, UUID postId) {
         lockUser(userId);
         Post post = findPost(postId);
+        requireOpen(post);
 
         Vote vote = voteRepository.findByUserIdAndPostId(userId, postId).orElse(null);
         if (vote == null) {
             eventPublisher.publishEvent(RankingChangedEvent.upsert(postId, post.getVoteScore(), post.getCreatedAt()));
-            return VoteResponse.from(post, null, votePolicy.verdictThreshold());
+            return VoteResponse.from(post, null, post.getVerdictThreshold());
         }
 
         VoteDelta delta = VoteDelta.remove(vote.getType());
@@ -70,7 +72,7 @@ public class VoteService {
         Post updatedPost = incrementTotals(postId, delta);
         eventPublisher.publishEvent(RankingChangedEvent.upsert(
                 postId, updatedPost.getVoteScore(), updatedPost.getCreatedAt()));
-        return VoteResponse.from(updatedPost, null, votePolicy.verdictThreshold());
+        return VoteResponse.from(updatedPost, null, updatedPost.getVerdictThreshold());
     }
 
     private void lockUser(UUID userId) {
@@ -83,6 +85,12 @@ public class VoteService {
                 .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
     }
 
+    private void requireOpen(Post post) {
+        if (!post.acceptsVotes(Instant.now())) {
+            throw new ConflictException("Ballot is closed and no longer accepts votes");
+        }
+    }
+
     private Post incrementTotals(UUID postId, VoteDelta delta) {
         if (postRepository.incrementVoteTotals(
                 postId, delta.scoreDelta(), delta.upDelta(), delta.downDelta()) == 0) {
@@ -92,34 +100,20 @@ public class VoteService {
     }
 
     private record VoteDelta(int scoreDelta, int upDelta, int downDelta) {
-        static VoteDelta none() {
-            return new VoteDelta(0, 0, 0);
-        }
-
+        static VoteDelta none() { return new VoteDelta(0, 0, 0); }
         static VoteDelta add(VoteType type) {
-            return type == VoteType.UP
-                    ? new VoteDelta(1, 1, 0)
-                    : new VoteDelta(-1, 0, 1);
+            return type == VoteType.UP ? new VoteDelta(1, 1, 0) : new VoteDelta(-1, 0, 1);
         }
-
         static VoteDelta remove(VoteType type) {
-            return type == VoteType.UP
-                    ? new VoteDelta(-1, -1, 0)
-                    : new VoteDelta(1, 0, -1);
+            return type == VoteType.UP ? new VoteDelta(-1, -1, 0) : new VoteDelta(1, 0, -1);
         }
-
         static VoteDelta change(VoteType previous, VoteType requested) {
             VoteDelta remove = remove(previous);
             VoteDelta add = add(requested);
-            return new VoteDelta(
-                    remove.scoreDelta + add.scoreDelta,
+            return new VoteDelta(remove.scoreDelta + add.scoreDelta,
                     remove.upDelta + add.upDelta,
-                    remove.downDelta + add.downDelta
-            );
+                    remove.downDelta + add.downDelta);
         }
-
-        boolean isEmpty() {
-            return scoreDelta == 0 && upDelta == 0 && downDelta == 0;
-        }
+        boolean isEmpty() { return scoreDelta == 0 && upDelta == 0 && downDelta == 0; }
     }
 }

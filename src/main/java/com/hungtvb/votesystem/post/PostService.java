@@ -1,5 +1,6 @@
 package com.hungtvb.votesystem.post;
 
+import com.hungtvb.votesystem.common.error.ConflictException;
 import com.hungtvb.votesystem.common.error.ForbiddenException;
 import com.hungtvb.votesystem.common.error.ResourceNotFoundException;
 import com.hungtvb.votesystem.post.dto.CreatePostRequest;
@@ -18,6 +19,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -44,7 +47,16 @@ public class PostService {
 
     @Transactional
     public PostResponse create(UUID authorId, CreatePostRequest request) {
-        Post post = postRepository.saveAndFlush(Post.create(authorId, request.title().trim(), request.content().trim()));
+        Instant now = Instant.now();
+        validateClosesAt(request.closesAt(), now);
+        Post post = postRepository.saveAndFlush(Post.create(
+                authorId,
+                request.title().trim(),
+                request.content().trim(),
+                normalizeCategory(request.category()),
+                request.closesAt(),
+                request.verdictThreshold() == null ? votePolicy.verdictThreshold() : request.verdictThreshold()
+        ));
         eventPublisher.publishEvent(RankingChangedEvent.upsert(post.getId(), post.getVoteScore(), post.getCreatedAt()));
         return response(post, null);
     }
@@ -52,7 +64,30 @@ public class PostService {
     @Transactional
     public PostResponse update(UUID authorId, UUID postId, UpdatePostRequest request) {
         Post post = findOwnedPost(authorId, postId);
-        post.update(request.title().trim(), request.content().trim());
+        if (!post.isOpen()) {
+            throw new ConflictException("Closed ballots cannot be edited");
+        }
+        Instant now = Instant.now();
+        validateClosesAt(request.closesAt(), now);
+        post.update(
+                request.title().trim(),
+                request.content().trim(),
+                normalizeCategory(request.category()),
+                request.closesAt(),
+                request.verdictThreshold() == null ? post.getVerdictThreshold() : request.verdictThreshold()
+        );
+        postRepository.saveAndFlush(post);
+        VoteType myVote = voteRepository.findByUserIdAndPostId(authorId, postId).map(Vote::getType).orElse(null);
+        return response(post, myVote);
+    }
+
+    @Transactional
+    public PostResponse close(UUID authorId, UUID postId) {
+        Post post = findOwnedPost(authorId, postId);
+        if (!post.isOpen()) {
+            throw new ConflictException("Ballot is already closed");
+        }
+        post.close(Instant.now());
         postRepository.saveAndFlush(post);
         VoteType myVote = voteRepository.findByUserIdAndPostId(authorId, postId).map(Vote::getType).orElse(null);
         return response(post, myVote);
@@ -88,7 +123,7 @@ public class PostService {
     }
 
     private PostResponse response(Post post, VoteType myVote) {
-        return PostResponse.from(post, myVote, votePolicy.verdictThreshold());
+        return PostResponse.from(post, myVote);
     }
 
     private Post findOwnedPost(UUID authorId, UUID postId) {
@@ -98,5 +133,17 @@ public class PostService {
             throw new ForbiddenException("Only the author can modify this post");
         }
         return post;
+    }
+
+    private String normalizeCategory(String category) {
+        return category == null || category.isBlank()
+                ? "GENERAL"
+                : category.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private void validateClosesAt(Instant closesAt, Instant now) {
+        if (closesAt != null && !closesAt.isAfter(now)) {
+            throw new ConflictException("closesAt must be in the future");
+        }
     }
 }
