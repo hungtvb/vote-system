@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AuthDialog } from '@/features/auth/components/AuthDialog';
 import { useSession } from '@/features/auth/hooks/useSession';
 import { api, ApiError } from '@/shared/api/client';
@@ -71,7 +71,7 @@ export function BallotApp() {
     }
   }, [feed, restoring, withRefresh]);
 
-  useState(() => { void load(); });
+  useEffect(() => { void load(); }, [load]);
 
   const visible = useMemo(() => {
     const normalized = query.trim().toLowerCase();
