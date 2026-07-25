@@ -42,6 +42,12 @@
 .titleButton { width: 100%; border: 0; padding: 0; background: transparent; text-align: left; }
 .titleButton:hover h2, .titleButton:focus-visible h2 { text-decoration: underline; text-underline-offset: 4px; }
 .meta { padding-top: 12px; border-top: 2px dashed color-mix(in srgb, var(--navy) 45%, transparent); color: var(--muted); }
+.authorLine { min-width: 0; display: flex; align-items: center; gap: 10px; padding-top: 12px; border-top: 2px dashed color-mix(in srgb, var(--navy) 45%, transparent); color: var(--navy); }
+.authorInitials { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; border: 2px solid var(--seal); color: var(--seal); font: 700 10px 'JetBrains Mono', monospace; transform: rotate(-3deg); }
+.authorLine > span:last-child { min-width: 0; display: grid; gap: 2px; }
+.authorLine strong, .authorLine small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.authorLine strong { font: 700 11px 'JetBrains Mono', monospace; letter-spacing: .04em; }
+.authorLine small { color: var(--muted); font: 500 9px 'JetBrains Mono', monospace; letter-spacing: .05em; }
 .cardActions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
 .cardActions > button, .ownerActions button { min-height: 38px; padding: 8px 10px; border: 1px solid var(--navy); background: transparent; color: var(--navy); font-size: 10px; font-weight: 700; letter-spacing: .07em; }
 .ownerActions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -108,6 +114,7 @@
   .cardHeader > div:first-child span:last-child, .ownerMark { display: none; }
   .cardActions, .ownerActions { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
   .cardActions > button, .ownerActions .dangerButton { grid-column: 1 / -1; }
+  .authorLine strong { font-size: 10px; }
   .backdrop { padding: 10px; }
   .dialog { max-width: calc(100vw - 20px); padding: 18px; box-shadow: 4px 4px 0 var(--navy); }
   .detailHeader { display: flex; flex-direction: column; gap: 10px; }

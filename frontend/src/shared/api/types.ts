@@ -12,9 +12,26 @@ export interface Session {
   role: string;
 }
 
+export interface UserProfile {
+  id: string;
+  email: string;
+  displayName: string;
+  initials: string;
+  role: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuthorSummary {
+  id: string;
+  displayName: string;
+  initials: string;
+}
+
 export interface Ballot {
   id: string;
   authorId: string;
+  author: AuthorSummary;
   ballotNumber: string;
   title: string;
   content: string;

@@ -1,4 +1,4 @@
-import type { Ballot, FeedType, PageResponse, Session, VoteResponse, VoteType } from './types';
+import type { Ballot, FeedType, PageResponse, Session, UserProfile, VoteResponse, VoteType } from './types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
 let refreshPromise: Promise<Session> | null = null;
@@ -47,13 +47,24 @@ function refreshSession(): Promise<Session> {
 }
 
 export const api = {
-  register(email: string, password: string) {
-    return request<Session>('/api/v1/auth/register', { method: 'POST', body: JSON.stringify({ email, password }) });
+  register(email: string, password: string, displayName?: string) {
+    const normalizedDisplayName = displayName?.trim();
+    return request<Session>('/api/v1/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        email,
+        password,
+        ...(normalizedDisplayName ? { displayName: normalizedDisplayName } : {})
+      })
+    });
   },
   login(email: string, password: string) {
     return request<Session>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
   },
   refresh: refreshSession,
+  currentUser(token: string) {
+    return request<UserProfile>('/api/v1/users/me', {}, token);
+  },
   logout(token: string) {
     return request<void>('/api/v1/auth/logout', { method: 'POST' }, token);
   },

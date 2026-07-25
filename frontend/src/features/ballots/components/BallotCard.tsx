@@ -30,7 +30,10 @@ export function BallotCard({ ballot, busy, owned, onOpen, onVote, onEdit, onDele
             <h2>{ballot.title}</h2>
           </button>
           <p>{ballot.content}</p>
-          <div className={styles.meta}>AUTHOR ID: {ballot.authorId.slice(0, 8).toUpperCase()} · {ballot.totalVotes} REGISTERED VOTES</div>
+          <div className={styles.authorLine} data-qa-author>
+            <span className={styles.authorInitials} aria-hidden="true">{ballot.author.initials}</span>
+            <span><strong>FILED BY {ballot.author.displayName}</strong><small>{ballot.totalVotes} REGISTERED VOTES</small></span>
+          </div>
           <div className={styles.cardActions}>
             <button type="button" onClick={onOpen}>VIEW FULL RECORD</button>
             {owned && (

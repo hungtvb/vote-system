@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthDialog } from '@/features/auth/components/AuthDialog';
+import { VoterMasthead } from '@/features/auth/components/VoterMasthead';
 import { useSession } from '@/features/auth/hooks/useSession';
 import { api, ApiError } from '@/shared/api/client';
 import type { Ballot, FeedType, Session, VoteResponse, VoteType } from '@/shared/api/types';
@@ -12,6 +13,7 @@ import { EditBallotDialog } from './EditBallotDialog';
 import styles from './BallotApp.module.scss';
 
 const PAGE_SIZE = 8;
+type AuthMode = 'login' | 'register';
 
 function applyVoteResponse(ballot: Ballot, response: VoteResponse): Ballot {
   return { ...ballot, ...response, id: ballot.id };
@@ -29,7 +31,7 @@ function optimisticVote(ballot: Ballot, type: VoteType): Ballot {
 }
 
 export function BallotApp() {
-  const { session, restoring, saveSession, clearSession, logout, logoutAll } = useSession();
+  const { session, profile, restoring, saveSession, clearSession, logout, logoutAll } = useSession();
   const [ballots, setBallots] = useState<Ballot[]>([]);
   const [feed, setFeed] = useState<FeedType>('LATEST');
   const [query, setQuery] = useState('');
@@ -39,12 +41,18 @@ export function BallotApp() {
   const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set());
   const [message, setMessage] = useState('');
   const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Ballot | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const requestSequence = useRef(0);
 
   const selected = selectedId ? ballots.find(ballot => ballot.id === selectedId) ?? null : null;
+
+  const openAuth = useCallback((mode: AuthMode) => {
+    setAuthMode(mode);
+    setAuthOpen(true);
+  }, []);
 
   const withRefresh = useCallback(async <T,>(operation: (activeSession: Session | null) => Promise<T>) => {
     try {
@@ -53,7 +61,7 @@ export function BallotApp() {
       if (!(error instanceof ApiError) || error.status !== 401 || !session) throw error;
       try {
         const refreshed = await api.refresh();
-        saveSession(refreshed);
+        await saveSession(refreshed);
         return await operation(refreshed);
       } catch (refreshError) {
         clearSession();
@@ -89,7 +97,7 @@ export function BallotApp() {
   const visible = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return ballots;
-    return ballots.filter(ballot => `${ballot.title} ${ballot.content} ${ballot.ballotNumber}`.toLowerCase().includes(normalized));
+    return ballots.filter(ballot => `${ballot.title} ${ballot.content} ${ballot.ballotNumber} ${ballot.author.displayName}`.toLowerCase().includes(normalized));
   }, [ballots, query]);
 
   function markBusy(id: string, busy: boolean) {
@@ -101,7 +109,7 @@ export function BallotApp() {
   }
 
   async function vote(ballot: Ballot, type: VoteType) {
-    if (!session) return setAuthOpen(true);
+    if (!session) return openAuth('login');
     if (ballot.status === 'CLOSED' || busyIds.has(ballot.id)) return;
     const snapshot = ballot;
     markBusy(ballot.id, true);
@@ -182,16 +190,18 @@ export function BallotApp() {
 
   return (
     <div className={styles.appShell}>
-      <header className={styles.header}>
-        <a className={styles.brand} href="#top" aria-label="Vote System home"><span className={styles.seal}>VS</span><span>Vote System</span></a>
-        <label className={styles.search}><span>SEARCH LOADED RECORDS</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Tìm trong các hồ sơ đã tải..." /></label>
-        <div className={styles.headerActions}>
-          <button className={styles.textButton} onClick={() => session ? void logout() : setAuthOpen(true)}>{session ? 'LOGOUT' : 'LOGIN'}</button>
-          {session && <button className={styles.textButton} onClick={() => void logoutAll()}>LOGOUT ALL</button>}
-          <button className={styles.primaryButton} onClick={() => session ? setCreateOpen(true) : setAuthOpen(true)}>CREATE POST</button>
-          {session && <div className={styles.voterId}><strong>VOTER ID</strong><span>{session.email}</span></div>}
-        </div>
-      </header>
+      <VoterMasthead
+        query={query}
+        session={session}
+        profile={profile}
+        restoring={restoring}
+        onQueryChange={setQuery}
+        onLogin={() => openAuth('login')}
+        onRegister={() => openAuth('register')}
+        onCreate={() => session ? setCreateOpen(true) : openAuth('register')}
+        onLogout={() => void logout()}
+        onLogoutAll={() => void logoutAll()}
+      />
 
       <main id="top" className={styles.main}>
         <section className={styles.hero}><p>PUBLIC DECISION REGISTRY · CURRENT SESSION</p><h1>Official public record</h1><span>Browse active ballots, inspect totals, and cast a recorded decision.</span></section>
@@ -203,7 +213,7 @@ export function BallotApp() {
         {!lastPage && <button className={styles.loadMore} disabled={loading} onClick={() => void load(page + 1, true)}>{loading ? 'LOADING...' : 'LOAD MORE RECORDS'}</button>}
       </main>
 
-      {authOpen && <AuthDialog onClose={() => setAuthOpen(false)} onAuthenticated={next => { saveSession(next); setAuthOpen(false); }} />}
+      {authOpen && <AuthDialog initialMode={authMode} onClose={() => setAuthOpen(false)} onAuthenticated={async next => { await saveSession(next); setAuthOpen(false); }} />}
       {createOpen && <CreateBallotDialog onClose={() => setCreateOpen(false)} onCreate={createBallot} />}
       {editing && <EditBallotDialog ballot={editing} onClose={() => setEditing(null)} onSave={(title, content) => updateBallot(editing, title, content)} />}
       {selected && <BallotDetailDialog ballot={selected} busy={busyIds.has(selected.id)} owned={session?.userId === selected.authorId} onClose={() => setSelectedId(null)} onVote={type => void vote(selected, type)} onEdit={() => { setSelectedId(null); setEditing(selected); }} onDelete={() => void deleteBallot(selected)} onCloseBallot={() => void closeBallot(selected)} />}

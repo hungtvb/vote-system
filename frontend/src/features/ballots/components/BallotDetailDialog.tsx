@@ -40,7 +40,10 @@ export function BallotDetailDialog({ ballot, busy, owned, onClose, onVote, onEdi
           <div>
             <p className={styles.category}>{ballot.category}</p>
             <div className={styles.fullContent}>{ballot.content}</div>
-            <div className={styles.meta}>AUTHOR ID: {ballot.authorId.slice(0, 8).toUpperCase()}</div>
+            <div className={styles.authorLine} data-qa-author>
+              <span className={styles.authorInitials} aria-hidden="true">{ballot.author.initials}</span>
+              <span><strong>FILED BY {ballot.author.displayName}</strong><small>PUBLIC AUTHOR RECORD</small></span>
+            </div>
             {owned && (
               <div className={styles.ownerActions} aria-label="Owner actions">
                 <button type="button" onClick={onEdit} disabled={busy || ballot.status === 'CLOSED'}>EDIT</button>
