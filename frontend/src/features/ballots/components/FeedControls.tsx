@@ -53,13 +53,14 @@ export function FeedControls({
 
   return (
     <section className={styles.controls} aria-label="Ballot feed controls">
-      <nav ref={tabsRef} className={styles.tabs} aria-label="Feed mode">
+      <nav ref={tabsRef} className={styles.tabs} aria-label="Feed mode" data-qa-feed-tabs>
         {feeds.map(item => (
           <button
             key={item}
             ref={feed === item ? activeTabRef : undefined}
             type="button"
             aria-pressed={feed === item}
+            data-qa-active-feed-tab={feed === item ? 'true' : undefined}
             className={feed === item ? styles.active : ''}
             onClick={() => onFeedChange(item)}
           >
