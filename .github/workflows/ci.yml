@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   backend:
@@ -40,26 +40,13 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref || github.ref_name }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: frontend/package.json
+          cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
-      - name: Commit generated lockfile when missing
-        working-directory: .
-        run: |
-          if git diff --quiet -- frontend/package-lock.json && git ls-files --error-unmatch frontend/package-lock.json >/dev/null 2>&1; then
-            exit 0
-          fi
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add frontend/package-lock.json
-          git commit -m "Add reproducible frontend package lock"
-          git push
+        run: npm ci --no-audit --no-fund
       - name: Build frontend
         run: |
           set -o pipefail
