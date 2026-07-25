@@ -15,6 +15,9 @@ public class AppUser {
     @Column(nullable = false, length = 320, unique = true)
     private String email;
 
+    @Column(name = "display_name", nullable = false, length = 80)
+    private String displayName;
+
     @Column(name = "password_hash", nullable = false, length = 100)
     private String passwordHash;
 
@@ -31,14 +34,19 @@ public class AppUser {
     protected AppUser() {
     }
 
-    private AppUser(String email, String passwordHash, Role role) {
+    private AppUser(String email, String displayName, String passwordHash, Role role) {
         this.email = email;
+        this.displayName = UserIdentityFormatter.normalizeDisplayName(displayName);
         this.passwordHash = passwordHash;
         this.role = role;
     }
 
     public static AppUser create(String email, String passwordHash) {
-        return new AppUser(email, passwordHash, Role.USER);
+        return create(email, null, passwordHash);
+    }
+
+    public static AppUser create(String email, String displayName, String passwordHash) {
+        return new AppUser(email, displayName, passwordHash, Role.USER);
     }
 
     @PrePersist
@@ -55,6 +63,7 @@ public class AppUser {
 
     public UUID getId() { return id; }
     public String getEmail() { return email; }
+    public String getDisplayName() { return displayName; }
     public String getPasswordHash() { return passwordHash; }
     public Role getRole() { return role; }
     public Instant getCreatedAt() { return createdAt; }
