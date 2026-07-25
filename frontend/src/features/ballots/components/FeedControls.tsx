@@ -1,3 +1,6 @@
+'use client';
+
+import { useEffect, useRef } from 'react';
 import type { BallotStatus, FeedType } from '@/shared/api/types';
 import styles from './FeedControls.module.scss';
 
@@ -36,6 +39,11 @@ export function FeedControls({
 }: FeedControlsProps) {
   const feeds = authenticated ? [...PUBLIC_FEEDS, 'MINE' as const] : PUBLIC_FEEDS;
   const hasFilters = Boolean(query.trim() || category.trim() || status);
+  const activeTabRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }, [feed]);
 
   return (
     <section className={styles.controls} aria-label="Ballot feed controls">
@@ -43,6 +51,7 @@ export function FeedControls({
         {feeds.map(item => (
           <button
             key={item}
+            ref={feed === item ? activeTabRef : undefined}
             type="button"
             aria-pressed={feed === item}
             className={feed === item ? styles.active : ''}
