@@ -4,6 +4,30 @@ export function applyVoteResponse(ballot: Ballot, response: VoteResponse): Ballo
   return { ...ballot, ...response, id: ballot.id };
 }
 
+export function reconcileVoteResponse(
+  current: Ballot,
+  response: VoteResponse,
+  requestSnapshotUpdatedAt: string
+): Ballot {
+  if (current.updatedAt !== requestSnapshotUpdatedAt) {
+    return { ...current, myVote: response.myVote };
+  }
+  return applyVoteResponse(current, response);
+}
+
+export function reconcileAuthoritativeBallot(current: Ballot, authoritative: Ballot): Ballot {
+  if (current.id !== authoritative.id) return current;
+
+  const currentTimestamp = Date.parse(current.updatedAt);
+  const authoritativeTimestamp = Date.parse(authoritative.updatedAt);
+  if (Number.isFinite(currentTimestamp)
+      && Number.isFinite(authoritativeTimestamp)
+      && currentTimestamp > authoritativeTimestamp) {
+    return { ...current, myVote: authoritative.myVote };
+  }
+  return authoritative;
+}
+
 export function applyOptimisticVote(ballot: Ballot, type: VoteType): Ballot {
   let upVotes = Math.max(0, ballot.upVotes);
   let downVotes = Math.max(0, ballot.downVotes);
