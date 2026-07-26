@@ -72,6 +72,16 @@ grep -q '"status":"UP"' "$ARTIFACT_DIR/health.json"
 curl --fail --silent "$BASE_URL/" > "$ARTIFACT_DIR/index.html"
 grep -q 'Vote System' "$ARTIFACT_DIR/index.html"
 
+# Social login remains optional. With no provider secrets the app must expose
+# an empty discovery list and reject a dead provider start instead of failing startup.
+curl --fail --silent "$BASE_URL/api/v1/auth/social/providers" > "$ARTIFACT_DIR/social-providers.json"
+grep -q '"providers":\[\]' "$ARTIFACT_DIR/social-providers.json"
+SOCIAL_START_STATUS=$(curl --silent --output "$ARTIFACT_DIR/social-start-disabled.json" --write-out '%{http_code}' \
+  -H 'Content-Type: application/json' \
+  -d '{"intent":"authenticate"}' \
+  "$BASE_URL/api/v1/auth/social/google/start")
+[ "$SOCIAL_START_STATUS" = "404" ]
+
 AUTHOR_EMAIL="runtime-author-$(date +%s)-${RANDOM}@example.com"
 AUTHOR_SESSION=$(curl --fail --silent --show-error -c "$COOKIE_JAR" \
   -H 'Content-Type: application/json' \
@@ -83,6 +93,7 @@ curl --fail --silent --show-error \
   -H "Authorization: Bearer ${AUTHOR_TOKEN}" \
   "$BASE_URL/api/v1/users/me" > "$ARTIFACT_DIR/author-profile.json"
 grep -q '"displayName":"Runtime Author"' "$ARTIFACT_DIR/author-profile.json"
+grep -q '"linkedProviders":\[\]' "$ARTIFACT_DIR/author-profile.json"
 
 BALLOT=$(curl --fail --silent --show-error \
   -H "Authorization: Bearer ${AUTHOR_TOKEN}" \
