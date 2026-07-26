@@ -56,6 +56,8 @@ export function BallotApp() {
   const [loading, setLoading] = useState(true);
   const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set());
   const [message, setMessage] = useState('');
+  const [socialNotice, setSocialNotice] = useState('');
+  const [socialProviders, setSocialProviders] = useState<SocialProviderId[]>([]);
   const [authWorkflow, setAuthWorkflow] = useState(CLOSED_AUTH_WORKFLOW);
   const [socialCallback, setSocialCallback] = useState<SocialCallback | null>(null);
   const [linkingProvider, setLinkingProvider] = useState<SocialProviderId | null>(null);
@@ -78,24 +80,36 @@ export function BallotApp() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    void socialAuthApi.providers()
+      .then(response => {
+        if (active) setSocialProviders(response.providers);
+      })
+      .catch(() => {
+        if (active) setSocialProviders([]);
+      });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     const callback = parseSocialCallback(window.location.search);
     if (!callback) return;
     setSocialCallback(callback);
     window.history.replaceState({}, '', stripSocialCallback(new URL(window.location.href)));
     if (callback.status === 'error') {
-      setMessage(socialCallbackMessage(callback));
+      setSocialNotice(socialCallbackMessage(callback));
     }
   }, []);
 
   useEffect(() => {
     if (!socialCallback || socialCallback.status === 'error' || restoring) return;
     if (!session || !profile) {
-      setMessage('Social authentication completed, but the Vote System session could not be restored.');
+      setSocialNotice('Social authentication completed, but the Vote System session could not be restored.');
       setSocialCallback(null);
       return;
     }
 
-    setMessage(socialCallbackMessage(socialCallback));
+    setSocialNotice(socialCallbackMessage(socialCallback));
     if (socialCallback.status === 'success' && socialCallback.intent === 'create-ballot') {
       setCreateOpen(true);
     }
@@ -125,7 +139,7 @@ export function BallotApp() {
 
     try {
       const response = session
-        ? await runAuthorized(active => ballotApi.list(params, active.accessToken))
+        ? await runAuthorized(activeSession => ballotApi.list(params, activeSession.accessToken))
         : await ballotApi.list(params);
       if (sequence !== requestSequence.current) return;
 
@@ -160,12 +174,13 @@ export function BallotApp() {
   async function linkProvider(provider: SocialProviderId) {
     if (!session || linkingProvider) return;
     setLinkingProvider(provider);
-    setMessage('');
+    setSocialNotice('');
     try {
-      const response = await runAuthorized(active => socialAuthApi.startLink(provider, active.accessToken));
+      const response = await runAuthorized(activeSession =>
+        socialAuthApi.startLink(provider, activeSession.accessToken));
       window.location.assign(response.authorizationUrl);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Unable to start account linking.');
+      setSocialNotice(error instanceof Error ? error.message : 'Unable to start account linking.');
       setLinkingProvider(null);
     }
   }
@@ -179,15 +194,16 @@ export function BallotApp() {
     setBallots(current => current.map(item => item.id === ballot.id ? applyOptimisticVote(item, type) : item));
 
     try {
-      const response = await runAuthorized(active =>
+      const response = await runAuthorized(activeSession =>
         ballot.myVote === type
-          ? ballotApi.removeVote(ballot.id, active.accessToken)
-          : ballotApi.castVote(ballot.id, type, active.accessToken));
+          ? ballotApi.removeVote(ballot.id, activeSession.accessToken)
+          : ballotApi.castVote(ballot.id, type, activeSession.accessToken));
       setBallots(current => current.map(item =>
         item.id === ballot.id ? reconcileVoteResponse(item, response, snapshot.updatedAt) : item));
     } catch (error) {
       try {
-        const authoritative = await runAuthorized(active => ballotApi.get(ballot.id, active.accessToken));
+        const authoritative = await runAuthorized(activeSession =>
+          ballotApi.get(ballot.id, activeSession.accessToken));
         setBallots(current => current.map(item =>
           item.id === ballot.id ? reconcileAuthoritativeBallot(item, authoritative) : item));
       } catch {
@@ -203,7 +219,7 @@ export function BallotApp() {
   }
 
   async function createBallot(title: string, content: string) {
-    await runAuthorized(active => ballotApi.create({ title, content }, active.accessToken));
+    await runAuthorized(activeSession => ballotApi.create({ title, content }, activeSession.accessToken));
     setCreateOpen(false);
     await load(0, false);
     setMessage('Hồ sơ đã được ghi vào sổ công khai. Kết quả hiện tại đã được tải lại từ máy chủ.');
@@ -212,7 +228,8 @@ export function BallotApp() {
   async function updateBallot(ballot: Ballot, title: string, content: string) {
     markBusy(ballot.id, true);
     try {
-      const updated = await runAuthorized(active => ballotApi.update(ballot.id, { title, content }, active.accessToken));
+      const updated = await runAuthorized(activeSession =>
+        ballotApi.update(ballot.id, { title, content }, activeSession.accessToken));
       setEditing(null);
       if (query) {
         await load(0, false);
@@ -229,7 +246,7 @@ export function BallotApp() {
     if (!window.confirm(`Delete ballot ${ballot.ballotNumber}? This cannot be undone.`)) return;
     markBusy(ballot.id, true);
     try {
-      await runAuthorized(active => ballotApi.delete(ballot.id, active.accessToken));
+      await runAuthorized(activeSession => ballotApi.delete(ballot.id, activeSession.accessToken));
       setSelectedId(current => current === ballot.id ? null : current);
       await load(0, false);
       setMessage('Hồ sơ đã được xóa khỏi sổ công khai.');
@@ -244,7 +261,8 @@ export function BallotApp() {
     if (!window.confirm(`Close ballot ${ballot.ballotNumber}? Voting will stop permanently.`)) return;
     markBusy(ballot.id, true);
     try {
-      const closed = await runAuthorized(active => ballotApi.close(ballot.id, active.accessToken));
+      const closed = await runAuthorized(activeSession =>
+        ballotApi.close(ballot.id, activeSession.accessToken));
       setBallots(current => current.map(item => item.id === ballot.id ? closed : item));
       if (status) await load(0, false);
       setMessage('Lá phiếu đã được đóng và kết quả cuối cùng đã được chốt.');
@@ -268,6 +286,7 @@ export function BallotApp() {
         session={session}
         profile={profile}
         restoring={restoring}
+        socialProviders={socialProviders}
         linkingProvider={linkingProvider}
         onQueryChange={setQueryInput}
         onLogin={() => openAuth('login')}
@@ -301,6 +320,7 @@ export function BallotApp() {
           onReset={clearFilters}
         />
 
+        {socialNotice && <div className={styles.notice} role="status">{socialNotice}</div>}
         {message && <div className={styles.notice} role="status">{message}</div>}
         {loading && ballots.length === 0 && <BallotSkeleton />}
         {!loading && ballots.length === 0 && (
@@ -335,6 +355,7 @@ export function BallotApp() {
         <AuthDialog
           initialMode={authWorkflow.mode}
           intent={authWorkflow.intent}
+          socialProviders={socialProviders}
           onClose={() => setAuthWorkflow(cancelAuth())}
           onAuthenticated={async next => {
             await saveSession(next);
