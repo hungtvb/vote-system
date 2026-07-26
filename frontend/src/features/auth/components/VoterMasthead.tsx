@@ -1,6 +1,7 @@
 'use client';
 
-import type { Session, UserProfile } from '@/shared/api/types';
+import type { Session, SocialProvider, UserProfile } from '@/shared/api/types';
+import type { SocialProviderId } from '@/shared/api/social-auth-api';
 import styles from './VoterMasthead.module.scss';
 
 interface VoterMastheadProps {
@@ -8,10 +9,12 @@ interface VoterMastheadProps {
   session: Session | null;
   profile: UserProfile | null;
   restoring: boolean;
+  linkingProvider?: SocialProviderId | null;
   onQueryChange: (query: string) => void;
   onLogin: () => void;
   onRegister: () => void;
   onCreate: () => void;
+  onLinkProvider: (provider: SocialProviderId) => void;
   onLogout: () => void;
   onLogoutAll: () => void;
 }
@@ -21,14 +24,17 @@ export function VoterMasthead({
   session,
   profile,
   restoring,
+  linkingProvider = null,
   onQueryChange,
   onLogin,
   onRegister,
   onCreate,
+  onLinkProvider,
   onLogout,
   onLogoutAll
 }: VoterMastheadProps) {
   const authenticated = Boolean(session && profile);
+  const linkedProviders = new Set<SocialProvider>(profile?.linkedProviders ?? []);
 
   return (
     <header className={styles.header}>
@@ -75,10 +81,16 @@ export function VoterMasthead({
             <div className={styles.menuPanel}>
               <p>OFFICIAL VOTER ID</p>
               <strong>{profile.displayName}</strong>
-              <span className={styles.email}>{profile.email}</span>
+              <span className={styles.email}>{profile.email ?? 'EMAIL NOT SHARED'}</span>
               <span>ROLE: {profile.role}</span>
               <span>STATUS: VERIFIED SESSION</span>
-              <div className={styles.menuActions}>
+              <div className={styles.menuActions} aria-label="Connected login providers">
+                {linkedProviders.has('GOOGLE')
+                  ? <span>GOOGLE: LINKED</span>
+                  : <button type="button" disabled={linkingProvider !== null} onClick={() => onLinkProvider('google')}>{linkingProvider === 'google' ? 'CONNECTING GOOGLE...' : 'LINK GOOGLE'}</button>}
+                {linkedProviders.has('GITHUB')
+                  ? <span>GITHUB: LINKED</span>
+                  : <button type="button" disabled={linkingProvider !== null} onClick={() => onLinkProvider('github')}>{linkingProvider === 'github' ? 'CONNECTING GITHUB...' : 'LINK GITHUB'}</button>}
                 <button type="button" onClick={onLogout}>LOG OUT</button>
                 <button type="button" onClick={onLogoutAll}>LOG OUT ALL DEVICES</button>
               </div>
