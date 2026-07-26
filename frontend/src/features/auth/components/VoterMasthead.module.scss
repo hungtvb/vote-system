@@ -46,10 +46,11 @@
 
 .search input {
   width: 100%;
+  min-height: 44px;
   border: 0;
   border-bottom: 2px solid var(--navy);
   border-radius: 0;
-  padding: 7px 0;
+  padding: 9px 0;
   background: transparent;
   color: var(--graphite);
 }
