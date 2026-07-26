@@ -15,11 +15,18 @@ export type AuthMode = 'login' | 'register';
 interface AuthDialogProps {
   initialMode?: AuthMode;
   intent?: AuthIntent;
+  socialProviders?: SocialProviderId[];
   onClose: () => void;
   onAuthenticated: (session: Session) => void | Promise<void>;
 }
 
-export function AuthDialog({ initialMode = 'login', intent = 'authenticate', onClose, onAuthenticated }: AuthDialogProps) {
+export function AuthDialog({
+  initialMode = 'login',
+  intent = 'authenticate',
+  socialProviders = [],
+  onClose,
+  onAuthenticated
+}: AuthDialogProps) {
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -65,6 +72,7 @@ export function AuthDialog({ initialMode = 'login', intent = 'authenticate', onC
   }
 
   const locked = busy || socialBusy !== null;
+  const hasSocialProviders = socialProviders.length > 0;
 
   return (
     <div className={styles.backdrop} onMouseDown={modal.onBackdropMouseDown}>
@@ -87,15 +95,23 @@ export function AuthDialog({ initialMode = 'login', intent = 'authenticate', onC
         <h2 id="auth-title">Voter account</h2>
         <p>{intent === 'create-ballot' ? 'AUTHENTICATE TO CONTINUE YOUR BALLOT' : mode === 'login' ? 'ACCESS YOUR EXISTING VOTER ID' : 'CREATE A NEW VOTER ID'}</p>
 
-        <div className={authStyles.socialActions} aria-label="Social sign-in providers">
-          <button type="button" className={authStyles.socialButton} disabled={locked} data-qa-social-provider="google" onClick={() => void startSocial('google')}>
-            {socialBusy === 'google' ? 'CONNECTING TO GOOGLE...' : 'CONTINUE WITH GOOGLE'}
-          </button>
-          <button type="button" className={authStyles.socialButton} disabled={locked} data-qa-social-provider="github" onClick={() => void startSocial('github')}>
-            {socialBusy === 'github' ? 'CONNECTING TO GITHUB...' : 'CONTINUE WITH GITHUB'}
-          </button>
-        </div>
-        <div className={authStyles.divider}><span>OR USE EMAIL</span></div>
+        {hasSocialProviders && (
+          <>
+            <div className={authStyles.socialActions} aria-label="Social sign-in providers">
+              {socialProviders.includes('google') && (
+                <button type="button" className={authStyles.socialButton} disabled={locked} data-qa-social-provider="google" onClick={() => void startSocial('google')}>
+                  {socialBusy === 'google' ? 'CONNECTING TO GOOGLE...' : 'CONTINUE WITH GOOGLE'}
+                </button>
+              )}
+              {socialProviders.includes('github') && (
+                <button type="button" className={authStyles.socialButton} disabled={locked} data-qa-social-provider="github" onClick={() => void startSocial('github')}>
+                  {socialBusy === 'github' ? 'CONNECTING TO GITHUB...' : 'CONTINUE WITH GITHUB'}
+                </button>
+              )}
+            </div>
+            <div className={authStyles.divider}><span>OR USE EMAIL</span></div>
+          </>
+        )}
 
         <form onSubmit={submit}>
           {mode === 'register' && (
