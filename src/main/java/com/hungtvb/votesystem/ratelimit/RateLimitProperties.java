@@ -11,6 +11,7 @@ public record RateLimitProperties(
         Policy login,
         Policy register,
         Policy refresh,
+        Policy socialStart,
         Policy createPost,
         Policy vote
 ) {

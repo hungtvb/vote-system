@@ -93,7 +93,8 @@ jobs:
             mode=$4
             expected_cards=${5:-3}
             extra_flag=${6:-}
-            url="http://127.0.0.1:4173/?qa=${mode}"
+            query_suffix=${7:-}
+            url="http://127.0.0.1:4173/?qa=${mode}${query_suffix}"
             common=(--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --run-all-compositor-stages-before-draw --virtual-time-budget=7000 --window-size="${width},${height}")
             if [ -n "$extra_flag" ]; then
               common+=("$extra_flag")
@@ -119,7 +120,7 @@ jobs:
             assert_feed_boundaries "$file"
           }
 
-          # Required TON-106 viewport matrix.
+          # Required TON-106 viewport matrix remains the regression baseline.
           capture desktop-1440x900 1440 900 feed
           capture laptop-1024x768 1024 768 feed
           capture tablet-768x1024 768 1024 feed
@@ -175,7 +176,7 @@ jobs:
           grep -q 'data-qa-active-feed="MY BALLOTS"' visual-qa/mobile-my-ballots.html
           grep -q 'Should public software projects publish' visual-qa/mobile-my-ballots.html
 
-          # Registration and create-ballot actions must remain distinct.
+          # Registration and create-ballot actions remain distinct.
           capture guest-register-dialog 390 844 guest-register-dialog
           grep -q 'data-qa-auth-dialog="true"' visual-qa/guest-register-dialog.html
           grep -q 'data-qa-auth-mode="register"' visual-qa/guest-register-dialog.html
@@ -188,6 +189,7 @@ jobs:
           grep -q 'data-qa-create-label="CREATE BALLOT"' visual-qa/guest-create-auth.html
           grep -q 'data-qa-auth-dialog="true"' visual-qa/guest-create-auth.html
           grep -q 'data-qa-auth-mode="login"' visual-qa/guest-create-auth.html
+          grep -q 'data-qa-auth-intent="create-ballot"' visual-qa/guest-create-auth.html
           grep -q 'data-qa-auth-submit="SIGN IN"' visual-qa/guest-create-auth.html
           grep -q 'data-qa-create-dialog="false"' visual-qa/guest-create-auth.html
           grep -q 'data-qa-focus-inside-dialog="true"' visual-qa/guest-create-auth.html
@@ -205,6 +207,29 @@ jobs:
           grep -q 'data-qa-submit-ballot="SUBMIT BALLOT"' visual-qa/guest-create-resume.html
           grep -q 'data-qa-focus-inside-dialog="true"' visual-qa/guest-create-resume.html
           grep -q 'data-qa-touch-violations="0"' visual-qa/guest-create-resume.html
+
+          # Configured provider buttons and callback continuation/failure behavior.
+          capture social-buttons 390 844 social-buttons
+          grep -q 'data-qa-social-providers="google,github"' visual-qa/social-buttons.html
+          grep -q 'CONTINUE WITH GOOGLE' visual-qa/social-buttons.html
+          grep -q 'CONTINUE WITH GITHUB' visual-qa/social-buttons.html
+          grep -q 'data-qa-touch-violations="0"' visual-qa/social-buttons.html
+
+          capture social-create-callback 390 844 auth-social-create 3 '' '&social=success&provider=google&intent=create-ballot'
+          grep -q 'data-qa-voter-after-auth="true"' visual-qa/social-create-callback.html
+          grep -q 'data-qa-create-dialog="true"' visual-qa/social-create-callback.html
+          grep -q 'data-qa-submit-ballot="SUBMIT BALLOT"' visual-qa/social-create-callback.html
+          grep -q 'Signed in with Google.' visual-qa/social-create-callback.html
+
+          capture social-cancel-existing-session 390 844 auth-social-error 3 '' '&social=error&code=access_denied&intent=authenticate'
+          grep -q 'data-qa-voter-after-auth="true"' visual-qa/social-cancel-existing-session.html
+          grep -q 'data-qa-create-dialog="false"' visual-qa/social-cancel-existing-session.html
+          grep -q 'Social sign-in was cancelled.' visual-qa/social-cancel-existing-session.html
+
+          capture social-linked-callback 390 844 auth-social-linked 3 '' '&social=linked&provider=google&intent=link-account'
+          grep -q 'data-qa-voter-after-auth="true"' visual-qa/social-linked-callback.html
+          grep -q 'Google is now linked to your Voter ID.' visual-qa/social-linked-callback.html
+          grep -q 'GOOGLE: LINKED' visual-qa/social-linked-callback.html
 
           capture reduced-motion 375 812 reduced-motion 3 --force-prefers-reduced-motion=reduce
           grep -q 'data-qa-reduced-motion="true"' visual-qa/reduced-motion.html

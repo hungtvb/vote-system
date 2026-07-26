@@ -74,6 +74,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if ("POST".equals(method) && "/api/v1/auth/refresh".equals(path)) {
             return new Rule("refresh", properties.refresh(), false);
         }
+        if ("POST".equals(method) && path.matches("/api/v1/auth/social/(google|github)/start")) {
+            return new Rule("social-start", properties.socialStart(), false);
+        }
+        if ("POST".equals(method) && path.matches("/api/v1/auth/social/(google|github)/link/start")) {
+            return new Rule("social-link", properties.socialStart(), true);
+        }
         if ("POST".equals(method) && "/api/v1/posts".equals(path)) {
             return new Rule("create-post", properties.createPost(), true);
         }

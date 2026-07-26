@@ -2,22 +2,24 @@ export type VoteType = 'UP' | 'DOWN';
 export type VoteVerdict = 'UP' | 'DOWN' | 'UNDECIDED';
 export type BallotStatus = 'OPEN' | 'CLOSED';
 export type FeedType = 'LATEST' | 'HOT' | 'TOP_DAY' | 'TOP_WEEK' | 'MINE';
+export type SocialProvider = 'GOOGLE' | 'GITHUB';
 
 export interface Session {
   tokenType: string;
   accessToken: string;
   expiresInSeconds: number;
   userId: string;
-  email: string;
+  email: string | null;
   role: string;
 }
 
 export interface UserProfile {
   id: string;
-  email: string;
+  email: string | null;
   displayName: string;
   initials: string;
   role: string;
+  linkedProviders: SocialProvider[];
   createdAt: string;
   updatedAt: string;
 }

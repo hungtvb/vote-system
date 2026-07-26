@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extend the deterministic visual QA server with auth-intent scenarios."""
+"""Extend the deterministic visual QA server with auth and social-login scenarios."""
 
 from __future__ import annotations
 
@@ -18,6 +18,10 @@ EXTRA_QA_SCRIPT = r"""
     'guest-create-auth',
     'guest-register-complete',
     'guest-create-resume',
+    'social-buttons',
+    'auth-social-create',
+    'auth-social-error',
+    'auth-social-linked',
     'reduced-motion'
   ]);
   if (!supported.has(mode)) return;
@@ -37,7 +41,7 @@ EXTRA_QA_SCRIPT = r"""
     setTimeout(() => waitFor(predicate, callback, attempt + 1), 80);
   };
   const keyTouchTargets = () => [...document.querySelectorAll(
-    '[data-qa-create-ballot], [data-qa-auth-submit], [data-qa-submit-ballot], [data-qa-auth-tab]'
+    '[data-qa-create-ballot], [data-qa-auth-submit], [data-qa-submit-ballot], [data-qa-auth-tab], [data-qa-social-provider]'
   )].filter(element => {
     const rect = element.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
@@ -49,6 +53,7 @@ EXTRA_QA_SCRIPT = r"""
     const authSubmit = document.querySelector('[data-qa-auth-submit]');
     const submitBallot = document.querySelector('[data-qa-submit-ballot]');
     const createButton = document.querySelector('[data-qa-create-ballot]');
+    const socialButtons = [...document.querySelectorAll('[data-qa-social-provider]')];
     const targets = keyTouchTargets();
     const violations = targets.filter(element => {
       const rect = element.getBoundingClientRect();
@@ -58,6 +63,7 @@ EXTRA_QA_SCRIPT = r"""
     root.dataset.qaScenario = status;
     root.dataset.qaAuthDialog = String(Boolean(authDialog));
     root.dataset.qaAuthMode = authDialog?.getAttribute('data-auth-mode') || '';
+    root.dataset.qaAuthIntent = authDialog?.getAttribute('data-auth-intent') || '';
     root.dataset.qaAuthSubmit = authSubmit?.textContent?.trim() || '';
     root.dataset.qaCreateDialog = String(Boolean(createDialog));
     root.dataset.qaSubmitBallot = submitBallot?.textContent?.trim() || '';
@@ -66,6 +72,11 @@ EXTRA_QA_SCRIPT = r"""
     root.dataset.qaFocusInsideDialog = String(Boolean(dialog && dialog.contains(document.activeElement)));
     root.dataset.qaTouchTargets = String(targets.length);
     root.dataset.qaTouchViolations = String(violations.length);
+    root.dataset.qaSocialProviders = socialButtons.map(button => button.getAttribute('data-qa-social-provider')).join(',');
+    root.dataset.qaSocialLabels = socialButtons.map(button => button.textContent?.trim()).join('|');
+    root.dataset.qaNotice = [...document.querySelectorAll('[role="status"]')]
+      .map(element => element.textContent?.trim()).filter(Boolean).join('|');
+    root.dataset.qaVoterMenu = document.querySelector('[data-qa-voter-id]')?.textContent?.replace(/\s+/g, ' ').trim() || '';
     root.dataset.qaReducedMotion = String(matchMedia('(prefers-reduced-motion: reduce)').matches);
     root.dataset.qaReducedScroll = getComputedStyle(document.documentElement).scrollBehavior;
   };
@@ -86,6 +97,25 @@ EXTRA_QA_SCRIPT = r"""
   const start = () => {
     if (mode === 'reduced-motion') return setTimeout(() => record(), 250);
 
+    if (mode === 'auth-social-create') {
+      return waitFor(
+        () => Boolean(document.querySelector('[data-qa-create-dialog]')) && Boolean(document.querySelector('[data-qa-voter-id]')),
+        () => setTimeout(() => record(), 120)
+      );
+    }
+    if (mode === 'auth-social-error') {
+      return waitFor(
+        () => Boolean(document.querySelector('[data-qa-voter-id]')) && document.body.textContent.includes('Social sign-in was cancelled.'),
+        () => setTimeout(() => record(), 120)
+      );
+    }
+    if (mode === 'auth-social-linked') {
+      return waitFor(
+        () => Boolean(document.querySelector('[data-qa-voter-id]')) && document.body.textContent.includes('Google is now linked'),
+        () => setTimeout(() => record(), 120)
+      );
+    }
+
     if (mode === 'guest-register-dialog' || mode === 'guest-register-complete') {
       byText('button', 'REGISTER')?.click();
       return waitFor(
@@ -98,6 +128,14 @@ EXTRA_QA_SCRIPT = r"""
             () => setTimeout(() => record(), 120)
           );
         }
+      );
+    }
+
+    if (mode === 'social-buttons') {
+      byText('button', 'SIGN IN')?.click();
+      return waitFor(
+        () => document.querySelectorAll('[data-qa-social-provider]').length === 2,
+        () => setTimeout(() => record(), 100)
       );
     }
 
@@ -145,9 +183,13 @@ class Handler(base.Handler):
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
+        if parsed.path == "/api/v1/auth/social/providers":
+            self._json(200, {"providers": ["google", "github"]})
+            return
         if parsed.path == "/api/v1/users/me":
             if self.headers.get("Authorization") == "Bearer visual-qa-access-token":
-                self._json(200, base.PROFILE)
+                linked = ["GOOGLE"] if self._fixture_mode() == "auth-social-linked" else []
+                self._json(200, {**base.PROFILE, "linkedProviders": linked})
             else:
                 self._json(401, {"title": "Unauthorized"})
             return
@@ -159,5 +201,5 @@ if __name__ == "__main__":
         raise SystemExit("frontend/out/index.html is missing; run npm run build first")
     mimetypes.add_type("application/javascript", ".js")
     server = ThreadingHTTPServer(("127.0.0.1", base.PORT), Handler)
-    print(f"TON-106 QA server listening on http://127.0.0.1:{base.PORT}", flush=True)
+    print(f"TON-107 QA server listening on http://127.0.0.1:{base.PORT}", flush=True)
     server.serve_forever()
