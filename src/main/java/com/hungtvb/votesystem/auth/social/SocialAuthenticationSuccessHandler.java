@@ -56,6 +56,9 @@ public class SocialAuthenticationSuccessHandler implements AuthenticationSuccess
         } catch (SocialLoginException exception) {
             clearOAuthSession(request);
             response.sendRedirect(redirects.failure(exception.code(), context.intent()));
+        } catch (IllegalArgumentException exception) {
+            clearOAuthSession(request);
+            response.sendRedirect(redirects.failure("invalid_provider_profile", context.intent()));
         }
     }
 
