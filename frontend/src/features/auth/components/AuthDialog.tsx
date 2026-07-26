@@ -8,6 +8,7 @@ import type { Session } from '@/shared/api/types';
 import type { AuthIntent } from '@/shared/auth/auth-intent';
 import { useModalDialog } from '@/shared/hooks/useModalDialog';
 import styles from '@/features/ballots/components/BallotApp.module.scss';
+import authStyles from './AuthDialog.module.scss';
 
 export type AuthMode = 'login' | 'register';
 
@@ -86,15 +87,15 @@ export function AuthDialog({ initialMode = 'login', intent = 'authenticate', onC
         <h2 id="auth-title">Voter account</h2>
         <p>{intent === 'create-ballot' ? 'AUTHENTICATE TO CONTINUE YOUR BALLOT' : mode === 'login' ? 'ACCESS YOUR EXISTING VOTER ID' : 'CREATE A NEW VOTER ID'}</p>
 
-        <div className={styles.socialActions} aria-label="Social sign-in providers">
-          <button type="button" disabled={locked} data-qa-social-provider="google" onClick={() => void startSocial('google')}>
+        <div className={authStyles.socialActions} aria-label="Social sign-in providers">
+          <button type="button" className={authStyles.socialButton} disabled={locked} data-qa-social-provider="google" onClick={() => void startSocial('google')}>
             {socialBusy === 'google' ? 'CONNECTING TO GOOGLE...' : 'CONTINUE WITH GOOGLE'}
           </button>
-          <button type="button" disabled={locked} data-qa-social-provider="github" onClick={() => void startSocial('github')}>
+          <button type="button" className={authStyles.socialButton} disabled={locked} data-qa-social-provider="github" onClick={() => void startSocial('github')}>
             {socialBusy === 'github' ? 'CONNECTING TO GITHUB...' : 'CONTINUE WITH GITHUB'}
           </button>
         </div>
-        <div className={styles.authDivider}><span>OR USE EMAIL</span></div>
+        <div className={authStyles.divider}><span>OR USE EMAIL</span></div>
 
         <form onSubmit={submit}>
           {mode === 'register' && (
