@@ -21,7 +21,7 @@ public record AuthenticatedUser(UUID id, String email, String passwordHash, Role
     }
 
     @Override public String getPassword() { return passwordHash; }
-    @Override public String getUsername() { return email; }
+    @Override public String getUsername() { return email == null ? id.toString() : email; }
     @Override public boolean isAccountNonExpired() { return true; }
     @Override public boolean isAccountNonLocked() { return true; }
     @Override public boolean isCredentialsNonExpired() { return true; }
