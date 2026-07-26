@@ -61,8 +61,8 @@ export function AuthDialog({ initialMode = 'login', onClose, onAuthenticated }: 
         data-auth-mode={mode}
       >
         <div className={styles.dialogTabs} role="tablist" aria-label="Authentication mode">
-          <button type="button" role="tab" aria-selected={mode === 'login'} onClick={() => changeMode('login')}>SIGN IN</button>
-          <button type="button" role="tab" aria-selected={mode === 'register'} onClick={() => changeMode('register')}>REGISTER</button>
+          <button type="button" role="tab" aria-selected={mode === 'login'} data-qa-auth-tab style={{ minHeight: 44 }} onClick={() => changeMode('login')}>SIGN IN</button>
+          <button type="button" role="tab" aria-selected={mode === 'register'} data-qa-auth-tab style={{ minHeight: 44 }} onClick={() => changeMode('register')}>REGISTER</button>
         </div>
         <h2 id="auth-title">Voter account</h2>
         <p>{mode === 'login' ? 'ACCESS YOUR EXISTING VOTER ID' : 'CREATE A NEW VOTER ID'}</p>
@@ -70,12 +70,12 @@ export function AuthDialog({ initialMode = 'login', onClose, onAuthenticated }: 
           {mode === 'register' && (
             <label>
               PUBLIC VOTER NAME (OPTIONAL)
-              <input maxLength={80} autoComplete="name" value={displayName} onChange={event => setDisplayName(event.target.value)} placeholder="A public name or stored pseudonym" />
+              <input style={{ minHeight: 44 }} maxLength={80} autoComplete="name" value={displayName} onChange={event => setDisplayName(event.target.value)} placeholder="A public name or stored pseudonym" />
             </label>
           )}
-          <label>EMAIL<input required autoFocus type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} /></label>
-          <label>PASSWORD<input required minLength={8} type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={event => setPassword(event.target.value)} /></label>
-          {mode === 'register' && <label>CONFIRM PASSWORD<input required type="password" autoComplete="new-password" value={confirm} onChange={event => setConfirm(event.target.value)} /></label>}
+          <label>EMAIL<input required autoFocus style={{ minHeight: 44 }} type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} /></label>
+          <label>PASSWORD<input required style={{ minHeight: 44 }} minLength={8} type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={event => setPassword(event.target.value)} /></label>
+          {mode === 'register' && <label>CONFIRM PASSWORD<input required style={{ minHeight: 44 }} type="password" autoComplete="new-password" value={confirm} onChange={event => setConfirm(event.target.value)} /></label>}
           {error && <span className={styles.error} role="alert">{error}</span>}
           <button className={styles.primaryButton} disabled={busy} data-qa-auth-submit>
             {busy ? 'VERIFYING...' : mode === 'login' ? 'SIGN IN' : 'CREATE ACCOUNT'}
