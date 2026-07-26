@@ -1,5 +1,7 @@
 package com.hungtvb.votesystem.common.config;
 
+import com.hungtvb.votesystem.auth.social.SocialAuthenticationFailureHandler;
+import com.hungtvb.votesystem.auth.social.SocialAuthenticationSuccessHandler;
 import com.hungtvb.votesystem.ratelimit.RateLimitFilter;
 import com.hungtvb.votesystem.ratelimit.RateLimitProperties;
 import com.nimbusds.jose.jwk.JWKSet;
@@ -51,22 +53,30 @@ import java.util.List;
 public class SecurityConfig {
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, RateLimitFilter rateLimitFilter) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                            RateLimitFilter rateLimitFilter,
+                                            SocialAuthenticationSuccessHandler socialSuccessHandler,
+                                            SocialAuthenticationFailureHandler socialFailureHandler) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/", "/index.html", "/assets/**", "/*.svg", "/*.png", "/*.ico", "/error").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**").permitAll()
+                        .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
                         .requestMatchers(HttpMethod.POST,
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/refresh",
-                                "/api/v1/auth/logout").permitAll()
+                                "/api/v1/auth/logout",
+                                "/api/v1/auth/social/*/start").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/posts/**").permitAll()
                         .requestMatchers("/actuator/health/**").permitAll()
                         .anyRequest().authenticated())
+                .oauth2Login(oauth2 -> oauth2
+                        .successHandler(socialSuccessHandler)
+                        .failureHandler(socialFailureHandler))
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
                 .addFilterAfter(rateLimitFilter, BearerTokenAuthenticationFilter.class)
                 .build();
