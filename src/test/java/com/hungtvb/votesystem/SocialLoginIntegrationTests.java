@@ -1,6 +1,5 @@
 package com.hungtvb.votesystem;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hungtvb.votesystem.auth.social.SocialAuthContext;
 import com.hungtvb.votesystem.auth.social.SocialAuthenticationSuccessHandler;
@@ -156,9 +155,10 @@ class SocialLoginIntegrationTests {
 
         MvcResult redirect = mockMvc.perform(get("/oauth2/authorization/google").session(session))
                 .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrlPattern("https://accounts.google.com/o/oauth2/v2/auth?*"))
                 .andReturn();
-        URI location = URI.create(redirect.getResponse().getRedirectedUrl());
+        String redirectedUrl = redirect.getResponse().getRedirectedUrl();
+        assertTrue(redirectedUrl.startsWith("https://accounts.google.com/o/oauth2/v2/auth?"));
+        URI location = URI.create(redirectedUrl);
         Map<String, String> query = query(location.getRawQuery());
         assertFalse(query.get("state").isBlank());
         assertFalse(query.get("nonce").isBlank());
