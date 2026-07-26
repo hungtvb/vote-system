@@ -9,6 +9,14 @@ import { ballotApi, type BallotListParams } from '@/shared/api/ballot-api';
 import { ApiError } from '@/shared/api/transport';
 import type { Ballot, BallotStatus, BallotVoteUpdate, FeedType, VoteType } from '@/shared/api/types';
 import {
+  beginAuth,
+  cancelAuth,
+  CLOSED_AUTH_WORKFLOW,
+  completeAuth,
+  type AuthIntent,
+  type AuthMode
+} from '@/shared/auth/auth-intent';
+import {
   applyOptimisticVote,
   applyStreamUpdate,
   mergeUniqueBallots,
@@ -25,7 +33,6 @@ import { FeedControls } from './FeedControls';
 import styles from './BallotApp.module.scss';
 
 const PAGE_SIZE = 8;
-type AuthMode = 'login' | 'register';
 
 export function BallotApp() {
   const { session, profile, restoring, saveSession, runAuthorized, logout, logoutAll } = useSession();
@@ -42,8 +49,7 @@ export function BallotApp() {
   const [loading, setLoading] = useState(true);
   const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set());
   const [message, setMessage] = useState('');
-  const [authOpen, setAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<AuthMode>('login');
+  const [authWorkflow, setAuthWorkflow] = useState(CLOSED_AUTH_WORKFLOW);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Ballot | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -58,9 +64,8 @@ export function BallotApp() {
   }, []);
   useBallotVoteStream(selected, handleStreamUpdate);
 
-  const openAuth = useCallback((mode: AuthMode) => {
-    setAuthMode(mode);
-    setAuthOpen(true);
+  const openAuth = useCallback((mode: AuthMode, intent: AuthIntent = 'authenticate') => {
+    setAuthWorkflow(beginAuth(mode, intent));
   }, []);
 
   useEffect(() => {
@@ -219,7 +224,7 @@ export function BallotApp() {
         onQueryChange={setQueryInput}
         onLogin={() => openAuth('login')}
         onRegister={() => openAuth('register')}
-        onCreate={() => session ? setCreateOpen(true) : openAuth('register')}
+        onCreate={() => session ? setCreateOpen(true) : openAuth('login', 'create-ballot')}
         onLogout={() => void logout()}
         onLogoutAll={() => void logoutAll()}
       />
@@ -277,7 +282,18 @@ export function BallotApp() {
         )}
       </main>
 
-      {authOpen && <AuthDialog initialMode={authMode} onClose={() => setAuthOpen(false)} onAuthenticated={async next => { await saveSession(next); setAuthOpen(false); }} />}
+      {authWorkflow.open && (
+        <AuthDialog
+          initialMode={authWorkflow.mode}
+          onClose={() => setAuthWorkflow(cancelAuth())}
+          onAuthenticated={async next => {
+            await saveSession(next);
+            const completion = completeAuth(authWorkflow);
+            setAuthWorkflow(completion.workflow);
+            if (completion.resumeCreateBallot) setCreateOpen(true);
+          }}
+        />
+      )}
       {createOpen && <CreateBallotDialog onClose={() => setCreateOpen(false)} onCreate={createBallot} />}
       {editing && <EditBallotDialog ballot={editing} onClose={() => setEditing(null)} onSave={(title, content) => updateBallot(editing, title, content)} />}
       {selected && <BallotDetailDialog ballot={selected} busy={busyIds.has(selected.id)} owned={session?.userId === selected.authorId} onClose={() => setSelectedId(null)} onVote={type => void vote(selected, type)} onEdit={() => { setSelectedId(null); setEditing(selected); }} onDelete={() => void deleteBallot(selected)} onCloseBallot={() => void closeBallot(selected)} />}
