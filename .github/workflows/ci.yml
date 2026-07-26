@@ -47,17 +47,19 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
-      - name: Test API lifecycle
+      - name: Test API lifecycle and UI state models
         run: npm test
+      - name: Verify Ballot Edition contrast
+        run: python3 scripts/accessibility_checks.py
       - name: Build frontend
         run: |
           set -o pipefail
           npm run build 2>&1 | tee frontend-build.log
-      - name: Run visual QA
+      - name: Run visual and accessibility QA
         run: |
           set -euo pipefail
           mkdir -p visual-qa
-          python3 scripts/visual_qa_server.py > visual-qa/server.log 2>&1 &
+          python3 scripts/ton106_qa_server.py > visual-qa/server.log 2>&1 &
           SERVER_PID=$!
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
 
@@ -90,8 +92,12 @@ jobs:
             height=$3
             mode=$4
             expected_cards=${5:-3}
+            extra_flag=${6:-}
             url="http://127.0.0.1:4173/?qa=${mode}"
             common=(--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --run-all-compositor-stages-before-draw --virtual-time-budget=7000 --window-size="${width},${height}")
+            if [ -n "$extra_flag" ]; then
+              common+=("$extra_flag")
+            fi
             "$CHROME" "${common[@]}" --screenshot="visual-qa/${name}.png" "$url"
             "$CHROME" "${common[@]}" --dump-dom "$url" > "visual-qa/${name}.html"
             grep -q 'data-qa-overflow="false"' "visual-qa/${name}.html"
@@ -107,24 +113,37 @@ jobs:
             grep -q 'data-qa-stamp-animating="0"' "$file"
           }
 
-          capture mobile-feed 375 812 feed
-          capture tablet-feed 768 1024 feed
-          capture desktop-feed 1440 1000 feed
-          grep -q 'data-qa-authors="3"' visual-qa/mobile-feed.html
-          grep -q 'data-qa-authors="3"' visual-qa/tablet-feed.html
-          grep -q 'data-qa-authors="3"' visual-qa/desktop-feed.html
-          grep -q 'data-qa-guest="true"' visual-qa/desktop-feed.html
-          grep -q 'data-qa-voter="false"' visual-qa/desktop-feed.html
-          assert_feed_boundaries visual-qa/mobile-feed.html
-          assert_feed_boundaries visual-qa/tablet-feed.html
-          assert_feed_boundaries visual-qa/desktop-feed.html
+          assert_feed() {
+            file=$1
+            grep -q 'data-qa-authors="3"' "$file"
+            assert_feed_boundaries "$file"
+          }
 
-          capture mobile-detail 375 812 detail
+          # Required TON-106 viewport matrix.
+          capture desktop-1440x900 1440 900 feed
+          capture laptop-1024x768 1024 768 feed
+          capture tablet-768x1024 768 1024 feed
+          capture mobile-390x844 390 844 feed
+          capture mobile-375x812 375 812 feed
+          capture compact-320x568 320 568 feed
+          for file in \
+            visual-qa/desktop-1440x900.html \
+            visual-qa/laptop-1024x768.html \
+            visual-qa/tablet-768x1024.html \
+            visual-qa/mobile-390x844.html \
+            visual-qa/mobile-375x812.html \
+            visual-qa/compact-320x568.html; do
+            assert_feed "$file"
+          done
+          grep -q 'data-qa-guest="true"' visual-qa/desktop-1440x900.html
+          grep -q 'data-qa-voter="false"' visual-qa/desktop-1440x900.html
+
+          capture mobile-detail 390 844 detail
           grep -q 'data-qa-dialog="true"' visual-qa/mobile-detail.html
           grep -q 'data-qa-dialog-overflow="false"' visual-qa/mobile-detail.html
           grep -q 'data-qa-authors="4"' visual-qa/mobile-detail.html
 
-          capture desktop-auth 1440 1000 auth
+          capture desktop-auth 1024 768 auth
           grep -q 'data-qa-authors="3"' visual-qa/desktop-auth.html
           grep -q 'data-qa-voter="true"' visual-qa/desktop-auth.html
           grep -q 'data-qa-guest="false"' visual-qa/desktop-auth.html
@@ -147,14 +166,49 @@ jobs:
           grep -q 'Registry-wide server-only search result' visual-qa/tablet-server-search.html
           grep -q 'data-qa-active-feed="LATEST"' visual-qa/tablet-server-search.html
 
-          capture desktop-pagination 1440 1000 pagination 3
+          capture desktop-pagination 1440 900 pagination 3
           grep -q 'PAGE 2 OF 2' visual-qa/desktop-pagination.html
           grep -q 'data-qa-active-feed="LATEST"' visual-qa/desktop-pagination.html
 
-          capture mobile-my-ballots 375 812 auth-mine 1
+          capture mobile-my-ballots 390 844 auth-mine 1
           grep -q 'data-qa-voter="true"' visual-qa/mobile-my-ballots.html
           grep -q 'data-qa-active-feed="MY BALLOTS"' visual-qa/mobile-my-ballots.html
           grep -q 'Should public software projects publish' visual-qa/mobile-my-ballots.html
+
+          # Registration and create-ballot actions must remain distinct.
+          capture guest-register-dialog 390 844 guest-register-dialog
+          grep -q 'data-qa-auth-dialog="true"' visual-qa/guest-register-dialog.html
+          grep -q 'data-qa-auth-mode="register"' visual-qa/guest-register-dialog.html
+          grep -q 'data-qa-auth-submit="CREATE ACCOUNT"' visual-qa/guest-register-dialog.html
+          grep -q 'data-qa-create-dialog="false"' visual-qa/guest-register-dialog.html
+          grep -q 'data-qa-focus-inside-dialog="true"' visual-qa/guest-register-dialog.html
+          grep -q 'data-qa-touch-violations="0"' visual-qa/guest-register-dialog.html
+
+          capture guest-create-auth 390 844 guest-create-auth
+          grep -q 'data-qa-create-label="CREATE BALLOT"' visual-qa/guest-create-auth.html
+          grep -q 'data-qa-auth-dialog="true"' visual-qa/guest-create-auth.html
+          grep -q 'data-qa-auth-mode="login"' visual-qa/guest-create-auth.html
+          grep -q 'data-qa-auth-submit="SIGN IN"' visual-qa/guest-create-auth.html
+          grep -q 'data-qa-create-dialog="false"' visual-qa/guest-create-auth.html
+          grep -q 'data-qa-focus-inside-dialog="true"' visual-qa/guest-create-auth.html
+          grep -q 'data-qa-touch-violations="0"' visual-qa/guest-create-auth.html
+
+          capture guest-register-complete 390 844 guest-register-complete
+          grep -q 'data-qa-voter-after-auth="true"' visual-qa/guest-register-complete.html
+          grep -q 'data-qa-auth-dialog="false"' visual-qa/guest-register-complete.html
+          grep -q 'data-qa-create-dialog="false"' visual-qa/guest-register-complete.html
+
+          capture guest-create-resume 390 844 guest-create-resume
+          grep -q 'data-qa-voter-after-auth="true"' visual-qa/guest-create-resume.html
+          grep -q 'data-qa-auth-dialog="false"' visual-qa/guest-create-resume.html
+          grep -q 'data-qa-create-dialog="true"' visual-qa/guest-create-resume.html
+          grep -q 'data-qa-submit-ballot="SUBMIT BALLOT"' visual-qa/guest-create-resume.html
+          grep -q 'data-qa-focus-inside-dialog="true"' visual-qa/guest-create-resume.html
+          grep -q 'data-qa-touch-violations="0"' visual-qa/guest-create-resume.html
+
+          capture reduced-motion 375 812 reduced-motion 3 --force-prefers-reduced-motion=reduce
+          grep -q 'data-qa-reduced-motion="true"' visual-qa/reduced-motion.html
+          grep -q 'data-qa-reduced-scroll="auto"' visual-qa/reduced-motion.html
       - name: Upload visual QA evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -179,3 +233,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build production image
         run: docker build --tag vote-system:ci .
+      - name: Run production runtime smoke
+        run: bash scripts/ci/runtime-smoke.sh
+      - name: Upload runtime diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-runtime-smoke
+          path: runtime-smoke/**
+          if-no-files-found: ignore
+          retention-days: 14
