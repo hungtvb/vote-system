@@ -23,16 +23,17 @@ public class TokenService {
 
     public String issue(AuthenticatedUser user) {
         Instant now = Instant.now();
-        JwtClaimsSet claims = JwtClaimsSet.builder()
+        JwtClaimsSet.Builder claims = JwtClaimsSet.builder()
                 .issuer(properties.issuer())
                 .issuedAt(now)
                 .expiresAt(now.plus(properties.accessTokenTtl()))
                 .subject(user.id().toString())
-                .claim("email", user.email())
-                .claim("roles", List.of(user.role().name()))
-                .build();
+                .claim("roles", List.of(user.role().name()));
+        if (user.email() != null) {
+            claims.claim("email", user.email());
+        }
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
-        return jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
+        return jwtEncoder.encode(JwtEncoderParameters.from(header, claims.build())).getTokenValue();
     }
 
     public long expiresInSeconds() {
