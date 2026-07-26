@@ -18,6 +18,7 @@
   },
   "include": [
     "src/shared/api/**/*.ts",
+    "src/shared/auth/**/*.ts",
     "src/shared/ballot/**/*.ts"
   ],
   "exclude": [
