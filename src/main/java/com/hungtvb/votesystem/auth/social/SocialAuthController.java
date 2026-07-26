@@ -1,5 +1,6 @@
 package com.hungtvb.votesystem.auth.social;
 
+import com.hungtvb.votesystem.auth.social.dto.SocialProvidersResponse;
 import com.hungtvb.votesystem.auth.social.dto.SocialStartRequest;
 import com.hungtvb.votesystem.auth.social.dto.SocialStartResponse;
 import com.hungtvb.votesystem.common.error.ResourceNotFoundException;
@@ -8,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -16,6 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -25,6 +29,16 @@ public class SocialAuthController {
 
     public SocialAuthController(ClientRegistrationRepository clientRegistrationRepository) {
         this.clientRegistrationRepository = clientRegistrationRepository;
+    }
+
+    @GetMapping("/providers")
+    SocialProvidersResponse providers() {
+        List<String> enabled = Arrays.stream(SocialProvider.values())
+                .filter(provider -> clientRegistrationRepository
+                        .findByRegistrationId(provider.registrationId()) != null)
+                .map(SocialProvider::registrationId)
+                .toList();
+        return new SocialProvidersResponse(enabled);
     }
 
     @PostMapping("/{providerId}/start")
