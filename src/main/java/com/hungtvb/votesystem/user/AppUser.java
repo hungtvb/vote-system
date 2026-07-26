@@ -1,6 +1,16 @@
 package com.hungtvb.votesystem.user;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+
 import java.time.Instant;
 import java.util.UUID;
 
@@ -12,13 +22,13 @@ public class AppUser {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(nullable = false, length = 320, unique = true)
+    @Column(length = 320, unique = true)
     private String email;
 
     @Column(name = "display_name", nullable = false, length = 80)
     private String displayName;
 
-    @Column(name = "password_hash", nullable = false, length = 100)
+    @Column(name = "password_hash", length = 100)
     private String passwordHash;
 
     @Enumerated(EnumType.STRING)
@@ -47,6 +57,10 @@ public class AppUser {
 
     public static AppUser create(String email, String displayName, String passwordHash) {
         return new AppUser(email, displayName, passwordHash, Role.USER);
+    }
+
+    public static AppUser createSocial(String email, String displayName) {
+        return new AppUser(email, displayName, null, Role.USER);
     }
 
     @PrePersist
