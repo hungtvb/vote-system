@@ -21,6 +21,73 @@ The documentation routes are public. API operations that require authentication 
 
 The refresh token is stored in an `HttpOnly` cookie and is not entered into the Swagger authorization dialog.
 
+## Email/password authentication
+
+The existing authentication endpoints remain available regardless of social-provider configuration:
+
+```http
+POST /api/v1/auth/register
+POST /api/v1/auth/login
+POST /api/v1/auth/refresh
+POST /api/v1/auth/logout
+POST /api/v1/auth/logout-all
+```
+
+A successful login, registration, refresh, or social callback uses the same Vote System session contract: short-lived JWT access token plus rotated `HttpOnly` refresh cookie.
+
+## Google and GitHub social authentication
+
+Load the providers configured on the current backend:
+
+```http
+GET /api/v1/auth/social/providers
+```
+
+```json
+{
+  "providers": ["google", "github"]
+}
+```
+
+An installation without social credentials returns an empty array and continues to support email/password authentication.
+
+Start direct social authentication or the pending create-ballot flow:
+
+```http
+POST /api/v1/auth/social/google/start
+Content-Type: application/json
+
+{"intent":"authenticate"}
+```
+
+Allowed public intents are `authenticate` and `create-ballot`. The response contains a backend-generated authorization URL:
+
+```json
+{
+  "authorizationUrl": "https://api.example.com/oauth2/authorization/google"
+}
+```
+
+Authenticated account linking starts with:
+
+```http
+POST /api/v1/auth/social/github/link/start
+Authorization: Bearer <access-token>
+```
+
+The provider callback is handled by Spring Security at:
+
+```text
+/login/oauth2/code/google
+/login/oauth2/code/github
+```
+
+The callback never returns the Vote System access token, refresh token, provider token, authorization code, email, or provider subject in the redirect URL. It writes the Vote System refresh cookie and redirects to a fixed configured frontend URL with safe status parameters.
+
+Provider identities are keyed by `(provider, providerSubject)`. A verified Google email that matches an existing local account requires explicit authenticated linking; Vote System does not silently merge accounts by email. GitHub private/missing email is supported because the durable GitHub subject identifies the local user.
+
+Detailed provider setup, scopes, cookie settings, account-linking rules, callback behavior, and verification boundaries are documented in `docs/SOCIAL-LOGIN.md`.
+
 ## Voter identity
 
 Registration accepts an optional public `displayName` in addition to `email` and `password`. When it is omitted, the backend creates a privacy-safe pseudonym instead of deriving a public identity from the email address.
@@ -32,7 +99,7 @@ GET /api/v1/users/me
 Authorization: Bearer <access-token>
 ```
 
-The response contains the account email, public display name, initials, role, and account timestamps. Ballot feed/detail responses retain the top-level `authorId` for compatibility and also include a public `author` object with only `id`, `displayName`, and `initials`. Author email is never embedded in a public ballot response.
+The response contains optional account email, public display name, initials, role, linked social providers, and account timestamps. A social-only GitHub account may have `email: null`. Ballot feed/detail responses retain the top-level `authorId` for compatibility and also include a public `author` object with only `id`, `displayName`, and `initials`. Author email and linked providers are never embedded in a public ballot response.
 
 ## Ballot feeds, search, and filters
 
