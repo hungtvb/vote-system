@@ -19,7 +19,7 @@ export function CreateBallotDialog({ onClose, onCreate }: { onClose: () => void;
     try {
       await onCreate(title.trim(), content.trim());
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to file record.');
+      setError(caught instanceof Error ? caught.message : 'Unable to file ballot.');
     } finally {
       setBusy(false);
     }
@@ -27,17 +27,28 @@ export function CreateBallotDialog({ onClose, onCreate }: { onClose: () => void;
 
   return (
     <div className={styles.backdrop} onMouseDown={modal.onBackdropMouseDown}>
-      <section ref={modal.dialogRef} tabIndex={-1} className={`${styles.dialog} ${styles.createDialog}`} role="dialog" aria-modal="true" aria-labelledby="create-title" onKeyDown={modal.onDialogKeyDown}>
-        <p className={styles.formTab}>FORM-8A: SUBMISSION</p>
-        <h2 id="create-title">Official entry</h2>
+      <section
+        ref={modal.dialogRef}
+        tabIndex={-1}
+        className={`${styles.dialog} ${styles.createDialog}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-title"
+        onKeyDown={modal.onDialogKeyDown}
+        data-qa-create-dialog
+      >
+        <p className={styles.formTab}>FORM-8A: BALLOT SUBMISSION</p>
+        <h2 id="create-title">Create ballot</h2>
         <form onSubmit={submit}>
-          <label>TITLE OF ENTRY<input required autoFocus maxLength={200} value={title} onChange={event => setTitle(event.target.value)} /></label>
+          <label>BALLOT TITLE<input required autoFocus maxLength={200} value={title} onChange={event => setTitle(event.target.value)} /></label>
           <label>DETAILED STATEMENT<textarea required maxLength={20000} rows={10} value={content} onChange={event => setContent(event.target.value)} /></label>
           <small>{content.length} / 20,000</small>
           {error && <span className={styles.error} role="alert">{error}</span>}
           <div className={styles.formActions}>
             <button type="button" className={styles.textButton} onClick={onClose}>CANCEL</button>
-            <button className={styles.primaryButton} disabled={busy || !title.trim() || !content.trim()}>{busy ? 'FILING...' : 'SUBMIT RECORD'}</button>
+            <button className={styles.primaryButton} disabled={busy || !title.trim() || !content.trim()} data-qa-submit-ballot>
+              {busy ? 'SUBMITTING...' : 'SUBMIT BALLOT'}
+            </button>
           </div>
         </form>
       </section>
