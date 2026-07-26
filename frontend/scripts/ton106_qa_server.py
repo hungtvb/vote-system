@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 import mimetypes
 from http.server import ThreadingHTTPServer
 from urllib.parse import urlparse
@@ -34,7 +33,7 @@ EXTRA_QA_SCRIPT = r"""
   };
   const waitFor = (predicate, callback, attempt = 0) => {
     if (predicate()) return callback();
-    if (attempt >= 100) return record('timeout');
+    if (attempt >= 70) return record('timeout');
     setTimeout(() => waitFor(predicate, callback, attempt + 1), 80);
   };
   const keyTouchTargets = () => [...document.querySelectorAll(
@@ -82,7 +81,7 @@ EXTRA_QA_SCRIPT = r"""
   };
   const submitRegistration = () => {
     fillRegistration();
-    document.querySelector('[data-qa-auth-dialog] form')?.requestSubmit();
+    setTimeout(() => document.querySelector('[data-qa-auth-dialog] form')?.requestSubmit(), 80);
   };
   const start = () => {
     if (mode === 'reduced-motion') return setTimeout(() => record(), 250);
@@ -122,7 +121,10 @@ EXTRA_QA_SCRIPT = r"""
     );
   };
 
-  waitFor(() => Boolean(document.querySelector('[data-qa-create-ballot]')), start);
+  waitFor(
+    () => Boolean(document.querySelector('[data-qa-create-ballot]')),
+    () => setTimeout(start, 500)
+  );
 })();
 </script>
 """
