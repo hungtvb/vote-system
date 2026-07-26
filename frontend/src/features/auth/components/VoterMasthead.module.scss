@@ -46,10 +46,11 @@
 
 .search input {
   width: 100%;
+  min-height: 44px;
   border: 0;
   border-bottom: 2px solid var(--navy);
   border-radius: 0;
-  padding: 7px 0;
+  padding: 9px 0;
   background: transparent;
   color: var(--graphite);
 }
@@ -266,6 +267,35 @@
 
   .identityCopy span {
     display: none;
+  }
+}
+
+@media (max-width: 360px) {
+  .header {
+    align-items: center;
+  }
+
+  .actions:has(.guestActions) {
+    order: 2;
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    margin-left: 0;
+  }
+
+  .actions:has(.guestActions) .guestActions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .actions:has(.guestActions) .primaryButton,
+  .actions:has(.guestActions) .textButton {
+    width: 100%;
+    white-space: nowrap;
+  }
+
+  .search {
+    order: 3;
   }
 }
 

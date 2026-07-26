@@ -58,8 +58,8 @@ export function VoterMasthead({
           </div>
         )}
 
-        <button type="button" className={styles.primaryButton} onClick={onCreate}>
-          {authenticated ? 'CREATE BALLOT' : 'START A BALLOT'}
+        <button type="button" className={styles.primaryButton} onClick={onCreate} data-qa-create-ballot>
+          CREATE BALLOT
         </button>
 
         {authenticated && profile && (
