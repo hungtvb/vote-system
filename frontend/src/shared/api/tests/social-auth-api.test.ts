@@ -3,6 +3,21 @@ import test from 'node:test';
 
 import { createSocialAuthApi } from '../social-auth-api';
 
+test('provider discovery is public and returns backend-owned availability', async () => {
+  const calls: Array<{ path: string; token?: string }> = [];
+  const api = createSocialAuthApi(async <T>(path: string, _options?: RequestInit, token?: string) => {
+    calls.push({ path, token });
+    return { providers: ['google', 'github'] } as T;
+  });
+
+  const response = await api.providers();
+  assert.deepEqual(response.providers, ['google', 'github']);
+  assert.deepEqual(calls[0], {
+    path: '/api/v1/auth/social/providers',
+    token: undefined
+  });
+});
+
 test('social sign-in sends only provider path and allowlisted intent', async () => {
   const calls: Array<{ path: string; options?: RequestInit; token?: string }> = [];
   const api = createSocialAuthApi(async <T>(path: string, options?: RequestInit, token?: string) => {
