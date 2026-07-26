@@ -49,7 +49,7 @@ public class AuthService {
         AppUser saved = userRepository.saveAndFlush(
                 AppUser.create(email, request.displayName(), passwordEncoder.encode(request.password()))
         );
-        return issueSession(AuthenticatedUser.from(saved));
+        return issueSession(saved);
     }
 
     @Transactional
@@ -70,6 +70,10 @@ public class AuthService {
 
     public int logoutAll(UUID userId) {
         return refreshSessionService.revokeAll(userId);
+    }
+
+    public IssuedAuthSession issueSession(AppUser user) {
+        return issueSession(AuthenticatedUser.from(user));
     }
 
     private IssuedAuthSession issueSession(AuthenticatedUser user) {
