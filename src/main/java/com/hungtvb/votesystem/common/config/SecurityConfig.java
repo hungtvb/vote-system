@@ -1,5 +1,6 @@
 package com.hungtvb.votesystem.common.config;
 
+import com.hungtvb.votesystem.auth.social.DiscardingOAuth2AuthorizedClientRepository;
 import com.hungtvb.votesystem.auth.social.SocialAuthenticationFailureHandler;
 import com.hungtvb.votesystem.auth.social.SocialAuthenticationSuccessHandler;
 import com.hungtvb.votesystem.ratelimit.RateLimitFilter;
@@ -58,7 +59,8 @@ public class SecurityConfig {
     SecurityFilterChain securityFilterChain(HttpSecurity http,
                                             RateLimitFilter rateLimitFilter,
                                             SocialAuthenticationSuccessHandler socialSuccessHandler,
-                                            SocialAuthenticationFailureHandler socialFailureHandler) throws Exception {
+                                            SocialAuthenticationFailureHandler socialFailureHandler,
+                                            DiscardingOAuth2AuthorizedClientRepository authorizedClientRepository) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
@@ -82,6 +84,7 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2Login(oauth2 -> oauth2
+                        .authorizedClientRepository(authorizedClientRepository)
                         .successHandler(socialSuccessHandler)
                         .failureHandler(socialFailureHandler))
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
