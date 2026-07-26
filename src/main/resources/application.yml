@@ -31,6 +31,14 @@ server:
   port: ${PORT:8080}
   shutdown: graceful
   forward-headers-strategy: framework
+  servlet:
+    session:
+      timeout: ${OAUTH_SESSION_TIMEOUT:10m}
+      cookie:
+        name: ${OAUTH_SESSION_COOKIE_NAME:vote_oauth}
+        http-only: true
+        secure: ${OAUTH_SESSION_COOKIE_SECURE:false}
+        same-site: ${OAUTH_SESSION_COOKIE_SAME_SITE:Lax}
 
 management:
   endpoints:
@@ -51,6 +59,15 @@ app:
   vote-stream:
     heartbeat-ms: ${VOTE_STREAM_HEARTBEAT_MS:15000}
     timeout-ms: ${VOTE_STREAM_TIMEOUT_MS:1800000}
+  social-login:
+    success-url: ${SOCIAL_LOGIN_SUCCESS_URL:/}
+    failure-url: ${SOCIAL_LOGIN_FAILURE_URL:/}
+    google:
+      client-id: ${GOOGLE_CLIENT_ID:}
+      client-secret: ${GOOGLE_CLIENT_SECRET:}
+    github:
+      client-id: ${GITHUB_CLIENT_ID:}
+      client-secret: ${GITHUB_CLIENT_SECRET:}
   cache:
     default-ttl: ${CACHE_DEFAULT_TTL:PT30S}
   rate-limit:
