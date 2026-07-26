@@ -82,6 +82,9 @@ app:
     refresh:
       limit: ${RATE_LIMIT_REFRESH_LIMIT:20}
       window: ${RATE_LIMIT_REFRESH_WINDOW:PT1M}
+    social-start:
+      limit: ${RATE_LIMIT_SOCIAL_START_LIMIT:20}
+      window: ${RATE_LIMIT_SOCIAL_START_WINDOW:PT1M}
     create-post:
       limit: ${RATE_LIMIT_CREATE_POST_LIMIT:10}
       window: ${RATE_LIMIT_CREATE_POST_WINDOW:PT1H}
