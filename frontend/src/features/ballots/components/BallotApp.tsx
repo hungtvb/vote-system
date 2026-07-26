@@ -6,6 +6,7 @@ import { VoterMasthead } from '@/features/auth/components/VoterMasthead';
 import { useSession } from '@/features/auth/hooks/useSession';
 import { useBallotVoteStream } from '@/features/ballots/hooks/useBallotVoteStream';
 import { ballotApi, type BallotListParams } from '@/shared/api/ballot-api';
+import { socialAuthApi, type SocialProviderId } from '@/shared/api/social-auth-api';
 import { ApiError } from '@/shared/api/transport';
 import type { Ballot, BallotStatus, BallotVoteUpdate, FeedType, VoteType } from '@/shared/api/types';
 import {
@@ -16,6 +17,12 @@ import {
   type AuthIntent,
   type AuthMode
 } from '@/shared/auth/auth-intent';
+import {
+  parseSocialCallback,
+  socialCallbackMessage,
+  stripSocialCallback,
+  type SocialCallback
+} from '@/shared/auth/social-callback';
 import {
   applyOptimisticVote,
   applyStreamUpdate,
@@ -50,6 +57,8 @@ export function BallotApp() {
   const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set());
   const [message, setMessage] = useState('');
   const [authWorkflow, setAuthWorkflow] = useState(CLOSED_AUTH_WORKFLOW);
+  const [socialCallback, setSocialCallback] = useState<SocialCallback | null>(null);
+  const [linkingProvider, setLinkingProvider] = useState<SocialProviderId | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Ballot | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -67,6 +76,31 @@ export function BallotApp() {
   const openAuth = useCallback((mode: AuthMode, intent: AuthIntent = 'authenticate') => {
     setAuthWorkflow(beginAuth(mode, intent));
   }, []);
+
+  useEffect(() => {
+    const callback = parseSocialCallback(window.location.search);
+    if (!callback) return;
+    setSocialCallback(callback);
+    window.history.replaceState({}, '', stripSocialCallback(new URL(window.location.href)));
+    if (callback.status === 'error') {
+      setMessage(socialCallbackMessage(callback));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!socialCallback || socialCallback.status === 'error' || restoring) return;
+    if (!session || !profile) {
+      setMessage('Social authentication completed, but the Vote System session could not be restored.');
+      setSocialCallback(null);
+      return;
+    }
+
+    setMessage(socialCallbackMessage(socialCallback));
+    if (socialCallback.status === 'success' && socialCallback.intent === 'create-ballot') {
+      setCreateOpen(true);
+    }
+    setSocialCallback(null);
+  }, [profile, restoring, session, socialCallback]);
 
   useEffect(() => {
     if (!restoring && feed === 'MINE' && !session) setFeed('LATEST');
@@ -121,6 +155,19 @@ export function BallotApp() {
       if (busy) next.add(id); else next.delete(id);
       return next;
     });
+  }
+
+  async function linkProvider(provider: SocialProviderId) {
+    if (!session || linkingProvider) return;
+    setLinkingProvider(provider);
+    setMessage('');
+    try {
+      const response = await runAuthorized(active => socialAuthApi.startLink(provider, active.accessToken));
+      window.location.assign(response.authorizationUrl);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to start account linking.');
+      setLinkingProvider(null);
+    }
   }
 
   async function vote(ballot: Ballot, type: VoteType) {
@@ -221,10 +268,12 @@ export function BallotApp() {
         session={session}
         profile={profile}
         restoring={restoring}
+        linkingProvider={linkingProvider}
         onQueryChange={setQueryInput}
         onLogin={() => openAuth('login')}
         onRegister={() => openAuth('register')}
         onCreate={() => session ? setCreateOpen(true) : openAuth('login', 'create-ballot')}
+        onLinkProvider={provider => void linkProvider(provider)}
         onLogout={() => void logout()}
         onLogoutAll={() => void logoutAll()}
       />
@@ -285,6 +334,7 @@ export function BallotApp() {
       {authWorkflow.open && (
         <AuthDialog
           initialMode={authWorkflow.mode}
+          intent={authWorkflow.intent}
           onClose={() => setAuthWorkflow(cancelAuth())}
           onAuthenticated={async next => {
             await saveSession(next);
