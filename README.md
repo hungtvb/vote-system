@@ -1,6 +1,44 @@
 # Vote System
 
-A production-oriented vote platform built as a **modular monolith**. Domain boundaries keep auth, posts, and votes easy to extract into separate services later without rewriting the whole application.
+A production-oriented voting platform built as a **modular monolith** with a Ballot Edition user experience. PostgreSQL remains the source of truth, while Redis provides rate limiting and ranked feeds. The public frontend is built with Next.js and deployed separately from the Spring Boot API.
+
+## Production
+
+```text
+https://app.ballotbox.io.vn  -> Vercel / Next.js frontend
+https://api.ballotbox.io.vn  -> Railway / Spring Boot backend
+PostgreSQL                   -> Supabase Session Pooler
+Redis                        -> managed Redis
+DNS/TLS                      -> Cloudflare + platform-managed certificates
+```
+
+Deployment details: [`docs/DEPLOY-VERCEL-RAILWAY.md`](docs/DEPLOY-VERCEL-RAILWAY.md).
+
+## Architecture
+
+```text
+Browser
+├── Next.js 16 App Router + React 19
+│   ├── Ballot Edition UI
+│   ├── typed API modules
+│   ├── in-memory access token
+│   ├── optimistic voting
+│   └── SSE reconciliation
+│
+└── Spring Boot 3.5 modular monolith
+    ├── auth + social identity
+    ├── users
+    ├── ballots/posts
+    ├── votes + verdict aggregation
+    ├── Redis ranking
+    ├── Redis sliding-window rate limiting
+    ├── SSE vote streams
+    ├── observability
+    ├── PostgreSQL / Supabase
+    └── Redis
+```
+
+PostgreSQL owns durable account, session, ballot, and vote state. Redis is derived infrastructure: it can be rebuilt from PostgreSQL and ranked feeds degrade to latest-first database results when Redis is unavailable.
 
 ## Stack
 
@@ -8,207 +46,235 @@ A production-oriented vote platform built as a **modular monolith**. Domain boun
 
 - Java 21
 - Spring Boot 3.5.14
-- Spring Security + signed JWT bearer tokens
+- Spring Security
+- OAuth2 Resource Server and OAuth2 Client
+- signed JWT access tokens
+- rotating opaque refresh tokens in `HttpOnly` cookies
 - Spring Data JPA
-- Spring Data Redis + Spring Cache
 - PostgreSQL 17
-- Redis 7.4
-- Flyway
+- Spring Data Redis and Spring Cache
+- Flyway migrations
+- Micrometer and Spring Boot Actuator
+- springdoc OpenAPI
 - Testcontainers
 
 ### Frontend
 
-- React 19 + TypeScript
-- Vite
-- Responsive custom CSS
-- Optimistic voting with server reconciliation and rollback
+- Next.js 16 App Router
+- React 19
+- TypeScript 5.9
+- SCSS Modules and shared design tokens
+- Ballot Edition visual system
+- static export-compatible production build
+- dependency-light Node tests
+- deterministic headless visual and accessibility QA
 
 ## Current capabilities
 
-- Register and login with short-lived access tokens
-- Rotating refresh tokens in `HttpOnly`, path-scoped cookies
-- Refresh-token hashes stored in PostgreSQL; raw tokens are never persisted
-- Single-session logout, logout-all, expiry handling, and refresh-token replay detection
-- BCrypt password hashing and stateless JWT API authentication
-- Create, browse, search, paginate, edit, and delete posts
-- Ownership enforcement: only the author can update or delete a post
+### Authentication and identity
+
+- Email/password registration and login
+- Optional Google OpenID Connect and GitHub OAuth2 login
+- Explicit authenticated social-account linking
+- Provider discovery so disabled social providers do not render dead actions
+- 15-minute JWT access tokens held in browser memory only
+- Rotating refresh tokens in path-scoped `HttpOnly` cookies
+- SHA-256 refresh-token hashes stored in PostgreSQL; raw refresh tokens are never persisted
+- Logout, logout-all, expiry handling, and refresh-token replay detection
+- `GET /api/v1/users/me` Voter ID profile with display name, initials, role, optional email, and linked providers
+- Privacy-safe public author summaries; public ballot responses never expose account email
+
+### Ballots and voting
+
+- Create, browse, search, paginate, edit, close, and delete owned ballots
+- Category, closing time, verdict threshold, and OPEN/CLOSED lifecycle
+- Feed modes: `LATEST`, `HOT`, `TOP_DAY`, `TOP_WEEK`, and authenticated `MINE`
+- Server-owned filtering by query, category, and status across the complete dataset
 - Upvote, downvote, change vote, and remove vote
-- Current user's vote returned with each post without N+1 queries
-- One vote per user/post enforced by a database constraint
-- Atomic post score updates
-- Deleting a post removes its votes in the same transaction
-- Redis connection, JSON serialization, shared cache manager, and Actuator health integration
-- Loading, empty, error, ownership, and responsive UI states
+- One vote per user/ballot enforced by the database
+- Atomic up/down/total counts and score updates
+- Server-side projected/final verdict calculation
+- Current user's vote returned without N+1 queries
+- Optimistic UI updates with authoritative REST reconciliation and rollback protection
+
+### Redis and realtime
+
+- Atomic sliding-window Redis rate limits with `429` and `Retry-After`
+- Per-IP limits for login, registration, refresh, and social-login start
+- Per-user limits for ballot creation and voting
+- Redis sorted-set ranking for HOT, TOP_DAY, and TOP_WEEK
+- Automatic ranking rebuild from PostgreSQL when a current ranking key is empty
+- Database fallback when Redis is unavailable
+- Public per-ballot SSE stream for authoritative vote aggregates
+- Initial snapshot, heartbeat, reconnect hint, duplicate/regressive update suppression, and emitter cleanup
+- Ranking and SSE post-commit work runs through separate bounded FIFO executors so normal Redis/network latency does not remain on the vote HTTP request thread
+
+### Reliability and observability
+
+- Flyway-managed schema with Hibernate `validate`
 - PostgreSQL and Redis integration tests through Testcontainers
-- Backend, frontend, and production-container CI builds
+- Backend, frontend, visual QA, and production-container CI gates
+- Production runtime smoke covering auth, ballot persistence/search, vote aggregation, refresh rotation, Redis, and SSE
+- Request correlation through `X-Request-ID`
+- Route-template HTTP latency metrics with API/stream/actuator classification
+- Auth restore, rate-limit, vote transaction, post-commit, and SSE connection metrics
+- Bounded metric tags: no user IDs, ballot IDs, emails, cookies, or tokens in labels
 
 ## Run locally
 
-Requirements: Java 21, Maven 3.6.3+, Node.js 22+, npm, and Docker.
+Requirements:
 
-Start PostgreSQL, Redis, and the API:
+- Java 21
+- Maven 3.6.3+
+- Node.js 22+
+- npm
+- Docker
+
+Copy backend environment defaults when needed:
+
+```bash
+cp .env.example .env
+```
+
+Create `frontend/.env.local` for local API calls:
+
+```env
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
+```
+
+Start PostgreSQL and Redis:
 
 ```bash
 docker compose up -d postgres redis
+```
+
+Start the backend:
+
+```bash
 mvn spring-boot:run
 ```
 
-In another terminal, start the frontend:
+Start the frontend in another terminal:
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-Open `http://localhost:5173`. Vite proxies `/api` and `/actuator` to the Spring Boot server at `http://localhost:8080`.
+Open:
 
-Health check:
-
-```bash
-curl http://localhost:8080/actuator/health
+```text
+Frontend:   http://localhost:3000
+Backend:    http://localhost:8080
+Swagger UI: http://localhost:8080/swagger-ui.html
+Health:     http://localhost:8080/actuator/health
 ```
 
-With health details enabled, both `db` and `redis` should report `UP`.
+The local frontend calls `http://localhost:8080` through `NEXT_PUBLIC_API_BASE_URL`. Backend CORS defaults to `http://localhost:3000`, and credentialed requests use `credentials: include` for the refresh cookie.
 
-## Redis foundation
+## Test and build
 
-Redis is configured as shared infrastructure but is not yet on the critical business path. The application exposes:
+Backend:
 
-- `RedisTemplate<String, Object>` with string keys and JSON values
-- a transaction-aware `RedisCacheManager`
-- a default cache TTL of 30 seconds
-- connection and command timeouts of 2 seconds
-- Redis Actuator health checks
+```bash
+mvn verify
+```
 
-Local configuration uses `redis://localhost:6379`. Override it with `REDIS_URL`. Render keeps the Redis health indicator disabled until a managed Redis instance is attached, so the existing deployment does not fail before rate limiting and ranking start depending on Redis.
+Frontend:
+
+```bash
+cd frontend
+npm ci
+npm test
+npm run build
+```
+
+Combined production image used by CI/runtime smoke:
+
+```bash
+docker build -t vote-system .
+```
+
+Backend-only Railway image:
+
+```bash
+docker build -f Dockerfile.railway -t vote-system-api .
+```
+
+## API overview
+
+```http
+POST   /api/v1/auth/register
+POST   /api/v1/auth/login
+POST   /api/v1/auth/refresh
+POST   /api/v1/auth/logout
+POST   /api/v1/auth/logout-all
+
+GET    /api/v1/auth/social/providers
+POST   /api/v1/auth/social/{provider}/start
+POST   /api/v1/auth/social/{provider}/link/start
+
+GET    /api/v1/users/me
+
+GET    /api/v1/posts
+POST   /api/v1/posts
+GET    /api/v1/posts/{postId}
+PUT    /api/v1/posts/{postId}
+POST   /api/v1/posts/{postId}/close
+DELETE /api/v1/posts/{postId}
+
+PUT    /api/v1/posts/{postId}/vote
+DELETE /api/v1/posts/{postId}/vote
+GET    /api/v1/posts/{postId}/events
+```
+
+Generated API documentation and detailed contracts: [`docs/API.md`](docs/API.md).
 
 ## Authentication lifecycle
 
-The access token is a signed JWT with a default lifetime of 15 minutes. The refresh token is an opaque random value stored only in an `HttpOnly` cookie. PostgreSQL stores its SHA-256 hash and session metadata.
+The access token is a signed JWT with a default lifetime of 15 minutes. The refresh token is an opaque random value stored only in an `HttpOnly` cookie. PostgreSQL stores its hash and session metadata.
 
-Every successful refresh rotates the token. Reusing a rotated token is treated as possible token theft and revokes every active refresh session for that user. Revoking a refresh session does not perform a database lookup for every API request; an already-issued access token remains valid until its short expiry.
+Every successful refresh rotates the token. Reusing a rotated token is treated as possible token theft and revokes all active refresh sessions for that user. Revoking a refresh session does not query the database for every bearer-authenticated request; an already-issued access token remains valid until its short expiry.
 
-Register and save the refresh cookie:
+The public feed does not wait for session restore. On startup, public LATEST/HOT/TOP requests begin immediately while refresh/profile restoration runs in parallel. `MINE` remains protected until a valid session exists, and public results are reconciled after identity restoration so `myVote` becomes authoritative without hiding the already-rendered feed.
 
-```bash
-curl -s http://localhost:8080/api/v1/auth/register \
-  -c cookies.txt \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"hung@example.com","password":"strong-password"}'
-```
+Detailed browser/session behavior: [`docs/FRONTEND-AUTH.md`](docs/FRONTEND-AUTH.md).
 
-Use the returned `accessToken`:
+## Rate-limit defaults
 
-```bash
-export TOKEN='<accessToken>'
-```
+| Operation | Default |
+|---|---:|
+| Login | 5 / minute / IP |
+| Register | 3 / hour / IP |
+| Refresh | 20 / minute / IP |
+| Social start | 20 / minute / IP |
+| Create ballot | 10 / hour / user |
+| Vote | 30 / minute / user |
 
-Rotate the refresh token and receive a new access token:
+Rate limiting is Redis-backed and fail-open by default for availability. Security-sensitive deployments can set `RATE_LIMIT_FAIL_OPEN=false` after validating Redis reliability.
 
-```bash
-curl -s http://localhost:8080/api/v1/auth/refresh \
-  -X POST \
-  -b cookies.txt \
-  -c cookies.txt
-```
+## Documentation
 
-Revoke the current refresh session and clear its cookie:
+- [`docs/README.md`](docs/README.md) — documentation index and current-state guide
+- [`docs/API.md`](docs/API.md) — API, filters, identity, social login, rate limits, SSE, and operational endpoints
+- [`docs/FRONTEND-AUTH.md`](docs/FRONTEND-AUTH.md) — frontend token/session lifecycle
+- [`docs/SOCIAL-LOGIN.md`](docs/SOCIAL-LOGIN.md) — Google/GitHub configuration and linking rules
+- [`docs/REALTIME-VOTES.md`](docs/REALTIME-VOTES.md) — SSE contract and async delivery model
+- [`docs/DEPLOY-VERCEL-RAILWAY.md`](docs/DEPLOY-VERCEL-RAILWAY.md) — current production deployment
+- [`DESIGN.md`](DESIGN.md) — Ballot Edition UI specification
 
-```bash
-curl -i http://localhost:8080/api/v1/auth/logout \
-  -X POST \
-  -b cookies.txt \
-  -c cookies.txt
-```
+## Roadmap
 
-Revoke every refresh session belonging to the current user:
+Completed foundations include Next.js migration, Ballot Edition, server-owned feeds, Redis rate limiting/ranking, realtime vote updates, social login, split deployment, runtime QA, and initial performance instrumentation.
 
-```bash
-curl -i http://localhost:8080/api/v1/auth/logout-all \
-  -X POST \
-  -H "Authorization: Bearer $TOKEN"
-```
+The active planned sequence in Linear is:
 
-## Post and vote API walkthrough
+1. `TON-116` — Vietnamese/English internationalization foundation
+2. `TON-108` — editable profile and Ballot Mark avatar presets
+3. `TON-109` — admin roles, audit log, moderation, and operational dashboard
+4. `TON-110` / `TON-111` — comments, replies, voting, and moderation
+5. `TON-112` / `TON-113` / `TON-114` — notification persistence, transactional outbox, and realtime bell UI
+6. `TON-115` — constrained one-to-one text messaging after moderation and event reliability are stable
 
-Create a post:
-
-```bash
-curl -s http://localhost:8080/api/v1/posts \
-  -X POST \
-  -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"title":"First post","content":"Production vote system"}'
-```
-
-Update an owned post:
-
-```bash
-curl -s http://localhost:8080/api/v1/posts/<postId> \
-  -X PUT \
-  -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"title":"Updated title","content":"Updated content"}'
-```
-
-Delete an owned post:
-
-```bash
-curl -i http://localhost:8080/api/v1/posts/<postId> \
-  -X DELETE \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Vote:
-
-```bash
-curl -s http://localhost:8080/api/v1/posts/<postId>/vote \
-  -X PUT \
-  -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"type":"UP"}'
-```
-
-Remove vote:
-
-```bash
-curl -s http://localhost:8080/api/v1/posts/<postId>/vote \
-  -X DELETE \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-## Deploy with Supabase and Render
-
-The production image builds the React application first, copies it into Spring Boot's static resources, and serves the UI and API from one Render web service. This avoids cross-origin configuration and keeps the first deployment inexpensive.
-
-The current integration uses Supabase as managed PostgreSQL. Authentication, refresh sessions, and JWT issuance belong to the Spring Boot application; Supabase Auth and Realtime are not enabled for this version.
-
-1. Open the Supabase `vote-system` project (`kapfoxuuuprmuersmoqf`) and choose **Connect**.
-2. Copy the **Session pooler** connection details and configure these Render secrets:
-
-```text
-DB_URL=jdbc:postgresql://<pooler-host>:5432/postgres?sslmode=require
-DB_USERNAME=<pooler-username>
-DB_PASSWORD=<database-password>
-```
-
-3. Create a Render Blueprint from `render.yaml`.
-4. Supply the database secrets when Render prompts for values. `JWT_SECRET` is generated by Render and `REFRESH_COOKIE_SECURE=true` is configured by the Blueprint.
-5. On startup, Flyway creates or upgrades the application tables. Render verifies the deployment through `/actuator/health`.
-
-When a managed Redis instance is attached, set `REDIS_URL` and switch `REDIS_HEALTH_ENABLED=true`.
-
-Do not commit the Supabase database password, raw refresh tokens, Redis credentials, or complete connection strings to the repository.
-
-## Why one database now?
-
-The first version uses one PostgreSQL database because it keeps transactions, development, and deployment simple. Domain packages own their tables and avoid leaking repositories into other controllers. When a domain is extracted, its tables can be migrated to a service-owned database and communication can move to APIs or events.
-
-## Next milestones
-
-1. Sliding-window Redis rate limiting
-2. Redis hot ranking
-3. Outbox events
-4. WebSocket/SSE fan-out where realtime delivery is justified
-5. Metrics dashboards and load tests
+User-generated ballots, bios, comments, and messages will remain in the language entered by the author; system UI and machine-owned copy will support Vietnamese and English.

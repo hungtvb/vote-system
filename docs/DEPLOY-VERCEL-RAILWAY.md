@@ -1,12 +1,14 @@
 # Deploy frontend to Vercel and backend to Railway
 
+This is the active production topology for Vote System.
+
 ## Production architecture
 
 - Frontend: Vercel, built from `frontend/`
-- Backend: Railway, built from `Dockerfile.railway`
+- Backend: Railway, built from repository root with `Dockerfile.railway`
 - PostgreSQL: Supabase Session Pooler
-- Redis: managed Redis such as Upstash
-- DNS: Cloudflare
+- Redis: managed Redis
+- DNS/TLS: Cloudflare plus Vercel/Railway certificates
 
 Production domains:
 
@@ -15,13 +17,15 @@ https://app.ballotbox.io.vn -> Vercel
 https://api.ballotbox.io.vn -> Railway
 ```
 
-Both hosts are HTTPS subdomains of `ballotbox.io.vn`, so browser requests are cross-origin but same-site.
+Both hosts are HTTPS subdomains of `ballotbox.io.vn`. Browser requests are cross-origin but same-site, so `SameSite=Lax` cookies remain appropriate for the current topology.
+
+Render is not an active production target. The root `Dockerfile` remains available for combined-image CI/runtime smoke and optional single-service deployment, but production frontend and backend are split.
 
 ## 1. Railway backend
 
 Connect `hungtvb/vote-system` to Railway and deploy the repository root. Railway reads `railway.toml` and builds `Dockerfile.railway`.
 
-Required variables:
+### Required variables
 
 ```text
 DB_URL=jdbc:postgresql://<supabase-session-pooler-host>:5432/postgres?sslmode=require
@@ -36,15 +40,63 @@ REFRESH_COOKIE_SAME_SITE=Lax
 REDIS_HEALTH_ENABLED=true
 ```
 
-Do not set `PORT`; Railway provides it and Spring Boot reads the platform value.
+Do not set `PORT`; Railway supplies it and Spring Boot reads `${PORT}`.
 
-Health and API documentation:
+### Recommended runtime variables
+
+```text
+ACCESS_TOKEN_TTL=PT15M
+REFRESH_TOKEN_TTL=P30D
+REDIS_CONNECT_TIMEOUT=2s
+REDIS_COMMAND_TIMEOUT=2s
+CACHE_DEFAULT_TTL=PT30S
+VOTE_STREAM_HEARTBEAT_MS=15000
+VOTE_STREAM_TIMEOUT_MS=1800000
+VOTE_SIDE_EFFECT_QUEUE_CAPACITY=200
+VOTE_SIDE_EFFECT_SHUTDOWN_WAIT_SECONDS=10
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_FAIL_OPEN=true
+```
+
+The vote side-effect queue is bounded. After commit, ranking and SSE tasks are routed to separate ordered executors. Queue saturation may block enqueue briefly; normal Redis/SSE I/O does not remain on the vote request thread.
+
+### Optional social-login variables
+
+Configure only providers that are enabled in production:
+
+```text
+GOOGLE_CLIENT_ID=<google-client-id>
+GOOGLE_CLIENT_SECRET=<google-client-secret>
+GITHUB_CLIENT_ID=<github-client-id>
+GITHUB_CLIENT_SECRET=<github-client-secret>
+SOCIAL_LOGIN_SUCCESS_URL=https://app.ballotbox.io.vn/
+SOCIAL_LOGIN_FAILURE_URL=https://app.ballotbox.io.vn/
+OAUTH_SESSION_TIMEOUT=10m
+OAUTH_SESSION_COOKIE_NAME=vote_oauth
+OAUTH_SESSION_COOKIE_SECURE=true
+OAUTH_SESSION_COOKIE_SAME_SITE=Lax
+```
+
+Provider callback URLs:
+
+```text
+https://api.ballotbox.io.vn/login/oauth2/code/google
+https://api.ballotbox.io.vn/login/oauth2/code/github
+```
+
+Do not configure wildcard callback URLs. Do not store provider access or refresh tokens in application configuration or persistence.
+
+Detailed provider rules: [`SOCIAL-LOGIN.md`](SOCIAL-LOGIN.md).
+
+### Health and API documentation
 
 ```text
 GET https://api.ballotbox.io.vn/actuator/health
 GET https://api.ballotbox.io.vn/v3/api-docs
 GET https://api.ballotbox.io.vn/swagger-ui.html
 ```
+
+Only health is public under Actuator security. Metrics endpoints require an authenticated request unless the security policy changes deliberately.
 
 ## 2. Vercel frontend
 
@@ -58,7 +110,7 @@ Build Command: npm run build
 Output Directory: .next
 ```
 
-The app uses Next.js `output: "export"`, but Vercel's Next.js builder still needs the framework build directory and routing manifests. The repository therefore overrides any project-level `out` setting with `outputDirectory: ".next"` in `frontend/vercel.json`. Using `out` causes `NEXT_NO_ROUTES_MANIFEST`.
+The application uses Next.js `output: "export"`, but Vercel's Next.js builder still needs the framework build directory and route manifests. `frontend/vercel.json` overrides stale project-level output settings with `outputDirectory: ".next"`. Using `out` causes `NEXT_NO_ROUTES_MANIFEST`.
 
 Production environment variable:
 
@@ -66,13 +118,13 @@ Production environment variable:
 NEXT_PUBLIC_API_BASE_URL=https://api.ballotbox.io.vn
 ```
 
-`NEXT_PUBLIC_API_BASE_URL` is embedded at build time, so redeploy after changing it.
+`NEXT_PUBLIC_API_BASE_URL` is embedded at build time. Redeploy the frontend after changing it.
 
-The frontend API transport sends credentialed requests. Do not use `*` for backend CORS when credentials are enabled.
+The frontend transport always uses `credentials: include`. The backend must return the explicit frontend origin and `Access-Control-Allow-Credentials: true`; do not use `*` for credentialed CORS.
 
 ## 3. DNS and TLS
 
-Cloudflare DNS records for `app` and `api` should initially remain `DNS only` while Vercel and Railway validate the domains and issue certificates.
+Cloudflare DNS records for `app` and `api` should remain `DNS only` while Vercel and Railway validate domains and issue certificates. Proxying can be enabled later only after verifying WebSocket/SSE and cache behavior.
 
 Always test the frontend through:
 
@@ -80,32 +132,104 @@ Always test the frontend through:
 https://app.ballotbox.io.vn
 ```
 
-Do not test production through `http://app.ballotbox.io.vn`; HTTP and HTTPS are different CORS origins, and secure refresh cookies are not sent over HTTP.
+Do not validate production through `http://app.ballotbox.io.vn`. HTTP and HTTPS are distinct CORS origins, and secure refresh/OAuth cookies are not sent over HTTP.
 
-## 4. Verification
+## 4. Deployment verification
 
-Backend:
+### Backend startup
 
-- `/actuator/health` returns `UP`
-- `/v3/api-docs` is reachable
-- Flyway completes against Supabase
-- Redis health is `UP`
+- Railway build uses `Dockerfile.railway`.
+- Flyway completes against Supabase.
+- Hibernate validation succeeds.
+- `/actuator/health` returns `UP`.
+- PostgreSQL and Redis health components report `UP`.
+- `/v3/api-docs` and Swagger UI are reachable.
 
-Frontend and authentication:
+### Frontend and core product
 
-- page loads from `https://app.ballotbox.io.vn`
-- registration and login succeed
-- refresh cookie is stored with `Secure` and `SameSite=Lax`
-- refreshing the page restores the session
-- create, search, vote, close and delete flows work
-- SSE vote updates connect to `https://api.ballotbox.io.vn`
-- logout and logout-all revoke sessions
+- `https://app.ballotbox.io.vn` returns the Ballot Edition UI with CSS/JS assets loaded.
+- Public LATEST/HOT/TOP feeds load before refresh-session restoration completes.
+- Registration and email/password login succeed.
+- Refresh cookie is `HttpOnly`, `Secure`, and `SameSite=Lax`.
+- A hard refresh restores the session.
+- Create, search, filter, vote, close, edit, and delete flows work.
+- `MINE` remains unavailable to guests and returns only the authenticated author's ballots.
+- Optimistic voting reconciles authoritative REST counts.
+- SSE updates converge across two browser tabs observing the same open ballot.
+- Logout and logout-all revoke refresh sessions.
 
-## 5. Preview deployments
+### Social login
+
+When provider credentials are configured:
+
+- provider discovery returns only enabled providers;
+- Google login completes with exact registered callback URL;
+- GitHub login works when provider email is private or missing;
+- verified-email collision requires explicit account linking;
+- callback URLs contain only safe status metadata;
+- provider cancel/failure does not clear an already-valid Vote System session;
+- linked provider appears in Voter ID.
+
+CI cannot perform live Google/GitHub token exchange because production provider secrets are intentionally absent. Run one manual end-to-end login and link smoke per provider after changing credentials or callback settings.
+
+## 5. Observability after deployment
+
+Use Railway logs and authenticated Actuator metrics to separate normal API latency from long-lived SSE connections.
+
+Important metrics:
+
+```text
+http.server.requests
+vote.http.request.duration
+vote.sse.connection.duration
+vote.sse.subscribers.active
+vote.auth.restore.total
+vote.auth.restore.stage
+vote.rate_limit.latency
+vote.operation.total
+vote.operation.stage
+vote.side_effect.execution
+vote.ranking.operations
+hikaricp.*
+```
+
+Useful completion-log fields:
+
+```text
+http_request_complete
+requestId=<safe-id>
+method=<HTTP method>
+route=<route template>
+status=<status>
+durationMs=<duration>
+async=<true|false>
+kind=<api|stream|actuator>
+outcome=<2xx|4xx|5xx|timeout|error>
+```
+
+SSE duration is recorded when the async connection actually completes, not when the controller returns. With low traffic, a long-lived stream can dominate aggregated platform percentiles; compare route-level API metrics before changing SQL, pool size, region, or compute tier.
+
+Logs and metric tags must never include user IDs, ballot IDs, email, cookies, provider tokens, refresh-token hashes, or raw access/refresh tokens.
+
+## 6. Preview deployments
 
 Vercel preview deployments use separate origins. Production should not allow arbitrary `*.vercel.app` origins.
 
 Use either:
 
-- a dedicated staging frontend/backend pair, or
-- an explicit allow-list containing only selected stable preview origins.
+- a dedicated staging frontend/backend pair; or
+- an explicit CORS allow-list containing only selected stable preview origins.
+
+Preview deployments that need OAuth require provider callback URLs registered specifically for the staging backend. Do not point production OAuth callbacks to ephemeral preview domains.
+
+## 7. Secrets
+
+Do not commit:
+
+- Supabase database passwords or complete connection strings;
+- Redis credentials;
+- `JWT_SECRET`;
+- Google/GitHub client secrets;
+- raw access/refresh tokens;
+- provider tokens;
+- production cookie values or captured session headers.
