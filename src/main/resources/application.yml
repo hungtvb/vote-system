@@ -22,6 +22,7 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+        generate_statistics: true
   flyway:
     enabled: true
   jackson:
@@ -39,6 +40,16 @@ server:
         http-only: true
         secure: ${OAUTH_SESSION_COOKIE_SECURE:false}
         same-site: ${OAUTH_SESSION_COOKIE_SAME_SITE:Lax}
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: DEBUG
+    org.springframework.web.servlet.mvc.method.annotation.RequestResponseBodyMethodProcessor: DEBUG
+    org.hibernate.engine.transaction.internal.TransactionImpl: DEBUG
+    org.hibernate.stat: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
 
 management:
   endpoints:
@@ -112,3 +123,4 @@ app:
       cookie-name: ${REFRESH_COOKIE_NAME:vote_refresh}
       secure: ${REFRESH_COOKIE_SECURE:false}
       same-site: ${REFRESH_COOKIE_SAME_SITE:Lax}
+
