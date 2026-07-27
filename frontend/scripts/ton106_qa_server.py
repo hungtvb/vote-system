@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import mimetypes
 from http.server import ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import visual_qa_server as base
 
@@ -14,6 +14,14 @@ EXTRA_QA_SCRIPT = r"""
 (() => {
   const mode = new URLSearchParams(location.search).get('qa') || 'feed';
   const supported = new Set([
+    'feed',
+    'detail',
+    'auth',
+    'auth-menu',
+    'auth-stamp',
+    'server-search',
+    'pagination',
+    'auth-mine',
     'guest-register-dialog',
     'guest-create-auth',
     'guest-register-complete',
@@ -22,7 +30,10 @@ EXTRA_QA_SCRIPT = r"""
     'auth-social-create',
     'auth-social-error',
     'auth-social-linked',
-    'reduced-motion'
+    'reduced-motion',
+    'auth-owner-actions',
+    'auth-delete-modal',
+    'auth-negative-score'
   ]);
   if (!supported.has(mode)) return;
 
@@ -41,26 +52,62 @@ EXTRA_QA_SCRIPT = r"""
     setTimeout(() => waitFor(predicate, callback, attempt + 1), 80);
   };
   const keyTouchTargets = () => [...document.querySelectorAll(
-    '[data-qa-create-ballot], [data-qa-auth-submit], [data-qa-submit-ballot], [data-qa-auth-tab], [data-qa-social-provider]'
+    '[data-qa-create-ballot], [data-qa-auth-submit], [data-qa-submit-ballot], [data-qa-auth-tab], [data-qa-social-provider], [data-qa-owner-action], [data-qa-confirm-action]'
   )].filter(element => {
     const rect = element.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
   });
+  const textWraps = element => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    return range.getClientRects().length > 1;
+  };
   const record = (status = 'complete') => {
     const dialog = document.querySelector('[role="dialog"]');
     const authDialog = document.querySelector('[data-qa-auth-dialog]');
     const createDialog = document.querySelector('[data-qa-create-dialog]');
+    const confirmDialog = document.querySelector('[data-qa-confirm-dialog]');
     const authSubmit = document.querySelector('[data-qa-auth-submit]');
     const submitBallot = document.querySelector('[data-qa-submit-ballot]');
     const createButton = document.querySelector('[data-qa-create-ballot]');
     const socialButtons = [...document.querySelectorAll('[data-qa-social-provider]')];
+    const ownerActions = [...document.querySelectorAll('[data-qa-owner-action]')];
+    const ownerWrapViolations = ownerActions.filter(textWraps);
+    const voteScores = [...document.querySelectorAll('[data-qa-vote-score]')]
+      .map(element => element.getAttribute('data-qa-vote-score') || '');
+    const scoreFormatViolations = voteScores.filter(score => !/^[+-]\d{4,}$/.test(score));
+    const tabs = document.querySelector('[data-qa-feed-tabs]');
+    const nestedVerticalOverflow = Boolean(tabs && tabs.scrollHeight > tabs.clientHeight + 1);
+    const documentHorizontalOverflow = root.scrollWidth > root.clientWidth;
     const targets = keyTouchTargets();
     const violations = targets.filter(element => {
       const rect = element.getBoundingClientRect();
       return rect.height < 44 || rect.width < 44;
     });
+    const confirmLabels = confirmDialog?.textContent?.replace(/\s+/g, ' ').trim() || '';
+    const expectsConfirm = mode === 'auth-mine' || mode === 'auth-delete-modal';
+    const confirmViolation = expectsConfirm && (
+      !confirmDialog
+      || !confirmLabels.includes('CANCEL')
+      || !confirmLabels.includes('DELETE BALLOT')
+      || !confirmDialog.contains(document.activeElement)
+    );
 
     root.dataset.qaScenario = status;
+    root.dataset.qaOverflow = String(
+      documentHorizontalOverflow
+      || nestedVerticalOverflow
+      || ownerWrapViolations.length > 0
+      || scoreFormatViolations.length > 0
+      || confirmViolation
+    );
+    root.dataset.qaFeedTabsVerticalOverflow = String(nestedVerticalOverflow);
+    root.dataset.qaOwnerActionWrapViolations = String(ownerWrapViolations.length);
+    root.dataset.qaOwnerActions = String(ownerActions.length);
+    root.dataset.qaConfirmDialog = String(Boolean(confirmDialog));
+    root.dataset.qaConfirmLabels = confirmLabels;
+    root.dataset.qaVoteScores = voteScores.join(',');
+    root.dataset.qaVoteScoreFormatViolations = String(scoreFormatViolations.length);
     root.dataset.qaAuthDialog = String(Boolean(authDialog));
     root.dataset.qaAuthMode = authDialog?.getAttribute('data-auth-mode') || '';
     root.dataset.qaAuthIntent = authDialog?.getAttribute('data-auth-intent') || '';
@@ -97,6 +144,37 @@ EXTRA_QA_SCRIPT = r"""
   const start = () => {
     if (mode === 'reduced-motion') return setTimeout(() => record(), 250);
 
+    if (mode === 'auth-owner-actions' || mode === 'auth-negative-score') {
+      return waitFor(
+        () => document.querySelectorAll('[data-qa-owner-action]').length === 3,
+        () => setTimeout(() => record(), 120)
+      );
+    }
+    if (mode === 'auth-delete-modal') {
+      return waitFor(
+        () => Boolean(document.querySelector('[data-qa-owner-action="delete"]')),
+        () => {
+          document.querySelector('[data-qa-owner-action="delete"]')?.click();
+          waitFor(
+            () => Boolean(document.querySelector('[data-qa-confirm-dialog]')),
+            () => setTimeout(() => record(), 120)
+          );
+        }
+      );
+    }
+    if (mode === 'auth-mine') {
+      return waitFor(
+        () => document.querySelector('[data-qa-active-feed-tab="true"]')?.textContent?.trim() === 'MY BALLOTS'
+          && Boolean(document.querySelector('[data-qa-owner-action="delete"]')),
+        () => {
+          document.querySelector('[data-qa-owner-action="delete"]')?.click();
+          waitFor(
+            () => Boolean(document.querySelector('[data-qa-confirm-dialog]')),
+            () => setTimeout(() => record(), 120)
+          );
+        }
+      );
+    }
     if (mode === 'auth-social-create') {
       return waitFor(
         () => Boolean(document.querySelector('[data-qa-create-dialog]')) && Boolean(document.querySelector('[data-qa-voter-id]')),
@@ -139,24 +217,28 @@ EXTRA_QA_SCRIPT = r"""
       );
     }
 
-    document.querySelector('[data-qa-create-ballot]')?.click();
-    waitFor(
-      () => Boolean(document.querySelector('[data-qa-auth-dialog]')),
-      () => {
-        if (mode === 'guest-create-auth') return setTimeout(() => record(), 100);
-        byText('[role="tab"]', 'REGISTER')?.click();
-        waitFor(
-          () => document.querySelector('[data-qa-auth-dialog]')?.getAttribute('data-auth-mode') === 'register',
-          () => {
-            submitRegistration();
-            waitFor(
-              () => Boolean(document.querySelector('[data-qa-create-dialog]')),
-              () => setTimeout(() => record(), 120)
-            );
-          }
-        );
-      }
-    );
+    if (mode === 'guest-create-auth' || mode === 'guest-create-resume') {
+      document.querySelector('[data-qa-create-ballot]')?.click();
+      return waitFor(
+        () => Boolean(document.querySelector('[data-qa-auth-dialog]')),
+        () => {
+          if (mode === 'guest-create-auth') return setTimeout(() => record(), 100);
+          byText('[role="tab"]', 'REGISTER')?.click();
+          waitFor(
+            () => document.querySelector('[data-qa-auth-dialog]')?.getAttribute('data-auth-mode') === 'register',
+            () => {
+              submitRegistration();
+              waitFor(
+                () => Boolean(document.querySelector('[data-qa-create-dialog]')),
+                () => setTimeout(() => record(), 120)
+              );
+            }
+          );
+        }
+      );
+    }
+
+    setTimeout(() => record(), 1300);
   };
 
   waitFor(
@@ -183,15 +265,23 @@ class Handler(base.Handler):
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
+        mode = self._fixture_mode()
         if parsed.path == "/api/v1/auth/social/providers":
             self._json(200, {"providers": ["google", "github"]})
             return
         if parsed.path == "/api/v1/users/me":
             if self.headers.get("Authorization") == "Bearer visual-qa-access-token":
-                linked = ["GOOGLE"] if self._fixture_mode() == "auth-social-linked" else []
+                linked = ["GOOGLE"] if mode == "auth-social-linked" else []
                 self._json(200, {**base.PROFILE, "linkedProviders": linked})
             else:
                 self._json(401, {"title": "Unauthorized"})
+            return
+        if parsed.path == "/api/v1/posts" and mode in ("auth", "auth-negative-score"):
+            params = parse_qs(parsed.query)
+            page = int(params.get("page", ["0"])[0])
+            size = int(params.get("size", ["8"])[0])
+            negative = {**base.BALLOTS[0], "voteScore": -1}
+            self._json(200, base.page_payload([negative, *base.BALLOTS[1:]], page, size))
             return
         super().do_GET()
 

@@ -15,10 +15,10 @@ export function BallotActions({ owned, busy, closed, onOpen, onEdit, onDelete, o
     <div className={styles.actions}>
       {onOpen && <button type="button" onClick={onOpen}>VIEW FULL RECORD</button>}
       {owned && (
-        <div className={styles.ownerActions} aria-label="Owner actions">
-          <button type="button" onClick={onEdit} disabled={busy || closed}>EDIT</button>
-          <button type="button" onClick={onCloseBallot} disabled={busy || closed}>CLOSE BALLOT</button>
-          <button type="button" className={styles.danger} onClick={onDelete} disabled={busy}>DELETE</button>
+        <div className={styles.ownerActions} data-qa-owner-actions aria-label="Owner actions">
+          <button type="button" data-qa-owner-action="edit" onClick={onEdit} disabled={busy || closed}>EDIT</button>
+          <button type="button" data-qa-owner-action="close" onClick={onCloseBallot} disabled={busy || closed}>CLOSE BALLOT</button>
+          <button type="button" data-qa-owner-action="delete" className={styles.danger} onClick={onDelete} disabled={busy}>DELETE</button>
         </div>
       )}
     </div>

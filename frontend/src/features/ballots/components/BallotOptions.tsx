@@ -1,7 +1,7 @@
 'use client';
 
 import type { CSSProperties } from 'react';
-import { calculateVoteBreakdown } from '@/shared/ballot/ballot-view';
+import { calculateVoteBreakdown, formatVoteScore } from '@/shared/ballot/ballot-view';
 import type { Ballot, VoteType } from '@/shared/api/types';
 import styles from './BallotCard.module.scss';
 
@@ -18,8 +18,8 @@ export function BallotOptions({ ballot, busy, onVote }: BallotOptionsProps) {
   return (
     <div className={styles.votePanel} data-qa-vote-split={`${breakdown.upPercentage}/${breakdown.downPercentage}`}>
       <span className={styles.voteLabel}>OFFICIAL BALLOT</span>
-      <div className={styles.counter} aria-label={`Vote score ${ballot.voteScore}`}>
-        {ballot.voteScore >= 0 ? '+' : ''}{ballot.voteScore.toString().padStart(4, '0')}
+      <div className={styles.counter} data-qa-vote-score={formatVoteScore(ballot.voteScore)} aria-label={`Vote score ${ballot.voteScore}`}>
+        {formatVoteScore(ballot.voteScore)}
       </div>
 
       <VoteOption

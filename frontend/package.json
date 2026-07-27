@@ -4,7 +4,7 @@
   "version": "0.2.0",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node scripts/verify_app_icons.mjs",
     "start": "next start",
     "test": "node -e \"require('fs').rmSync('.test-dist',{recursive:true,force:true})\" && tsc -p tsconfig.test.json && node --test .test-dist/api/tests/*.test.js .test-dist/ballot/tests/*.test.js"
   },
