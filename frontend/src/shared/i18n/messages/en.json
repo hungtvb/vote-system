@@ -64,7 +64,10 @@
     "serverRecords": "SERVER RECORDS",
     "record": "RECORD",
     "records": "RECORDS",
-    "pageOf": "PAGE {page} OF {total}"
+    "pageOf": "PAGE {page} OF {total}",
+    "openBallot": "Open ballot {title}",
+    "filedBy": "FILED BY {name}",
+    "registeredVotes": "{count} REGISTERED VOTES"
   },
   "profile": {},
   "admin": {},
