@@ -1,0 +1,17 @@
+{
+  "name": "Vote System — Ballot Edition",
+  "short_name": "Vote System",
+  "description": "Public decision registry",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F0E9D8",
+  "theme_color": "#1E2A3A",
+  "icons": [
+    {
+      "src": "/ballot-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
