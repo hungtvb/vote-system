@@ -6,8 +6,6 @@ import jakarta.servlet.AsyncEvent;
 import jakarta.servlet.AsyncListener;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.ServletRequest;
-import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
@@ -30,7 +28,7 @@ public class RequestLatencyLoggingFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(RequestLatencyLoggingFilter.class);
     private static final String REQUEST_ID_HEADER = "X-Request-ID";
     private static final String START_NANOS_ATTRIBUTE = RequestLatencyLoggingFilter.class.getName() + ".startNanos";
-    private static final String REQUEST_ID_ATTRIBUTE = RequestLatencyLoggingFilter.class.getName() + ".requestId";
+    public static final String REQUEST_ID_ATTRIBUTE = RequestLatencyLoggingFilter.class.getName() + ".requestId";
     private static final String COMPLETED_ATTRIBUTE = RequestLatencyLoggingFilter.class.getName() + ".completed";
     private static final Pattern SAFE_REQUEST_ID = Pattern.compile("[A-Za-z0-9._-]{1,64}");
     private static final double[] PERCENTILES = {0.5, 0.9, 0.95, 0.99};
@@ -79,7 +77,7 @@ public class RequestLatencyLoggingFilter extends OncePerRequestFilter {
             }
 
             @Override
-            public void onStartAsync(AsyncEvent event) throws IOException {
+            public void onStartAsync(AsyncEvent event) {
                 event.getAsyncContext().addListener(this);
             }
         };
@@ -103,7 +101,7 @@ public class RequestLatencyLoggingFilter extends OncePerRequestFilter {
         String route = routeTemplate(request);
         String kind = requestKind(route, request.getRequestURI());
         String method = request.getMethod();
-        boolean async = request.isAsyncSupported() && kind.equals("stream");
+        boolean async = kind.equals("stream");
 
         Timer.builder("vote.http.request.duration")
                 .description("Completed HTTP request duration split by bounded route template and request kind")
@@ -150,7 +148,7 @@ public class RequestLatencyLoggingFilter extends OncePerRequestFilter {
         return UUID.randomUUID().toString();
     }
 
-    private String requestId(HttpServletRequest request) {
+    public static String requestId(HttpServletRequest request) {
         Object value = request.getAttribute(REQUEST_ID_ATTRIBUTE);
         return value == null ? "missing" : value.toString();
     }
