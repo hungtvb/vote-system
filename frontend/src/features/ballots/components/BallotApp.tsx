@@ -7,7 +7,7 @@ import { useSession } from '@/features/auth/hooks/useSession';
 import { useBallotVoteStream } from '@/features/ballots/hooks/useBallotVoteStream';
 import { ballotApi, type BallotListParams } from '@/shared/api/ballot-api';
 import { socialAuthApi, type SocialProviderId } from '@/shared/api/social-auth-api';
-import { ApiError } from '@/shared/api/transport';
+import { ApiError, isAbortError } from '@/shared/api/transport';
 import type { Ballot, BallotStatus, BallotVoteUpdate, FeedType, VoteType } from '@/shared/api/types';
 import {
   beginAuth,
@@ -31,6 +31,10 @@ import {
   reconcileVoteResponse,
   rollbackVoteSnapshot
 } from '@/shared/ballot/ballot-state';
+import {
+  resolveFeedRequestAccess,
+  type FeedRequestMode
+} from '@/shared/ballot/feed-request';
 import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue';
 import { BallotCard } from './BallotCard';
 import { BallotDetailDialog } from './BallotDetailDialog';
@@ -64,10 +68,20 @@ export function BallotApp() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Ballot | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pendingEnrichmentKey, setPendingEnrichmentKey] = useState<string | null>(null);
   const requestSequence = useRef(0);
+  const activeFeedRequest = useRef<AbortController | null>(null);
+  const sessionRef = useRef(session);
+  const restoringRef = useRef(restoring);
+  const runAuthorizedRef = useRef(runAuthorized);
+
+  sessionRef.current = session;
+  restoringRef.current = restoring;
+  runAuthorizedRef.current = runAuthorized;
 
   const selected = selectedId ? ballots.find(ballot => ballot.id === selectedId) ?? null : null;
   const lastPage = totalPages === 0 || page + 1 >= totalPages;
+  const feedRequestKey = JSON.stringify([feed, query, category, status ?? '']);
 
   const handleStreamUpdate = useCallback((update: BallotVoteUpdate) => {
     setBallots(current => current.map(ballot =>
@@ -120,13 +134,36 @@ export function BallotApp() {
     if (!restoring && feed === 'MINE' && !session) setFeed('LATEST');
   }, [feed, restoring, session]);
 
-  const load = useCallback(async (nextPage = 0, append = false) => {
-    if (restoring) return;
-    if (feed === 'MINE' && !session) return;
+  const cancelFeedRequest = useCallback(() => {
+    requestSequence.current += 1;
+    activeFeedRequest.current?.abort();
+    activeFeedRequest.current = null;
+  }, []);
 
+  const load = useCallback(async (
+    nextPage = 0,
+    append = false,
+    mode: FeedRequestMode = 'auto',
+    background = false
+  ) => {
+    const currentSession = sessionRef.current;
+    const access = resolveFeedRequestAccess({
+      feed,
+      restoring: restoringRef.current,
+      authenticated: Boolean(currentSession),
+      mode
+    });
+    if (access === 'skip') return;
+
+    activeFeedRequest.current?.abort();
+    const controller = new AbortController();
+    activeFeedRequest.current = controller;
     const sequence = ++requestSequence.current;
-    setLoading(true);
-    setMessage('');
+
+    if (!background) {
+      setLoading(true);
+      setMessage('');
+    }
 
     const params: BallotListParams = {
       feed,
@@ -138,9 +175,10 @@ export function BallotApp() {
     };
 
     try {
-      const response = session
-        ? await runAuthorized(activeSession => ballotApi.list(params, activeSession.accessToken))
-        : await ballotApi.list(params);
+      const response = access === 'authenticated'
+        ? await runAuthorizedRef.current(activeSession =>
+            ballotApi.list(params, activeSession.accessToken, controller.signal))
+        : await ballotApi.list(params, undefined, controller.signal);
       if (sequence !== requestSequence.current) return;
 
       setBallots(current => append ? mergeUniqueBallots(current, response.content) : response.content);
@@ -150,18 +188,51 @@ export function BallotApp() {
       setPage(response.number);
       setTotalPages(response.totalPages);
       setTotalElements(response.totalElements);
+
+      if (!append && nextPage === 0) {
+        setPendingEnrichmentKey(access === 'public' ? feedRequestKey : null);
+      }
     } catch (error) {
-      if (sequence !== requestSequence.current) return;
-      setMessage(error instanceof Error ? error.message : 'Không thể tải sổ phiếu.');
+      if (sequence !== requestSequence.current || isAbortError(error)) return;
+      if (!background) {
+        setMessage(error instanceof Error ? error.message : 'Không thể tải sổ phiếu.');
+      }
     } finally {
-      if (sequence === requestSequence.current) setLoading(false);
+      if (activeFeedRequest.current === controller) activeFeedRequest.current = null;
+      if (sequence === requestSequence.current && !background) setLoading(false);
     }
-  }, [category, feed, query, restoring, runAuthorized, session, status]);
+  }, [category, feed, feedRequestKey, query, status]);
 
   useEffect(() => {
-    void load(0, false);
-    return () => { requestSequence.current += 1; };
-  }, [load]);
+    setPendingEnrichmentKey(null);
+  }, [feedRequestKey]);
+
+  useEffect(() => {
+    if (feed === 'MINE') return;
+    void load(0, false, 'auto');
+    return cancelFeedRequest;
+  }, [cancelFeedRequest, feed, load]);
+
+  useEffect(() => {
+    if (feed !== 'MINE' || restoring || !session) return;
+    void load(0, false, 'authenticated');
+    return cancelFeedRequest;
+  }, [cancelFeedRequest, feed, load, restoring, session]);
+
+  useEffect(() => {
+    if (
+      !pendingEnrichmentKey
+      || pendingEnrichmentKey !== feedRequestKey
+      || feed === 'MINE'
+      || restoring
+      || !session
+    ) return;
+
+    setPendingEnrichmentKey(null);
+    void load(0, false, 'authenticated', true);
+  }, [feed, feedRequestKey, load, pendingEnrichmentKey, restoring, session]);
+
+  useEffect(() => cancelFeedRequest, [cancelFeedRequest]);
 
   function markBusy(id: string, busy: boolean) {
     setBusyIds(current => {
