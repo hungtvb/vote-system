@@ -38,6 +38,7 @@ import {
 import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue';
 import { BallotCard } from './BallotCard';
 import { BallotDetailDialog } from './BallotDetailDialog';
+import { ConfirmDialog } from './ConfirmDialog';
 import { CreateBallotDialog } from './CreateBallotDialog';
 import { EditBallotDialog } from './EditBallotDialog';
 import { FeedControls } from './FeedControls';
@@ -67,6 +68,7 @@ export function BallotApp() {
   const [linkingProvider, setLinkingProvider] = useState<SocialProviderId | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Ballot | null>(null);
+  const [deleting, setDeleting] = useState<Ballot | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingEnrichmentKey, setPendingEnrichmentKey] = useState<string | null>(null);
   const requestSequence = useRef(0);
@@ -314,7 +316,6 @@ export function BallotApp() {
   }
 
   async function deleteBallot(ballot: Ballot) {
-    if (!window.confirm(`Delete ballot ${ballot.ballotNumber}? This cannot be undone.`)) return;
     markBusy(ballot.id, true);
     try {
       await runAuthorized(activeSession => ballotApi.delete(ballot.id, activeSession.accessToken));
@@ -322,7 +323,9 @@ export function BallotApp() {
       await load(0, false);
       setMessage('Hồ sơ đã được xóa khỏi sổ công khai.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể xóa hồ sơ.');
+      const failure = error instanceof Error ? error : new Error('Không thể xóa hồ sơ.');
+      setMessage(failure.message);
+      throw failure;
     } finally {
       markBusy(ballot.id, false);
     }
@@ -350,6 +353,15 @@ export function BallotApp() {
     setStatus(undefined);
   }
 
+  async function confirmDelete() {
+    if (!deleting) return;
+    await deleteBallot(deleting);
+    setDeleting(null);
+    window.requestAnimationFrame(() => {
+      document.getElementById('top')?.focus({ preventScroll: true });
+    });
+  }
+
   return (
     <div className={styles.appShell}>
       <VoterMasthead
@@ -368,7 +380,7 @@ export function BallotApp() {
         onLogoutAll={() => void logoutAll()}
       />
 
-      <main id="top" className={styles.main}>
+      <main id="top" className={styles.main} tabIndex={-1}>
         <section className={styles.hero}>
           <p>PUBLIC DECISION REGISTRY · SERVER INDEX</p>
           <h1>Official public record</h1>
@@ -410,7 +422,7 @@ export function BallotApp() {
               onOpen={() => setSelectedId(ballot.id)}
               onVote={type => void vote(ballot, type)}
               onEdit={() => setEditing(ballot)}
-              onDelete={() => void deleteBallot(ballot)}
+              onDelete={() => setDeleting(ballot)}
               onCloseBallot={() => void closeBallot(ballot)}
             />
           ))}
@@ -438,7 +450,18 @@ export function BallotApp() {
       )}
       {createOpen && <CreateBallotDialog onClose={() => setCreateOpen(false)} onCreate={createBallot} />}
       {editing && <EditBallotDialog ballot={editing} onClose={() => setEditing(null)} onSave={(title, content) => updateBallot(editing, title, content)} />}
-      {selected && <BallotDetailDialog ballot={selected} busy={busyIds.has(selected.id)} owned={session?.userId === selected.authorId} onClose={() => setSelectedId(null)} onVote={type => void vote(selected, type)} onEdit={() => { setSelectedId(null); setEditing(selected); }} onDelete={() => void deleteBallot(selected)} onCloseBallot={() => void closeBallot(selected)} />}
+      {selected && <BallotDetailDialog ballot={selected} busy={busyIds.has(selected.id)} owned={session?.userId === selected.authorId} onClose={() => setSelectedId(null)} onVote={type => void vote(selected, type)} onEdit={() => { setSelectedId(null); setEditing(selected); }} onDelete={() => { setSelectedId(null); setDeleting(selected); }} onCloseBallot={() => void closeBallot(selected)} />}
+      {deleting && (
+        <ConfirmDialog
+          title="Delete ballot?"
+          reference={`${deleting.ballotNumber} · ${deleting.title}`}
+          description="This public record and its votes will be permanently removed. This action cannot be undone."
+          confirmLabel="DELETE BALLOT"
+          pendingLabel="DELETING..."
+          onClose={() => setDeleting(null)}
+          onConfirm={confirmDelete}
+        />
+      )}
     </div>
   );
 }
