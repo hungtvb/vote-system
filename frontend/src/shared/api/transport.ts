@@ -70,6 +70,13 @@ async function readProblem(response: Response): Promise<ApiProblem | undefined> 
   }
 }
 
+export function isAbortError(error: unknown): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'name' in error
+    && error.name === 'AbortError';
+}
+
 export function parseRetryAfter(value: string | null, nowMs = Date.now()): number | undefined {
   if (!value) return undefined;
   const seconds = Number(value);
