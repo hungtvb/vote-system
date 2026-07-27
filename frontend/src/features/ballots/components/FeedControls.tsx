@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import type { BallotStatus, FeedType } from '@/shared/api/types';
+import { useI18n } from '@/shared/i18n/I18nProvider';
 import styles from './FeedControls.module.scss';
 
 const PUBLIC_FEEDS: FeedType[] = ['LATEST', 'HOT', 'TOP_DAY', 'TOP_WEEK'];
@@ -37,10 +38,18 @@ export function FeedControls({
   onStatusChange,
   onReset
 }: FeedControlsProps) {
+  const { t, formatNumber } = useI18n();
   const feeds = authenticated ? [...PUBLIC_FEEDS, 'MINE' as const] : PUBLIC_FEEDS;
   const hasFilters = Boolean(query.trim() || category.trim() || status);
   const tabsRef = useRef<HTMLElement | null>(null);
   const activeTabRef = useRef<HTMLButtonElement | null>(null);
+  const feedLabels: Record<FeedType, string> = {
+    LATEST: t('ballots', 'feedLatest'),
+    HOT: t('ballots', 'feedHot'),
+    TOP_DAY: t('ballots', 'feedTopDay'),
+    TOP_WEEK: t('ballots', 'feedTopWeek'),
+    MINE: t('ballots', 'feedMine')
+  };
 
   useEffect(() => {
     const tabs = tabsRef.current;
@@ -52,8 +61,8 @@ export function FeedControls({
   }, [feed]);
 
   return (
-    <section className={styles.controls} aria-label="Ballot feed controls">
-      <nav ref={tabsRef} className={styles.tabs} aria-label="Feed mode" data-qa-feed-tabs>
+    <section className={styles.controls} aria-label={t('ballots', 'feedControls')}>
+      <nav ref={tabsRef} className={styles.tabs} aria-label={t('ballots', 'feedMode')} data-qa-feed-tabs>
         {feeds.map(item => (
           <button
             key={item}
@@ -64,35 +73,38 @@ export function FeedControls({
             className={feed === item ? styles.active : ''}
             onClick={() => onFeedChange(item)}
           >
-            {item === 'MINE' ? 'MY BALLOTS' : item.replace('_', ' ')}
+            {feedLabels[item]}
           </button>
         ))}
       </nav>
 
       <div className={styles.filters}>
         <label>
-          CATEGORY
+          {t('ballots', 'category')}
           <input
             value={category}
             maxLength={50}
             onChange={event => onCategoryChange(event.target.value)}
-            placeholder="Exact category, e.g. TECHNOLOGY"
+            placeholder={t('ballots', 'categoryPlaceholder')}
           />
         </label>
         <label>
-          STATUS
+          {t('ballots', 'status')}
           <select value={status ?? ''} onChange={event => onStatusChange((event.target.value || undefined) as BallotStatus | undefined)}>
-            <option value="">ALL STATUSES</option>
-            <option value="OPEN">OPEN</option>
-            <option value="CLOSED">CLOSED</option>
+            <option value="">{t('ballots', 'allStatuses')}</option>
+            <option value="OPEN">{t('ballots', 'statusOpen')}</option>
+            <option value="CLOSED">{t('ballots', 'statusClosed')}</option>
           </select>
         </label>
-        <button type="button" className={styles.reset} disabled={!hasFilters} onClick={onReset}>CLEAR FILTERS</button>
+        <button type="button" className={styles.reset} disabled={!hasFilters} onClick={onReset}>{t('ballots', 'clearFilters')}</button>
       </div>
 
       <p className={styles.summary} role="status">
-        <span><strong>{loading ? 'UPDATING' : totalElements}</strong> {loading ? 'SERVER RECORDS' : totalElements === 1 ? 'RECORD' : 'RECORDS'}</span>
-        <span>{totalPages === 0 ? 'PAGE 0 OF 0' : `PAGE ${page + 1} OF ${totalPages}`}</span>
+        <span>
+          <strong>{loading ? t('ballots', 'updating') : formatNumber(totalElements)}</strong>{' '}
+          {loading ? t('ballots', 'serverRecords') : totalElements === 1 ? t('ballots', 'record') : t('ballots', 'records')}
+        </span>
+        <span>{t('ballots', 'pageOf', { page: totalPages === 0 ? 0 : page + 1, total: totalPages })}</span>
       </p>
     </section>
   );
