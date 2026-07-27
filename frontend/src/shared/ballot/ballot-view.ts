@@ -29,6 +29,12 @@ export function calculateVoteBreakdown(upVotes: number, downVotes: number): Vote
   };
 }
 
+export function formatVoteScore(score: number): string {
+  const safeScore = Number.isFinite(score) ? Math.trunc(score) : 0;
+  const magnitude = Math.abs(safeScore).toString().padStart(4, '0');
+  return `${safeScore < 0 ? '-' : '+'}${magnitude}`;
+}
+
 export function getVerdictStamp(verdict: VoteVerdict, finalVerdict: boolean): VerdictStampModel | null {
   if (!finalVerdict && verdict === 'UNDECIDED') return null;
 
