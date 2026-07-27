@@ -4,7 +4,7 @@ services:
     runtime: docker
     region: singapore
     plan: free
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./Dockerfile.railway
     dockerContext: .
     healthCheckPath: /actuator/health
     envVars:
@@ -14,13 +14,19 @@ services:
         sync: false
       - key: DB_PASSWORD
         sync: false
+      - key: REDIS_URL
+        sync: false
       - key: JWT_SECRET
-        generateValue: true
+        sync: false
       - key: JWT_ISSUER
         value: vote-system
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://app.ballotbox.io.vn
       - key: REFRESH_COOKIE_SECURE
         value: "true"
+      - key: REFRESH_COOKIE_SAME_SITE
+        value: Lax
       - key: REDIS_HEALTH_ENABLED
-        value: "false"
+        value: "true"
       - key: JAVA_TOOL_OPTIONS
-        value: -XX:MaxRAMPercentage=75.0
+        value: -XX:MaxRAMPercentage=70.0 -XX:+UseSerialGC
