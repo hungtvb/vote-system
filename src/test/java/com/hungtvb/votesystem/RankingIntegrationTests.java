@@ -11,11 +11,14 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
+
+import java.time.Duration;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -60,7 +63,7 @@ class RankingIntegrationTests {
                         .content("{\"type\":\"UP\"}"))
                 .andExpect(status().isOk());
 
-        assertFirstHotPost(firstPostId);
+        awaitFirstHotPost(firstPostId);
 
         redisTemplate.delete("feed:hot");
 
@@ -72,6 +75,25 @@ class RankingIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].id").value(firstPostId))
                 .andExpect(jsonPath("$.content[1].id").value(secondPostId));
+    }
+
+    private void awaitFirstHotPost(String postId) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        while (System.nanoTime() < deadline) {
+            MvcResult result = mockMvc.perform(get("/api/v1/posts")
+                            .param("feed", "HOT")
+                            .param("size", "10"))
+                    .andExpect(status().isOk())
+                    .andReturn();
+            JsonNode content = objectMapper.readTree(result.getResponse().getContentAsString()).path("content");
+            if (content.isArray()
+                    && !content.isEmpty()
+                    && postId.equals(content.get(0).path("id").asText())) {
+                return;
+            }
+            Thread.sleep(25);
+        }
+        assertFirstHotPost(postId);
     }
 
     private void assertFirstHotPost(String postId) throws Exception {
