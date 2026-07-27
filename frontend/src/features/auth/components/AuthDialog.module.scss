@@ -5,8 +5,13 @@
 }
 
 .socialButton {
+  display: grid;
+  grid-template-columns: 20px 1fr 20px;
+  align-items: center;
+  gap: 10px;
   min-height: 48px;
   width: 100%;
+  padding: 10px 16px;
   border: 2px solid var(--navy);
   background: transparent;
   color: var(--navy);
@@ -14,6 +19,11 @@
   font-weight: 800;
   letter-spacing: .08em;
   text-align: center;
+}
+
+.socialButton::after {
+  content: '';
+  width: 20px;
 }
 
 .socialButton:hover,
@@ -24,6 +34,13 @@
 .socialButton:disabled {
   cursor: wait;
   opacity: .58;
+}
+
+.providerIcon {
+  display: block;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
 }
 
 .divider {
