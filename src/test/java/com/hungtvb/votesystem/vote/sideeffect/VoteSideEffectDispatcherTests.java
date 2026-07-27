@@ -22,8 +22,8 @@ class VoteSideEffectDispatcherTests {
     void acceptedTaskRunsOutsideTheDispatchCallAndRecordsCompletion() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         AtomicReference<Runnable> queued = new AtomicReference<>();
-        TaskExecutor executor = queued::set;
-        VoteSideEffectDispatcher dispatcher = dispatcher(executor, registry);
+        TaskExecutor rankingExecutor = queued::set;
+        VoteSideEffectDispatcher dispatcher = dispatcher(rankingExecutor, Runnable::run, registry);
         AtomicBoolean ran = new AtomicBoolean();
 
         dispatcher.dispatch(RANKING, () -> ran.set(true));
@@ -51,7 +51,7 @@ class VoteSideEffectDispatcherTests {
         TaskExecutor rejectedExecutor = task -> {
             throw new TaskRejectedException("queue full");
         };
-        VoteSideEffectDispatcher dispatcher = dispatcher(rejectedExecutor, registry);
+        VoteSideEffectDispatcher dispatcher = dispatcher(Runnable::run, rejectedExecutor, registry);
         AtomicInteger runs = new AtomicInteger();
 
         assertThatCode(() -> dispatcher.dispatch(SSE, runs::incrementAndGet))
@@ -70,7 +70,7 @@ class VoteSideEffectDispatcherTests {
     void sideEffectFailureIsMeteredAndDoesNotEscape() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         TaskExecutor directExecutor = Runnable::run;
-        VoteSideEffectDispatcher dispatcher = dispatcher(directExecutor, registry);
+        VoteSideEffectDispatcher dispatcher = dispatcher(directExecutor, directExecutor, registry);
 
         assertThatCode(() -> dispatcher.dispatch(SSE, () -> {
             throw new IllegalStateException("downstream failed");
@@ -88,7 +88,15 @@ class VoteSideEffectDispatcherTests {
         assertThat(stage.count()).isEqualTo(1);
     }
 
-    private VoteSideEffectDispatcher dispatcher(TaskExecutor executor, SimpleMeterRegistry registry) {
-        return new VoteSideEffectDispatcher(executor, new VoteLatencyMetrics(registry), registry);
+    private VoteSideEffectDispatcher dispatcher(
+            TaskExecutor rankingExecutor,
+            TaskExecutor sseExecutor,
+            SimpleMeterRegistry registry) {
+        return new VoteSideEffectDispatcher(
+                rankingExecutor,
+                sseExecutor,
+                new VoteLatencyMetrics(registry),
+                registry
+        );
     }
 }
