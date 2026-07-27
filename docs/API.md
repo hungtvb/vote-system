@@ -1,29 +1,30 @@
 # Vote System API documentation
 
-The backend generates its OpenAPI specification from the Spring MVC controllers through springdoc-openapi.
+The backend generates its OpenAPI specification from Spring MVC controllers through springdoc-openapi. Controller mappings, DTOs, validation annotations, Flyway migrations, and security configuration remain the implementation source of truth.
 
 ## Local URLs
 
-After starting the Spring Boot application on port `8080`:
+After starting Spring Boot on port `8080`:
 
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
 - OpenAPI JSON: `http://localhost:8080/v3/api-docs`
 - OpenAPI YAML: `http://localhost:8080/v3/api-docs.yaml`
+- Public health: `http://localhost:8080/actuator/health`
 
-The documentation routes are public. API operations that require authentication use the `bearerAuth` HTTP security scheme.
+Swagger/OpenAPI and health routes are public. Other Actuator routes, including metrics, require authentication. Protected API operations use the `bearerAuth` HTTP security scheme.
 
-## Authorize Swagger UI
+## Session contract
 
-1. Register or log in through an auth endpoint.
-2. Copy the returned access token.
-3. Open Swagger UI and select **Authorize**.
-4. Paste the access token. Swagger UI adds the `Bearer` prefix automatically.
+Email/password and social authentication converge on the same Vote System session model:
 
-The refresh token is stored in an `HttpOnly` cookie and is not entered into the Swagger authorization dialog.
+- short-lived HS256 JWT access token, held in frontend memory;
+- opaque rotating refresh token in an `HttpOnly` cookie;
+- SHA-256 refresh-token hash and session metadata persisted in PostgreSQL;
+- replay detection that revokes all active sessions for the affected user.
+
+Default access-token lifetime is 15 minutes. Default refresh-token lifetime is 30 days.
 
 ## Email/password authentication
-
-The existing authentication endpoints remain available regardless of social-provider configuration:
 
 ```http
 POST /api/v1/auth/register
@@ -33,11 +34,23 @@ POST /api/v1/auth/logout
 POST /api/v1/auth/logout-all
 ```
 
-A successful login, registration, refresh, or social callback uses the same Vote System session contract: short-lived JWT access token plus rotated `HttpOnly` refresh cookie.
+Registration accepts:
+
+```json
+{
+  "email": "voter@example.com",
+  "password": "strong-password",
+  "displayName": "Public Voter Name"
+}
+```
+
+`displayName` is optional. When omitted, the backend persists a privacy-safe pseudonym instead of deriving a public identity from the email address.
+
+The refresh token is not entered into Swagger authorization. Login, registration, refresh, or a successful social callback writes it as an `HttpOnly` cookie.
 
 ## Google and GitHub social authentication
 
-Load the providers configured on the current backend:
+Load providers configured on the current backend:
 
 ```http
 GET /api/v1/auth/social/providers
@@ -51,7 +64,7 @@ GET /api/v1/auth/social/providers
 
 An installation without social credentials returns an empty array and continues to support email/password authentication.
 
-Start direct social authentication or the pending create-ballot flow:
+Start public authentication or pending create-ballot continuation:
 
 ```http
 POST /api/v1/auth/social/google/start
@@ -60,57 +73,96 @@ Content-Type: application/json
 {"intent":"authenticate"}
 ```
 
-Allowed public intents are `authenticate` and `create-ballot`. The response contains a backend-generated authorization URL:
+Allowed public intents are `authenticate` and `create-ballot`. The response contains a backend-generated authorization URL.
 
-```json
-{
-  "authorizationUrl": "https://api.example.com/oauth2/authorization/google"
-}
-```
-
-Authenticated account linking starts with:
+Start explicit linking from an authenticated account:
 
 ```http
 POST /api/v1/auth/social/github/link/start
 Authorization: Bearer <access-token>
 ```
 
-The provider callback is handled by Spring Security at:
+Spring Security handles provider callbacks at:
 
 ```text
 /login/oauth2/code/google
 /login/oauth2/code/github
 ```
 
-The callback never returns the Vote System access token, refresh token, provider token, authorization code, email, or provider subject in the redirect URL. It writes the Vote System refresh cookie and redirects to a fixed configured frontend URL with safe status parameters.
+The callback redirect never contains Vote System tokens, provider tokens, authorization codes, email, or provider subject. Provider identities are keyed by `(provider, providerSubject)`. Verified-email collisions require explicit authenticated linking; accounts are never silently merged by email.
 
-Provider identities are keyed by `(provider, providerSubject)`. A verified Google email that matches an existing local account requires explicit authenticated linking; Vote System does not silently merge accounts by email. GitHub private/missing email is supported because the durable GitHub subject identifies the local user.
-
-Detailed provider setup, scopes, cookie settings, account-linking rules, callback behavior, and verification boundaries are documented in `docs/SOCIAL-LOGIN.md`.
+Detailed setup and security rules: [`SOCIAL-LOGIN.md`](SOCIAL-LOGIN.md).
 
 ## Voter identity
-
-Registration accepts an optional public `displayName` in addition to `email` and `password`. When it is omitted, the backend creates a privacy-safe pseudonym instead of deriving a public identity from the email address.
-
-Authenticated clients can load the private Voter ID profile with:
 
 ```http
 GET /api/v1/users/me
 Authorization: Bearer <access-token>
 ```
 
-The response contains optional account email, public display name, initials, role, linked social providers, and account timestamps. A social-only GitHub account may have `email: null`. Ballot feed/detail responses retain the top-level `authorId` for compatibility and also include a public `author` object with only `id`, `displayName`, and `initials`. Author email and linked providers are never embedded in a public ballot response.
+The private profile contains:
+
+- local user ID;
+- optional account email;
+- public display name;
+- initials;
+- role;
+- linked social providers;
+- account timestamps.
+
+A social-only account may have `email: null`. Public ballot responses include only a safe author summary with `id`, `displayName`, and `initials`; they do not expose email or linked-provider data.
+
+Editable bio, Ballot Mark avatar presets, and `preferredLocale` are planned under TON-108/TON-116 and are not part of the current API yet.
+
+## Ballot lifecycle
+
+Create:
+
+```http
+POST /api/v1/posts
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{
+  "title": "Should the community fund the park?",
+  "content": "Full proposal text",
+  "category": "COMMUNITY",
+  "closesAt": "2026-08-31T12:00:00Z",
+  "verdictThreshold": 70
+}
+```
+
+Validation boundaries:
+
+- `title`: required, maximum 200 characters;
+- `content`: required, maximum 20,000 characters;
+- `category`: optional, maximum 50 characters;
+- `verdictThreshold`: optional integer from 50 through 100;
+- `closesAt`: optional timestamp validated by domain rules.
+
+Operations:
+
+```http
+GET    /api/v1/posts
+POST   /api/v1/posts
+GET    /api/v1/posts/{postId}
+PUT    /api/v1/posts/{postId}
+POST   /api/v1/posts/{postId}/close
+DELETE /api/v1/posts/{postId}
+```
+
+Only the author can update, close, or delete a ballot. The backend owns OPEN/CLOSED lifecycle transitions and final-verdict semantics.
 
 ## Ballot feeds, search, and filters
 
 `GET /api/v1/posts` accepts:
 
-- `feed`: `LATEST`, `HOT`, `TOP_DAY`, `TOP_WEEK`, or `MINE`; default `LATEST`.
-- `query`: optional, maximum 200 characters. Case-insensitive substring search across title, content, and ballot number. SQL wildcard characters such as `%` and `_` are treated literally.
-- `category`: optional, maximum 50 characters. Matching is exact after upper-case normalization.
-- `status`: optional `OPEN` or `CLOSED`.
-- `page`: zero-based page index; must be at least `0`.
-- `size`: page size from `1` through `100`; default `20`.
+- `feed`: `LATEST`, `HOT`, `TOP_DAY`, `TOP_WEEK`, or `MINE`; default `LATEST`;
+- `query`: optional, maximum 200 characters; case-insensitive substring search across title, content, and ballot number; `%` and `_` are treated literally;
+- `category`: optional, maximum 50 characters; exact match after upper-case normalization;
+- `status`: optional `OPEN` or `CLOSED`;
+- `page`: zero-based index, minimum `0`;
+- `size`: `1` through `100`, default `20`.
 
 Examples:
 
@@ -123,37 +175,135 @@ GET /api/v1/posts?feed=MINE&page=0&size=20
 Authorization: Bearer <access-token>
 ```
 
-`MINE` is backend-owned and requires authentication. It returns only ballots authored by the current JWT subject; clients must not emulate this feed by filtering an already-loaded public page.
+`MINE` is backend-owned and requires authentication. Clients must not emulate it by filtering an already-loaded public page.
 
 ### Ordering semantics
 
-- `LATEST`: matching ballots ordered by `createdAt` descending in PostgreSQL.
-- `MINE`: the current user's matching ballots ordered by `createdAt` descending in PostgreSQL.
-- `HOT`: matching ballots retain the Redis hot-score order.
-- `TOP_DAY`: matching ballots retain the current UTC-day Redis ranking.
-- `TOP_WEEK`: matching ballots retain the current UTC-week Redis ranking.
+- `LATEST`: matching ballots ordered by `createdAt DESC` in PostgreSQL;
+- `MINE`: the current user's matching ballots ordered by `createdAt DESC`;
+- `HOT`: matching ballots retain Redis hot-score order;
+- `TOP_DAY`: matching ballots retain current UTC-day Redis ranking;
+- `TOP_WEEK`: matching ballots retain current UTC-week Redis ranking.
 
-For filtered ranked feeds, filtering is applied across the complete ranked set before the requested page is selected. `totalElements` and `totalPages` therefore describe the filtered dataset, not the raw Redis set or only the records already loaded by a frontend client.
+Filtering applies across the complete ranked set before selecting a page. `totalElements` and `totalPages` therefore describe the filtered dataset, not only the rows already loaded by the frontend.
 
-If Redis is unavailable, ranked feeds use the existing database fallback and return matching ballots in latest-first order. This is a degraded availability mode; the response remains filtered and paginated correctly, but rank order is temporarily unavailable.
+If Redis is unavailable, ranked feeds degrade to matching PostgreSQL results in latest-first order. Filtering and pagination remain correct, but rank order is temporarily unavailable.
+
+## Voting
+
+```http
+PUT /api/v1/posts/{postId}/vote
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{"type":"UP"}
+```
+
+```http
+DELETE /api/v1/posts/{postId}/vote
+Authorization: Bearer <access-token>
+```
+
+The backend supports add, change, repeated-choice removal, and explicit removal semantics. Aggregate counts and score are updated atomically while the individual `(user_id, post_id)` vote is protected by a database uniqueness constraint.
+
+Ballot responses expose authoritative:
+
+- `upVotes`;
+- `downVotes`;
+- `totalVotes`;
+- `voteScore`;
+- `myVote` for authenticated REST responses;
+- verdict threshold and projected/final verdict;
+- lifecycle status and timestamps.
 
 ## Realtime vote updates
 
-An active ballot exposes a public Server-Sent Events endpoint:
+Active ballots expose a public SSE endpoint:
 
 ```http
 GET /api/v1/posts/{postId}/events
 Accept: text/event-stream
 ```
 
-The server immediately sends the current authoritative aggregate unless the request's `Last-Event-ID` already matches the current ballot update timestamp. Committed vote changes produce `vote-update` events containing shared counts, score, threshold, verdict, and `updatedAt`. Events deliberately exclude `myVote` and account data.
+The server sends an authoritative aggregate snapshot, heartbeat comments, a reconnect hint, and future `vote-update` events. Events deliberately exclude `myVote` and identity data.
 
-The stream sends heartbeat comments, recommends a three-second reconnect delay, disables caching/proxy buffering where supported, and removes disconnected emitters. Missing ballots return `404`; ballots that no longer accept votes return `409`.
+After the database transaction commits, SSE delivery is enqueued to a bounded FIFO executor. The HTTP vote response does not normally wait for connected-client network I/O. Event history is not persisted; reconnect converges through the latest database snapshot.
 
-The SSE history is not persisted. Reconnection converges through the current database snapshot rather than replaying intermediate activity. Full payload, reconnect, deployment, frontend fallback, and scope details are documented in `docs/REALTIME-VOTES.md`.
+Detailed contract: [`REALTIME-VOTES.md`](REALTIME-VOTES.md).
+
+## Redis rate limiting
+
+Default policies:
+
+| Rule | Limit | Identity |
+|---|---:|---|
+| Login | 5 / minute | IP |
+| Register | 3 / hour | IP |
+| Refresh | 20 / minute | IP |
+| Social start | 20 / minute | IP |
+| Create ballot | 10 / hour | authenticated user |
+| Vote | 30 / minute | authenticated user |
+
+The implementation uses an atomic Redis sorted-set/Lua sliding window. Rejected requests return `429 Too Many Requests` with `Retry-After`. The default is fail-open when Redis cannot be reached; this is configurable through `RATE_LIMIT_FAIL_OPEN`.
+
+## Error contract
+
+Validation, authentication, authorization, resource, conflict, and rate-limit failures use Problem Details-compatible JSON. Frontend code should branch on HTTP status and stable machine-owned fields rather than parsing free-form text.
+
+TON-116 will formalize localized frontend error mapping. Backend domain values remain language-neutral; user-generated content is not translated automatically.
+
+## Health, metrics, and request correlation
+
+Public:
+
+```http
+GET /actuator/health
+```
+
+Authenticated Actuator access includes `info` and `metrics` because only health is explicitly public in Spring Security.
+
+Important metric names:
+
+```text
+http.server.requests
+vote.http.request.duration
+vote.sse.connection.duration
+vote.sse.subscribers.active
+vote.auth.restore.total
+vote.auth.restore.stage
+vote.rate_limit.latency
+vote.operation.total
+vote.operation.stage
+vote.side_effect.execution
+vote.ranking.operations
+```
+
+API responses include `X-Request-ID`. A safe inbound value is reused; otherwise the backend generates a UUID. Request logs use bounded route templates, not concrete ballot UUID paths.
+
+No user ID, ballot ID, email, cookie, refresh-token hash, raw token, or dynamic exception text may be added as a metric tag.
+
+## CORS
+
+Credentialed frontend requests require an explicit origin allow-list. Wildcard `*` is not used with cookies. Exposed response headers include:
+
+```text
+Retry-After
+X-Request-ID
+```
+
+Current production frontend origin:
+
+```text
+https://app.ballotbox.io.vn
+```
 
 ## Source of truth
 
-Controller mappings and request/response DTOs are the source of truth for generated operations and schemas. Global API metadata and JWT security configuration are defined in:
+Global OpenAPI and JWT configuration:
 
-`src/main/java/com/hungtvb/votesystem/common/config/OpenApiConfig.java`
+```text
+src/main/java/com/hungtvb/votesystem/common/config/OpenApiConfig.java
+src/main/java/com/hungtvb/votesystem/common/config/SecurityConfig.java
+```
+
+For exact request/response schemas, use the generated OpenAPI document from the deployed backend or the controller/DTO source on the same commit.
