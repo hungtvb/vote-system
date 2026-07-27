@@ -5,6 +5,7 @@ import com.hungtvb.votesystem.auth.dto.LoginRequest;
 import com.hungtvb.votesystem.auth.dto.RegisterRequest;
 import com.hungtvb.votesystem.auth.metrics.AuthRestoreMetrics;
 import com.hungtvb.votesystem.auth.session.RefreshSessionFailureException;
+import com.hungtvb.votesystem.observability.RequestLatencyLoggingFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -26,7 +27,6 @@ import java.util.UUID;
 @RequestMapping("/api/v1/auth")
 public class AuthController {
     private static final Logger LOGGER = LoggerFactory.getLogger(AuthController.class);
-    private static final String REQUEST_ID_HEADER = "X-Request-ID";
 
     private final AuthService authService;
     private final RefreshTokenCookie refreshTokenCookie;
@@ -53,8 +53,7 @@ public class AuthController {
 
     @PostMapping("/refresh")
     AuthResponse refresh(HttpServletRequest request, HttpServletResponse response) {
-        String requestId = UUID.randomUUID().toString();
-        response.setHeader(REQUEST_ID_HEADER, requestId);
+        String requestId = RequestLatencyLoggingFilter.requestId(request);
         AuthRestoreMetrics.RestoreSample sample = metrics.startTotal(AuthRestoreMetrics.OPERATION_REFRESH);
         String outcome = "error";
 
