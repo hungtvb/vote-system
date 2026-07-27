@@ -96,6 +96,10 @@ public class BallotVoteStreamService {
         return clients == null ? 0 : clients.size();
     }
 
+    public int totalActiveSubscribers() {
+        return clientsByPost.values().stream().mapToInt(Map::size).sum();
+    }
+
     private void remove(UUID postId, UUID clientId) {
         clientsByPost.computeIfPresent(postId, (ignored, clients) -> {
             clients.remove(clientId);
