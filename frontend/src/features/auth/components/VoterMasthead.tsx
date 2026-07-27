@@ -3,6 +3,7 @@
 import type { Session, SocialProvider, UserProfile } from '@/shared/api/types';
 import type { SocialProviderId } from '@/shared/api/social-auth-api';
 import { useI18n } from '@/shared/i18n/I18nProvider';
+import localeStyles from '@/shared/i18n/LanguageSwitcher.module.scss';
 import styles from './VoterMasthead.module.scss';
 
 interface VoterMastheadProps {
@@ -61,9 +62,9 @@ export function VoterMasthead({
       </label>
 
       <div className={styles.actions}>
-        <div className={styles.languageSwitcher} role="group" aria-label={t('common', 'language')}>
-          <button type="button" aria-pressed={locale === 'vi'} onClick={() => setLocale('vi')}>VI</button>
-          <button type="button" aria-pressed={locale === 'en'} onClick={() => setLocale('en')}>EN</button>
+        <div className={localeStyles.switcher} role="group" aria-label={t('common', 'language')}>
+          <button type="button" aria-pressed={locale === 'vi'} title={t('common', 'vietnamese')} onClick={() => setLocale('vi')}>VI</button>
+          <button type="button" aria-pressed={locale === 'en'} title={t('common', 'english')} onClick={() => setLocale('en')}>EN</button>
         </div>
 
         {restoring && !authenticated && <span className={styles.restoring} role="status">{t('auth', 'restoring')}</span>}
