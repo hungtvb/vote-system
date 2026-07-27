@@ -1,0 +1,57 @@
+{
+  "common": {
+    "language": "Language",
+    "vietnamese": "Tiếng Việt",
+    "english": "English",
+    "cancel": "CANCEL",
+    "loading": "LOADING..."
+  },
+  "auth": {
+    "signIn": "SIGN IN",
+    "register": "REGISTER",
+    "createAccount": "CREATE ACCOUNT",
+    "voterAccount": "Voter account",
+    "accessExisting": "ACCESS YOUR EXISTING VOTER ID",
+    "createNew": "CREATE A NEW VOTER ID",
+    "authenticateToCreate": "AUTHENTICATE TO CONTINUE YOUR BALLOT",
+    "continueGoogle": "CONTINUE WITH GOOGLE",
+    "continueGithub": "CONTINUE WITH GITHUB",
+    "connectingGoogle": "CONNECTING TO GOOGLE...",
+    "connectingGithub": "CONNECTING TO GITHUB...",
+    "orUseEmail": "OR USE EMAIL",
+    "publicName": "PUBLIC VOTER NAME (OPTIONAL)",
+    "email": "EMAIL",
+    "password": "PASSWORD",
+    "confirmPassword": "CONFIRM PASSWORD",
+    "passwordMismatch": "The confirmation password does not match.",
+    "authorizationDenied": "Authorization denied.",
+    "socialUnavailable": "Social sign-in is unavailable.",
+    "verifying": "VERIFYING...",
+    "restoring": "RESTORING ID...",
+    "signedIn": "SIGNED IN",
+    "officialVoterId": "OFFICIAL VOTER ID",
+    "emailNotShared": "EMAIL NOT SHARED",
+    "role": "ROLE: {role}",
+    "verifiedSession": "STATUS: VERIFIED SESSION",
+    "googleLinked": "GOOGLE: LINKED",
+    "githubLinked": "GITHUB: LINKED",
+    "linkGoogle": "LINK GOOGLE",
+    "linkGithub": "LINK GITHUB",
+    "logout": "LOG OUT",
+    "logoutAll": "LOG OUT ALL DEVICES",
+    "openVoterMenu": "Open voter ID menu for {name}",
+    "connectedProviders": "Connected login providers"
+  },
+  "ballots": {
+    "searchRegistry": "SEARCH PUBLIC REGISTRY",
+    "searchPlaceholder": "Title, content or ballot number...",
+    "createBallot": "CREATE BALLOT"
+  },
+  "profile": {},
+  "admin": {},
+  "comments": {},
+  "notifications": {},
+  "errors": {
+    "unknown": "Something went wrong. Please try again."
+  }
+}
