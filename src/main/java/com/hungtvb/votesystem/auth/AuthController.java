@@ -3,9 +3,14 @@ package com.hungtvb.votesystem.auth;
 import com.hungtvb.votesystem.auth.dto.AuthResponse;
 import com.hungtvb.votesystem.auth.dto.LoginRequest;
 import com.hungtvb.votesystem.auth.dto.RegisterRequest;
+import com.hungtvb.votesystem.auth.metrics.AuthRestoreMetrics;
+import com.hungtvb.votesystem.auth.session.RefreshSessionFailureException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -20,12 +25,19 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AuthController.class);
+    private static final String REQUEST_ID_HEADER = "X-Request-ID";
+
     private final AuthService authService;
     private final RefreshTokenCookie refreshTokenCookie;
+    private final AuthRestoreMetrics metrics;
 
-    public AuthController(AuthService authService, RefreshTokenCookie refreshTokenCookie) {
+    public AuthController(AuthService authService,
+                          RefreshTokenCookie refreshTokenCookie,
+                          AuthRestoreMetrics metrics) {
         this.authService = authService;
         this.refreshTokenCookie = refreshTokenCookie;
+        this.metrics = metrics;
     }
 
     @PostMapping("/register")
@@ -41,8 +53,32 @@ public class AuthController {
 
     @PostMapping("/refresh")
     AuthResponse refresh(HttpServletRequest request, HttpServletResponse response) {
-        String refreshToken = refreshTokenCookie.read(request);
-        return writeSession(authService.refresh(refreshToken), response);
+        String requestId = UUID.randomUUID().toString();
+        response.setHeader(REQUEST_ID_HEADER, requestId);
+        AuthRestoreMetrics.RestoreSample sample = metrics.startTotal(AuthRestoreMetrics.OPERATION_REFRESH);
+        String outcome = "error";
+
+        try (MDC.MDCCloseable ignored = MDC.putCloseable("requestId", requestId)) {
+            try {
+                AuthResponse authResponse = writeSession(
+                        authService.refresh(refreshTokenCookie.read(request)),
+                        response
+                );
+                outcome = "success";
+                return authResponse;
+            } catch (RefreshSessionFailureException exception) {
+                outcome = exception.reason().metricValue();
+                throw exception;
+            } finally {
+                long durationMillis = metrics.stopTotal(sample, outcome);
+                LOGGER.info(
+                        "auth_restore operation=refresh outcome={} duration_ms={} request_id={}",
+                        outcome,
+                        durationMillis,
+                        requestId
+                );
+            }
+        }
     }
 
     @PostMapping("/logout")
