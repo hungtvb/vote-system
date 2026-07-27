@@ -85,6 +85,19 @@ vote.ranking.operations
 
 `X-Request-ID` is accepted when it matches the safe request-ID format; otherwise the backend generates one. Completion logs use route templates rather than concrete UUID paths. User IDs, ballot IDs, emails, cookies, refresh-token hashes, and raw tokens must never be added as metric tags or structured-log identifiers.
 
+### Temporary performance-diagnostic mode
+
+The current `application.yml` enables Spring Web DEBUG logging, transaction DEBUG logging, Hibernate statistics, and Hibernate statistics DEBUG output. This was added to collect evidence for the Railway latency investigation.
+
+Treat this as temporary diagnostic configuration:
+
+- watch Railway log volume and CPU overhead;
+- avoid copying request bodies, credentials, cookies, tokens, email, or provider payloads into custom logs;
+- use the bounded Micrometer metrics and `http_request_complete` route-template logs as the primary evidence;
+- disable DEBUG categories and `hibernate.generate_statistics` after the investigation has enough data.
+
+Do not normalize this verbose mode as the permanent production baseline.
+
 ## Active roadmap
 
 The next product sequence is managed in the Linear **Vote System** project:
