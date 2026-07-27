@@ -53,7 +53,11 @@ public class VoteSideEffectDispatcher {
             counter(effect, "completed").increment();
         } catch (RuntimeException exception) {
             counter(effect, "failed").increment();
-            log.error("Vote side effect failed effect={}", effect.tag(), exception);
+            log.error(
+                    "Vote side effect failed effect={} errorType={}",
+                    effect.tag(),
+                    exception.getClass().getSimpleName()
+            );
         }
     }
 
