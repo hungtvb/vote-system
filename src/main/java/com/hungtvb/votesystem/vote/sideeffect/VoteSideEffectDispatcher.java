@@ -16,15 +16,18 @@ import static com.hungtvb.votesystem.vote.metrics.VoteLatencyMetrics.OPERATION_P
 public class VoteSideEffectDispatcher {
     private static final Logger log = LoggerFactory.getLogger(VoteSideEffectDispatcher.class);
 
-    private final TaskExecutor executor;
+    private final TaskExecutor rankingExecutor;
+    private final TaskExecutor sseExecutor;
     private final VoteLatencyMetrics latencyMetrics;
     private final MeterRegistry meterRegistry;
 
     public VoteSideEffectDispatcher(
-            @Qualifier("voteSideEffectExecutor") TaskExecutor executor,
+            @Qualifier("voteRankingExecutor") TaskExecutor rankingExecutor,
+            @Qualifier("voteSseExecutor") TaskExecutor sseExecutor,
             VoteLatencyMetrics latencyMetrics,
             MeterRegistry meterRegistry) {
-        this.executor = executor;
+        this.rankingExecutor = rankingExecutor;
+        this.sseExecutor = sseExecutor;
         this.latencyMetrics = latencyMetrics;
         this.meterRegistry = meterRegistry;
     }
@@ -32,12 +35,16 @@ public class VoteSideEffectDispatcher {
     public void dispatch(Effect effect, Runnable action) {
         Runnable measuredTask = () -> run(effect, action);
         try {
-            executor.execute(measuredTask);
+            executor(effect).execute(measuredTask);
             counter(effect, "accepted").increment();
         } catch (TaskRejectedException exception) {
             counter(effect, "caller_runs").increment();
             measuredTask.run();
         }
+    }
+
+    private TaskExecutor executor(Effect effect) {
+        return effect == Effect.RANKING ? rankingExecutor : sseExecutor;
     }
 
     private void run(Effect effect, Runnable action) {
