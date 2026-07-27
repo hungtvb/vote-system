@@ -26,8 +26,8 @@ export function buildBallotListPath(params: BallotListParams): string {
 
 export function createBallotApi(request: ApiRequester = http.request) {
   return {
-    list(params: BallotListParams, token?: string) {
-      return request<PageResponse<Ballot>>(buildBallotListPath(params), {}, token);
+    list(params: BallotListParams, token?: string, signal?: AbortSignal) {
+      return request<PageResponse<Ballot>>(buildBallotListPath(params), { signal }, token);
     },
 
     get(postId: string, token?: string) {
