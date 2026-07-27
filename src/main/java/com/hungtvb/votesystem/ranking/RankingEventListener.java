@@ -19,6 +19,6 @@ public class RankingEventListener {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onRankingChanged(RankingChangedEvent event) {
-        dispatcher.dispatch(RANKING, () -> rankingService.apply(event));
+        dispatcher.dispatch(RANKING, () -> rankingService.applyLatest(event.postId()));
     }
 }
