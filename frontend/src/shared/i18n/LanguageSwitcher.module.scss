@@ -1,0 +1,36 @@
+.switcher {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(32px, 1fr));
+  border: 2px solid var(--navy);
+  background: var(--paper);
+}
+
+.switcher button {
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--navy);
+  font: 800 10px 'JetBrains Mono', monospace;
+  letter-spacing: .08em;
+}
+
+.switcher button + button {
+  border-left: 1px solid var(--navy);
+}
+
+.switcher button[aria-pressed='true'] {
+  background: var(--navy);
+  color: var(--bone);
+}
+
+.switcher button:focus-visible {
+  outline: 3px solid var(--seal);
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .switcher {
+    grid-template-columns: repeat(2, 32px);
+  }
+}
