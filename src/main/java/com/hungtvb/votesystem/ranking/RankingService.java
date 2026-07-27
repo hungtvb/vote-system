@@ -57,6 +57,21 @@ public class RankingService {
         updates.increment();
     }
 
+    public void applyLatest(UUID postId) {
+        Instant now = clock.instant();
+        postRepository.findById(postId).ifPresentOrElse(
+                post -> rankingRepository.upsert(
+                        post.getId(),
+                        post.getVoteScore(),
+                        formula.score(post.getVoteScore(), post.getCreatedAt(), now),
+                        post.getCreatedAt(),
+                        now
+                ),
+                () -> rankingRepository.remove(postId, now)
+        );
+        updates.increment();
+    }
+
     public Page<Post> list(FeedType feed, Pageable pageable) {
         return list(feed, pageable, PostFilter.empty());
     }
