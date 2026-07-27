@@ -1,5 +1,6 @@
 package com.hungtvb.votesystem.auth.session;
 
+import com.hungtvb.votesystem.auth.metrics.AuthRestoreMetrics;
 import com.hungtvb.votesystem.common.config.RefreshTokenProperties;
 import com.hungtvb.votesystem.common.error.UnauthorizedException;
 import com.hungtvb.votesystem.security.AuthenticatedUser;
@@ -25,14 +26,17 @@ public class RefreshSessionService {
     private final RefreshSessionRepository sessionRepository;
     private final UserRepository userRepository;
     private final RefreshTokenProperties properties;
+    private final AuthRestoreMetrics metrics;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public RefreshSessionService(RefreshSessionRepository sessionRepository,
                                  UserRepository userRepository,
-                                 RefreshTokenProperties properties) {
+                                 RefreshTokenProperties properties,
+                                 AuthRestoreMetrics metrics) {
         this.sessionRepository = sessionRepository;
         this.userRepository = userRepository;
         this.properties = properties;
+        this.metrics = metrics;
     }
 
     @Transactional
@@ -43,27 +47,56 @@ public class RefreshSessionService {
 
     @Transactional(noRollbackFor = UnauthorizedException.class)
     public RefreshGrant rotate(String rawToken) {
-        String tokenHash = hash(requireToken(rawToken));
+        String requiredToken = requireToken(rawToken);
+        String tokenHash = metrics.timeStage(
+                AuthRestoreMetrics.OPERATION_REFRESH,
+                "token_hash",
+                () -> hash(requiredToken)
+        );
         Instant now = Instant.now();
-        RefreshSession current = sessionRepository.findByTokenHashForUpdate(tokenHash)
-                .orElseThrow(this::invalidSession);
+        RefreshSession current = metrics.timeStage(
+                AuthRestoreMetrics.OPERATION_REFRESH,
+                "session_lock",
+                () -> sessionRepository.findByTokenHashForUpdate(tokenHash)
+                        .orElseThrow(() -> invalidSession(RefreshSessionFailureException.Reason.INVALID))
+        );
 
         if (current.isRevoked()) {
             if (current.wasRotated()) {
-                sessionRepository.revokeAllActiveByUserId(current.getUserId(), now);
+                metrics.timeStage(
+                        AuthRestoreMetrics.OPERATION_REFRESH,
+                        "reuse_revoke_all",
+                        () -> sessionRepository.revokeAllActiveByUserId(current.getUserId(), now)
+                );
+                throw invalidSession(RefreshSessionFailureException.Reason.REUSED);
             }
-            throw invalidSession();
+            throw invalidSession(RefreshSessionFailureException.Reason.REVOKED);
         }
 
         if (current.isExpired(now)) {
-            current.revoke(now);
-            throw invalidSession();
+            metrics.timeStage(
+                    AuthRestoreMetrics.OPERATION_REFRESH,
+                    "rotation_write",
+                    () -> current.revoke(now)
+            );
+            throw invalidSession(RefreshSessionFailureException.Reason.EXPIRED);
         }
 
-        AppUser user = userRepository.findById(current.getUserId())
-                .orElseThrow(this::invalidSession);
-        IssuedToken replacement = createSession(current.getUserId(), now);
-        current.rotateTo(replacement.sessionId(), now);
+        AppUser user = metrics.timeStage(
+                AuthRestoreMetrics.OPERATION_REFRESH,
+                "user_lookup",
+                () -> userRepository.findById(current.getUserId())
+                        .orElseThrow(() -> invalidSession(RefreshSessionFailureException.Reason.INVALID))
+        );
+        IssuedToken replacement = metrics.timeStage(
+                AuthRestoreMetrics.OPERATION_REFRESH,
+                "rotation_write",
+                () -> {
+                    IssuedToken issuedToken = createSession(current.getUserId(), now);
+                    current.rotateTo(issuedToken.sessionId(), now);
+                    return issuedToken;
+                }
+        );
 
         return new RefreshGrant(
                 AuthenticatedUser.from(user),
@@ -102,7 +135,7 @@ public class RefreshSessionService {
 
     private String requireToken(String rawToken) {
         if (rawToken == null || rawToken.isBlank()) {
-            throw invalidSession();
+            throw invalidSession(RefreshSessionFailureException.Reason.NO_COOKIE);
         }
         return rawToken;
     }
@@ -123,8 +156,8 @@ public class RefreshSessionService {
         }
     }
 
-    private UnauthorizedException invalidSession() {
-        return new UnauthorizedException(INVALID_SESSION_MESSAGE);
+    private RefreshSessionFailureException invalidSession(RefreshSessionFailureException.Reason reason) {
+        return new RefreshSessionFailureException(INVALID_SESSION_MESSAGE, reason);
     }
 
     private record IssuedToken(UUID sessionId, String rawToken) {
