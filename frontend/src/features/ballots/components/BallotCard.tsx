@@ -1,4 +1,5 @@
 import type { Ballot, VoteType } from '@/shared/api/types';
+import { useI18n } from '@/shared/i18n/I18nProvider';
 import { BallotActions } from './BallotActions';
 import { BallotHeader } from './BallotHeader';
 import { BallotOptions } from './BallotOptions';
@@ -17,6 +18,8 @@ interface BallotCardProps {
 }
 
 export function BallotCard({ ballot, busy, owned, onOpen, onVote, onEdit, onDelete, onCloseBallot }: BallotCardProps) {
+  const { t, formatNumber } = useI18n();
+
   return (
     <article className={styles.ballotCard} aria-busy={busy}>
       <BallotHeader ballot={ballot} owned={owned} />
@@ -24,7 +27,7 @@ export function BallotCard({ ballot, busy, owned, onOpen, onVote, onEdit, onDele
       <div className={styles.body}>
         <div className={styles.copy}>
           <p className={styles.category}>{ballot.category}</p>
-          <button type="button" className={styles.titleButton} onClick={onOpen} aria-label={`Open ballot ${ballot.title}`}>
+          <button type="button" className={styles.titleButton} onClick={onOpen} aria-label={t('ballots', 'openBallot', { title: ballot.title })}>
             <h2>{ballot.title}</h2>
           </button>
           <p className={styles.excerpt}>{ballot.content}</p>
@@ -32,8 +35,8 @@ export function BallotCard({ ballot, busy, owned, onOpen, onVote, onEdit, onDele
           <div className={styles.authorLine} data-qa-author>
             <span className={styles.authorInitials} aria-hidden="true">{ballot.author.initials}</span>
             <span className={styles.authorCopy}>
-              <strong>FILED BY {ballot.author.displayName}</strong>
-              <small>{ballot.totalVotes} REGISTERED VOTES</small>
+              <strong>{t('ballots', 'filedBy', { name: ballot.author.displayName })}</strong>
+              <small>{t('ballots', 'registeredVotes', { count: formatNumber(ballot.totalVotes) })}</small>
             </span>
           </div>
 
