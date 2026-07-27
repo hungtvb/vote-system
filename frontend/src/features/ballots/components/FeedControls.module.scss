@@ -1,6 +1,6 @@
 .controls { margin: 22px 0 18px; border-bottom: 2px solid var(--navy); }
 
-.tabs { display: flex; overflow-x: auto; scrollbar-width: thin; }
+.tabs { display: flex; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
 .tabs button { flex: 0 0 auto; min-height: 44px; padding: 10px 16px; border: 2px solid transparent; border-bottom: 0; background: transparent; color: var(--navy); font-size: 11px; font-weight: 800; letter-spacing: .08em; }
 .tabs .active { margin-bottom: -2px; border-color: var(--navy); background: var(--kraft); }
 
