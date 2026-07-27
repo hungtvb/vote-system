@@ -1,6 +1,7 @@
 target/
 frontend/node_modules/
 frontend/dist/
+perf-results/
 .idea/
 .vscode/
 *.iml

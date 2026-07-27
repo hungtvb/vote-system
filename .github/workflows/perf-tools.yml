@@ -1,0 +1,36 @@
+name: Perf tools
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/perf/**'
+      - '.github/workflows/perf-tools.yml'
+  pull_request:
+    paths:
+      - 'scripts/perf/**'
+      - '.github/workflows/perf-tools.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check benchmark syntax
+        run: node --check scripts/perf/benchmark-api.mjs
+      - name: Validate public feed configuration
+        run: DRY_RUN=1 SCENARIOS=public-feed node scripts/perf/benchmark-api.mjs
+      - name: Validate vote configuration
+        run: |
+          DRY_RUN=1 \
+          SCENARIOS=vote \
+          SAMPLES=50 \
+          ACCESS_TOKEN=dummy \
+          POST_ID=00000000-0000-0000-0000-000000000000 \
+          node scripts/perf/benchmark-api.mjs
