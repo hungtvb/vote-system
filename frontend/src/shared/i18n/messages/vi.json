@@ -1,0 +1,57 @@
+{
+  "common": {
+    "language": "Ngôn ngữ",
+    "vietnamese": "Tiếng Việt",
+    "english": "English",
+    "cancel": "HỦY",
+    "loading": "ĐANG TẢI..."
+  },
+  "auth": {
+    "signIn": "ĐĂNG NHẬP",
+    "register": "ĐĂNG KÝ",
+    "createAccount": "TẠO TÀI KHOẢN",
+    "voterAccount": "Tài khoản cử tri",
+    "accessExisting": "TRUY CẬP MÃ CỬ TRI HIỆN CÓ",
+    "createNew": "TẠO MÃ CỬ TRI MỚI",
+    "authenticateToCreate": "XÁC THỰC ĐỂ TIẾP TỤC TẠO PHIẾU",
+    "continueGoogle": "TIẾP TỤC VỚI GOOGLE",
+    "continueGithub": "TIẾP TỤC VỚI GITHUB",
+    "connectingGoogle": "ĐANG KẾT NỐI GOOGLE...",
+    "connectingGithub": "ĐANG KẾT NỐI GITHUB...",
+    "orUseEmail": "HOẶC DÙNG EMAIL",
+    "publicName": "TÊN CỬ TRI CÔNG KHAI (TÙY CHỌN)",
+    "email": "EMAIL",
+    "password": "MẬT KHẨU",
+    "confirmPassword": "XÁC NHẬN MẬT KHẨU",
+    "passwordMismatch": "Mật khẩu xác nhận không khớp.",
+    "authorizationDenied": "Không thể xác thực.",
+    "socialUnavailable": "Đăng nhập mạng xã hội hiện không khả dụng.",
+    "verifying": "ĐANG XÁC THỰC...",
+    "restoring": "ĐANG KHÔI PHỤC ID...",
+    "signedIn": "ĐÃ ĐĂNG NHẬP",
+    "officialVoterId": "MÃ CỬ TRI CHÍNH THỨC",
+    "emailNotShared": "EMAIL KHÔNG ĐƯỢC CHIA SẺ",
+    "role": "VAI TRÒ: {role}",
+    "verifiedSession": "TRẠNG THÁI: PHIÊN ĐÃ XÁC MINH",
+    "googleLinked": "GOOGLE: ĐÃ LIÊN KẾT",
+    "githubLinked": "GITHUB: ĐÃ LIÊN KẾT",
+    "linkGoogle": "LIÊN KẾT GOOGLE",
+    "linkGithub": "LIÊN KẾT GITHUB",
+    "logout": "ĐĂNG XUẤT",
+    "logoutAll": "ĐĂNG XUẤT MỌI THIẾT BỊ",
+    "openVoterMenu": "Mở menu mã cử tri của {name}",
+    "connectedProviders": "Nhà cung cấp đăng nhập đã kết nối"
+  },
+  "ballots": {
+    "searchRegistry": "TÌM KIẾM SỔ ĐĂNG KÝ CÔNG KHAI",
+    "searchPlaceholder": "Tiêu đề, nội dung hoặc mã phiếu...",
+    "createBallot": "TẠO PHIẾU"
+  },
+  "profile": {},
+  "admin": {},
+  "comments": {},
+  "notifications": {},
+  "errors": {
+    "unknown": "Đã xảy ra lỗi. Vui lòng thử lại."
+  }
+}
