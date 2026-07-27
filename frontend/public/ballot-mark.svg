@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-labelledby="title desc">
+  <title id="title">Vote System Ballot Mark</title>
+  <desc id="desc">A navy and seal-red official ballot stamp with the letters VS.</desc>
+  <rect width="192" height="192" rx="18" fill="#F0E9D8"/>
+  <rect x="18" y="18" width="156" height="156" rx="8" fill="none" stroke="#1E2A3A" stroke-width="10"/>
+  <rect x="32" y="32" width="128" height="128" rx="4" fill="none" stroke="#B8342E" stroke-width="7"/>
+  <path d="M58 57h76" stroke="#1E2A3A" stroke-width="8" stroke-linecap="square"/>
+  <text x="96" y="126" text-anchor="middle" fill="#B8342E" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="56" font-weight="800" letter-spacing="2">VS</text>
+</svg>
