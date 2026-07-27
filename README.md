@@ -33,9 +33,9 @@ Browser
     ├── Redis ranking
     ├── Redis sliding-window rate limiting
     ├── SSE vote streams
-    └── observability
-        ├── PostgreSQL / Supabase
-        └── Redis
+    ├── observability
+    ├── PostgreSQL / Supabase
+    └── Redis
 ```
 
 PostgreSQL owns durable account, session, ballot, and vote state. Redis is derived infrastructure: it can be rebuilt from PostgreSQL and ranked feeds degrade to latest-first database results when Redis is unavailable.
@@ -130,11 +130,16 @@ Requirements:
 - npm
 - Docker
 
-Copy environment defaults when needed:
+Copy backend environment defaults when needed:
 
 ```bash
 cp .env.example .env
-cp frontend/.env.production.example frontend/.env.local
+```
+
+Create `frontend/.env.local` for local API calls:
+
+```env
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
 ```
 
 Start PostgreSQL and Redis:
