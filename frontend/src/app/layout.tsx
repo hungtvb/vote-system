@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { I18nProvider } from '@/shared/i18n/I18nProvider';
 import './globals.scss';
 
 export const metadata: Metadata = {
@@ -19,7 +20,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="vi">
-      <body>{children}</body>
+      <body><I18nProvider>{children}</I18nProvider></body>
     </html>
   );
 }
