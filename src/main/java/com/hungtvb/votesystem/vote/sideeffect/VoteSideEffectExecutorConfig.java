@@ -41,7 +41,6 @@ public class VoteSideEffectExecutorConfig {
         executor.setAwaitTerminationSeconds(properties.shutdownWaitSeconds());
         executor.setRejectedExecutionHandler((task, pool) -> enqueueWithoutReordering(
                 task, pool, effect, meterRegistry));
-        executor.initialize();
         return executor;
     }
 
