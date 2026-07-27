@@ -3,6 +3,7 @@
 import type { CSSProperties } from 'react';
 import { calculateVoteBreakdown, formatVoteScore } from '@/shared/ballot/ballot-view';
 import type { Ballot, VoteType } from '@/shared/api/types';
+import { useI18n } from '@/shared/i18n/I18nProvider';
 import styles from './BallotCard.module.scss';
 
 interface BallotOptionsProps {
@@ -12,37 +13,52 @@ interface BallotOptionsProps {
 }
 
 export function BallotOptions({ ballot, busy, onVote }: BallotOptionsProps) {
+  const { formatNumber, t } = useI18n();
   const disabled = busy || ballot.status === 'CLOSED';
   const breakdown = calculateVoteBreakdown(ballot.upVotes, ballot.downVotes);
 
   return (
     <div className={styles.votePanel} data-qa-vote-split={`${breakdown.upPercentage}/${breakdown.downPercentage}`}>
-      <span className={styles.voteLabel}>OFFICIAL BALLOT</span>
-      <div className={styles.counter} data-qa-vote-score={formatVoteScore(ballot.voteScore)} aria-label={`Vote score ${ballot.voteScore}`}>
+      <span className={styles.voteLabel}>{t('ballots', 'officialBallot')}</span>
+      <div className={styles.counter} data-qa-vote-score={formatVoteScore(ballot.voteScore)} aria-label={t('ballots', 'voteScore', { score: ballot.voteScore })}>
         {formatVoteScore(ballot.voteScore)}
       </div>
 
       <VoteOption
         type="UP"
-        label="ENDORSE"
+        label={t('ballots', 'endorse')}
         count={ballot.upVotes}
         percentage={breakdown.upPercentage}
         selected={ballot.myVote === 'UP'}
         disabled={disabled}
         onVote={onVote}
+        formatNumber={formatNumber}
+        ariaLabel={(count, percentage, selected) => t('ballots', 'voteOptionLabel', {
+          label: t('ballots', 'endorse'),
+          count: formatNumber(count),
+          percentage: formatNumber(percentage),
+          selected: selected ? t('ballots', 'currentChoice') : ''
+        })}
       />
       <VoteOption
         type="DOWN"
-        label="REJECT"
+        label={t('ballots', 'reject')}
         count={ballot.downVotes}
         percentage={breakdown.downPercentage}
         selected={ballot.myVote === 'DOWN'}
         disabled={disabled}
         onVote={onVote}
+        formatNumber={formatNumber}
+        ariaLabel={(count, percentage, selected) => t('ballots', 'voteOptionLabel', {
+          label: t('ballots', 'reject'),
+          count: formatNumber(count),
+          percentage: formatNumber(percentage),
+          selected: selected ? t('ballots', 'currentChoice') : ''
+        })}
       />
 
       <p className={styles.optionHint}>
-        {ballot.status === 'CLOSED' ? 'VOTING CLOSED · RESULT LOCKED' : 'SELECT THE SAME OPTION AGAIN TO REMOVE YOUR VOTE'}
+        {ballot.status === 'CLOSED' ? t('ballots', 'votingClosed') : t('ballots', 'removeVoteHint')}
       </p>
     </div>
   );
@@ -56,9 +72,11 @@ interface VoteOptionProps {
   selected: boolean;
   disabled: boolean;
   onVote: (type: VoteType) => void;
+  formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
+  ariaLabel: (count: number, percentage: number, selected: boolean) => string;
 }
 
-function VoteOption({ type, label, count, percentage, selected, disabled, onVote }: VoteOptionProps) {
+function VoteOption({ type, label, count, percentage, selected, disabled, onVote, formatNumber, ariaLabel }: VoteOptionProps) {
   const selectedClass = selected ? (type === 'UP' ? styles.selectedUp : styles.selectedDown) : '';
   const shareStyle = { '--vote-share': `${percentage}%` } as CSSProperties;
 
@@ -67,13 +85,13 @@ function VoteOption({ type, label, count, percentage, selected, disabled, onVote
       type="button"
       disabled={disabled}
       aria-pressed={selected}
-      aria-label={`${label}: ${count} votes, ${percentage} percent${selected ? ', your current choice' : ''}`}
+      aria-label={ariaLabel(count, percentage, selected)}
       className={`${styles.option} ${selectedClass}`}
       onClick={() => onVote(type)}
     >
       <span className={styles.optionName}>{label}</span>
-      <b className={styles.optionCount}>{count}</b>
-      <span className={styles.optionPercent}>{percentage}%</span>
+      <b className={styles.optionCount}>{formatNumber(count)}</b>
+      <span className={styles.optionPercent}>{formatNumber(percentage)}%</span>
       <span className={styles.track} aria-hidden="true">
         <span className={styles.fill} style={shareStyle} />
       </span>
