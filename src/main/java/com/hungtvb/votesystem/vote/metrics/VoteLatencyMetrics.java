@@ -11,6 +11,7 @@ import java.util.function.Supplier;
 public class VoteLatencyMetrics {
     public static final String OPERATION_CAST = "cast";
     public static final String OPERATION_REMOVE = "remove";
+    public static final String OPERATION_POST_COMMIT = "post_commit";
 
     private static final double[] PERCENTILES = {0.5, 0.95, 0.99};
 
