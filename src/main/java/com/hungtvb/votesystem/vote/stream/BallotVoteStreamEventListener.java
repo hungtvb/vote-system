@@ -1,24 +1,25 @@
 package com.hungtvb.votesystem.vote.stream;
 
-import com.hungtvb.votesystem.vote.metrics.VoteLatencyMetrics;
+import com.hungtvb.votesystem.vote.sideeffect.VoteSideEffectDispatcher;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
-import static com.hungtvb.votesystem.vote.metrics.VoteLatencyMetrics.OPERATION_POST_COMMIT;
+import static com.hungtvb.votesystem.vote.sideeffect.VoteSideEffectDispatcher.Effect.SSE;
 
 @Component
 public class BallotVoteStreamEventListener {
     private final BallotVoteStreamService streamService;
-    private final VoteLatencyMetrics metrics;
+    private final VoteSideEffectDispatcher dispatcher;
 
-    public BallotVoteStreamEventListener(BallotVoteStreamService streamService, VoteLatencyMetrics metrics) {
+    public BallotVoteStreamEventListener(BallotVoteStreamService streamService,
+                                         VoteSideEffectDispatcher dispatcher) {
         this.streamService = streamService;
-        this.metrics = metrics;
+        this.dispatcher = dispatcher;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onVoteChanged(BallotVoteChangedEvent event) {
-        metrics.timeStage(OPERATION_POST_COMMIT, "sse_listener", () -> streamService.publish(event.update()));
+        dispatcher.dispatch(SSE, () -> streamService.publish(event.update()));
     }
 }

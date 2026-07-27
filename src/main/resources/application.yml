@@ -59,6 +59,9 @@ app:
   vote-stream:
     heartbeat-ms: ${VOTE_STREAM_HEARTBEAT_MS:15000}
     timeout-ms: ${VOTE_STREAM_TIMEOUT_MS:1800000}
+  vote-side-effects:
+    queue-capacity: ${VOTE_SIDE_EFFECT_QUEUE_CAPACITY:200}
+    shutdown-wait-seconds: ${VOTE_SIDE_EFFECT_SHUTDOWN_WAIT_SECONDS:10}
   social-login:
     success-url: ${SOCIAL_LOGIN_SUCCESS_URL:/}
     failure-url: ${SOCIAL_LOGIN_FAILURE_URL:/}
