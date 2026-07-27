@@ -106,8 +106,11 @@
   .headerMeta time, .ownerMark { display: none; }
   .copy { padding: 16px; }
   .titleButton h2 { font-size: 24px; }
-  .actions, .ownerActions { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
-  .actions > button, .ownerActions .danger { grid-column: 1 / -1; }
+  .actions { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; }
+  .actions > button, .ownerActions, .ownerActions button { width: 100%; }
+  .ownerActions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .ownerActions button { white-space: nowrap; }
+  .ownerActions .danger { grid-column: auto; margin-top: 2px; }
   .authorCopy strong { font-size: 10px; }
   .votePanel { grid-template-columns: minmax(0, 1fr); }
   .voteLabel, .counter, .optionHint { grid-column: auto; }
