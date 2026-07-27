@@ -64,7 +64,10 @@
     "serverRecords": "HỒ SƠ MÁY CHỦ",
     "record": "HỒ SƠ",
     "records": "HỒ SƠ",
-    "pageOf": "TRANG {page} / {total}"
+    "pageOf": "TRANG {page} / {total}",
+    "openBallot": "Mở phiếu {title}",
+    "filedBy": "ĐĂNG BỞI {name}",
+    "registeredVotes": "{count} PHIẾU ĐÃ GHI NHẬN"
   },
   "profile": {},
   "admin": {},
