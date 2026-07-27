@@ -73,6 +73,9 @@ EXTRA_QA_SCRIPT = r"""
     const socialButtons = [...document.querySelectorAll('[data-qa-social-provider]')];
     const ownerActions = [...document.querySelectorAll('[data-qa-owner-action]')];
     const ownerWrapViolations = ownerActions.filter(textWraps);
+    const voteScores = [...document.querySelectorAll('[data-qa-vote-score]')]
+      .map(element => element.getAttribute('data-qa-vote-score') || '');
+    const scoreFormatViolations = voteScores.filter(score => !/^[+-]\d{4,}$/.test(score));
     const tabs = document.querySelector('[data-qa-feed-tabs]');
     const nestedVerticalOverflow = Boolean(tabs && tabs.scrollHeight > tabs.clientHeight + 1);
     const documentHorizontalOverflow = root.scrollWidth > root.clientWidth;
@@ -81,16 +84,30 @@ EXTRA_QA_SCRIPT = r"""
       const rect = element.getBoundingClientRect();
       return rect.height < 44 || rect.width < 44;
     });
+    const confirmLabels = confirmDialog?.textContent?.replace(/\s+/g, ' ').trim() || '';
+    const expectsConfirm = mode === 'auth-mine' || mode === 'auth-delete-modal';
+    const confirmViolation = expectsConfirm && (
+      !confirmDialog
+      || !confirmLabels.includes('CANCEL')
+      || !confirmLabels.includes('DELETE BALLOT')
+      || !confirmDialog.contains(document.activeElement)
+    );
 
     root.dataset.qaScenario = status;
-    root.dataset.qaOverflow = String(documentHorizontalOverflow || nestedVerticalOverflow || ownerWrapViolations.length > 0);
+    root.dataset.qaOverflow = String(
+      documentHorizontalOverflow
+      || nestedVerticalOverflow
+      || ownerWrapViolations.length > 0
+      || scoreFormatViolations.length > 0
+      || confirmViolation
+    );
     root.dataset.qaFeedTabsVerticalOverflow = String(nestedVerticalOverflow);
     root.dataset.qaOwnerActionWrapViolations = String(ownerWrapViolations.length);
     root.dataset.qaOwnerActions = String(ownerActions.length);
     root.dataset.qaConfirmDialog = String(Boolean(confirmDialog));
-    root.dataset.qaConfirmLabels = confirmDialog?.textContent?.replace(/\s+/g, ' ').trim() || '';
-    root.dataset.qaVoteScores = [...document.querySelectorAll('[data-qa-vote-score]')]
-      .map(element => element.getAttribute('data-qa-vote-score')).join(',');
+    root.dataset.qaConfirmLabels = confirmLabels;
+    root.dataset.qaVoteScores = voteScores.join(',');
+    root.dataset.qaVoteScoreFormatViolations = String(scoreFormatViolations.length);
     root.dataset.qaAuthDialog = String(Boolean(authDialog));
     root.dataset.qaAuthMode = authDialog?.getAttribute('data-auth-mode') || '';
     root.dataset.qaAuthIntent = authDialog?.getAttribute('data-auth-intent') || '';
@@ -136,6 +153,19 @@ EXTRA_QA_SCRIPT = r"""
     if (mode === 'auth-delete-modal') {
       return waitFor(
         () => Boolean(document.querySelector('[data-qa-owner-action="delete"]')),
+        () => {
+          document.querySelector('[data-qa-owner-action="delete"]')?.click();
+          waitFor(
+            () => Boolean(document.querySelector('[data-qa-confirm-dialog]')),
+            () => setTimeout(() => record(), 120)
+          );
+        }
+      );
+    }
+    if (mode === 'auth-mine') {
+      return waitFor(
+        () => document.querySelector('[data-qa-active-feed-tab="true"]')?.textContent?.trim() === 'MY BALLOTS'
+          && Boolean(document.querySelector('[data-qa-owner-action="delete"]')),
         () => {
           document.querySelector('[data-qa-owner-action="delete"]')?.click();
           waitFor(
@@ -235,28 +265,22 @@ class Handler(base.Handler):
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
+        mode = self._fixture_mode()
         if parsed.path == "/api/v1/auth/social/providers":
             self._json(200, {"providers": ["google", "github"]})
             return
         if parsed.path == "/api/v1/users/me":
             if self.headers.get("Authorization") == "Bearer visual-qa-access-token":
-                linked = ["GOOGLE"] if self._fixture_mode() == "auth-social-linked" else []
+                linked = ["GOOGLE"] if mode == "auth-social-linked" else []
                 self._json(200, {**base.PROFILE, "linkedProviders": linked})
             else:
                 self._json(401, {"title": "Unauthorized"})
             return
-        if parsed.path == "/api/v1/posts" and self._fixture_mode() == "auth-negative-score":
+        if parsed.path == "/api/v1/posts" and mode in ("auth", "auth-negative-score"):
             params = parse_qs(parsed.query)
             page = int(params.get("page", ["0"])[0])
             size = int(params.get("size", ["8"])[0])
-            negative = {
-                **base.BALLOTS[0],
-                "voteScore": -1,
-                "upVotes": 0,
-                "downVotes": 1,
-                "totalVotes": 1,
-                "verdict": "DOWN",
-            }
+            negative = {**base.BALLOTS[0], "voteScore": -1}
             self._json(200, base.page_payload([negative, *base.BALLOTS[1:]], page, size))
             return
         super().do_GET()
