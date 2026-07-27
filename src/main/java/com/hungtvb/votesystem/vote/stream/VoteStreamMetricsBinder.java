@@ -1,8 +1,8 @@
 package com.hungtvb.votesystem.vote.stream;
 
 import io.micrometer.core.instrument.Gauge;
-import io.micrometer.core.instrument.MeterBinder;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.binder.MeterBinder;
 import org.springframework.stereotype.Component;
 
 @Component
