@@ -55,8 +55,10 @@ Root Directory: frontend
 Framework Preset: Next.js
 Install Command: npm ci
 Build Command: npm run build
-Output Directory: out
+Output Directory: .next
 ```
+
+The app uses Next.js `output: "export"`, but Vercel's Next.js builder still needs the framework build directory and routing manifests. The repository therefore overrides any project-level `out` setting with `outputDirectory: ".next"` in `frontend/vercel.json`. Using `out` causes `NEXT_NO_ROUTES_MANIFEST`.
 
 Production environment variable:
 
