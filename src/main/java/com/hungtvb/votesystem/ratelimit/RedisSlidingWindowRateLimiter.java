@@ -2,6 +2,7 @@ package com.hungtvb.votesystem.ratelimit;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -14,6 +15,7 @@ import java.util.UUID;
 
 @Component
 public class RedisSlidingWindowRateLimiter {
+    private static final double[] PERCENTILES = {0.5, 0.95, 0.99};
     private static final DefaultRedisScript<List> SCRIPT = new DefaultRedisScript<>("""
             local key = KEYS[1]
             local now = tonumber(ARGV[1])
@@ -37,6 +39,7 @@ public class RedisSlidingWindowRateLimiter {
 
     private final StringRedisTemplate redisTemplate;
     private final RateLimitProperties properties;
+    private final MeterRegistry meterRegistry;
     private final Clock clock;
     private final Counter allowed;
     private final Counter rejected;
@@ -47,6 +50,7 @@ public class RedisSlidingWindowRateLimiter {
                                          MeterRegistry meterRegistry) {
         this.redisTemplate = redisTemplate;
         this.properties = properties;
+        this.meterRegistry = meterRegistry;
         this.clock = Clock.systemUTC();
         this.allowed = meterRegistry.counter("vote.rate_limit.requests", "result", "allowed");
         this.rejected = meterRegistry.counter("vote.rate_limit.requests", "result", "rejected");
@@ -54,7 +58,9 @@ public class RedisSlidingWindowRateLimiter {
     }
 
     public RateLimitDecision check(String rule, String subject, RateLimitProperties.Policy policy) {
+        Timer.Sample sample = Timer.start(meterRegistry);
         if (!properties.enabled()) {
+            sample.stop(latencyTimer(rule, "disabled"));
             return RateLimitDecision.permit();
         }
 
@@ -78,17 +84,34 @@ public class RedisSlidingWindowRateLimiter {
             boolean isAllowed = ((Number) result.get(0)).longValue() == 1;
             if (isAllowed) {
                 allowed.increment();
+                sample.stop(latencyTimer(rule, "allowed"));
                 return RateLimitDecision.permit();
             }
             rejected.increment();
+            sample.stop(latencyTimer(rule, "rejected"));
             long retryMillis = ((Number) result.get(1)).longValue();
             return RateLimitDecision.deny(Duration.ofMillis(retryMillis).toSeconds() + 1);
         } catch (RedisConnectionFailureException | IllegalStateException exception) {
             errors.increment();
             if (properties.failOpen()) {
+                sample.stop(latencyTimer(rule, "fail_open"));
                 return RateLimitDecision.permit();
             }
+            sample.stop(latencyTimer(rule, "error"));
+            throw exception;
+        } catch (RuntimeException exception) {
+            errors.increment();
+            sample.stop(latencyTimer(rule, "error"));
             throw exception;
         }
+    }
+
+    private Timer latencyTimer(String rule, String result) {
+        return Timer.builder("vote.rate_limit.latency")
+                .description("Redis sliding-window rate-limit latency")
+                .tags("rule", rule, "result", result)
+                .publishPercentiles(PERCENTILES)
+                .publishPercentileHistogram()
+                .register(meterRegistry);
     }
 }
