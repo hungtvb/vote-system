@@ -35,6 +35,7 @@ import org.springframework.security.oauth2.server.resource.web.authentication.Be
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
 import org.springframework.security.web.savedrequest.NullRequestCache;
+import org.springframework.security.web.util.matcher.RegexRequestMatcher;
 import org.springframework.util.Assert;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -57,10 +58,10 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http,
-                                            RateLimitFilter rateLimitFilter,
-                                            SocialAuthenticationSuccessHandler socialSuccessHandler,
-                                            SocialAuthenticationFailureHandler socialFailureHandler,
-                                            DiscardingOAuth2AuthorizedClientRepository authorizedClientRepository) throws Exception {
+                                             RateLimitFilter rateLimitFilter,
+                                             SocialAuthenticationSuccessHandler socialSuccessHandler,
+                                             SocialAuthenticationFailureHandler socialFailureHandler,
+                                             DiscardingOAuth2AuthorizedClientRepository authorizedClientRepository) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
@@ -81,6 +82,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET,
                                 "/api/v1/auth/social/providers",
                                 "/api/v1/posts/**").permitAll()
+                        .requestMatchers(new RegexRequestMatcher(
+                                "^/api/v1/users/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                HttpMethod.GET.name()
+                        )).permitAll()
                         .requestMatchers("/actuator/health/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2Login(oauth2 -> oauth2
@@ -96,7 +101,7 @@ public class SecurityConfig {
     CorsConfigurationSource corsConfigurationSource(CorsProperties properties) {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(properties.allowedOrigins());
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of(HttpHeaders.AUTHORIZATION, HttpHeaders.CONTENT_TYPE, HttpHeaders.ACCEPT));
         configuration.setExposedHeaders(List.of(HttpHeaders.RETRY_AFTER, "X-Request-ID"));
         configuration.setAllowCredentials(true);
