@@ -69,6 +69,7 @@ export function FeedControls({
             ref={feed === item ? activeTabRef : undefined}
             type="button"
             aria-pressed={feed === item}
+            data-feed-value={item}
             data-qa-active-feed-tab={feed === item ? 'true' : undefined}
             className={feed === item ? styles.active : ''}
             onClick={() => onFeedChange(item)}
