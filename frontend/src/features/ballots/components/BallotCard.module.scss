@@ -50,8 +50,20 @@
 .titleButton:hover h2, .titleButton:focus-visible h2 { text-decoration: underline; text-underline-offset: 4px; }
 .excerpt { display: -webkit-box; overflow: hidden; margin: 0 0 18px; color: var(--graphite); line-height: 1.55; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow-wrap: anywhere; }
 
-.authorLine { min-width: 0; display: flex; align-items: center; gap: 10px; padding-top: 12px; border-top: 2px dashed color-mix(in srgb, var(--navy) 45%, transparent); color: var(--navy); }
-.authorInitials { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; border: 2px solid var(--seal); color: var(--seal); font: 700 10px 'JetBrains Mono', monospace; transform: rotate(-3deg); }
+.authorLine {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 2px dashed color-mix(in srgb, var(--navy) 45%, transparent);
+  background: transparent;
+  color: var(--navy);
+  text-align: left;
+}
+.authorLine:hover .authorCopy strong, .authorLine:focus-visible .authorCopy strong { text-decoration: underline; text-underline-offset: 3px; }
 .authorCopy { min-width: 0; display: grid; gap: 2px; }
 .authorCopy strong, .authorCopy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .authorCopy strong { font: 700 11px 'JetBrains Mono', monospace; letter-spacing: .04em; }
