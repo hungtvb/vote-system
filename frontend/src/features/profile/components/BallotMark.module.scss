@@ -1,38 +1,77 @@
 .mark {
   --mark-background: #1e2a3a;
   --mark-foreground: #f0e9d8;
+  --mark-icon: url('/ballot-marks/citizen.svg');
 
+  position: relative;
   align-items: center;
-  background: var(--mark-background);
+  background:
+    radial-gradient(circle at 36% 30%, rgb(255 255 255 / 12%), transparent 31%),
+    var(--mark-background);
   border: 2px solid #3a362e;
   border-radius: 50%;
-  box-shadow: 2px 2px 0 #3a362e;
+  box-shadow:
+    2px 2px 0 #3a362e,
+    inset 0 0 0 3px color-mix(in srgb, var(--mark-foreground) 18%, transparent);
   color: var(--mark-foreground);
   display: inline-flex;
   flex: 0 0 auto;
-  font-family: var(--font-mono), monospace;
-  font-weight: 800;
   justify-content: center;
   line-height: 1;
 }
 
+.mark::after {
+  content: '';
+  position: absolute;
+  inset: 9%;
+  border: 1px dashed color-mix(in srgb, var(--mark-foreground) 38%, transparent);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.glyph {
+  width: 58%;
+  height: 58%;
+  display: block;
+  background: var(--mark-foreground);
+  -webkit-mask: var(--mark-icon) center / contain no-repeat;
+  mask: var(--mark-icon) center / contain no-repeat;
+}
+
 .mark[data-size='small'] {
-  font-size: 0.75rem;
-  height: 2rem;
-  width: 2rem;
+  height: 2.25rem;
+  width: 2.25rem;
 }
 
 .mark[data-size='medium'] {
-  font-size: 1rem;
-  height: 2.75rem;
-  width: 2.75rem;
+  height: 3rem;
+  width: 3rem;
 }
 
 .mark[data-size='large'] {
-  font-size: 2rem;
-  height: 6rem;
-  width: 6rem;
+  height: 7rem;
+  width: 7rem;
+  border-width: 3px;
+  box-shadow:
+    4px 4px 0 #3a362e,
+    inset 0 0 0 4px color-mix(in srgb, var(--mark-foreground) 18%, transparent);
 }
+
+.mark[data-size='large'] .glyph {
+  width: 62%;
+  height: 62%;
+}
+
+.mark[data-icon='CITIZEN'] { --mark-icon: url('/ballot-marks/citizen.svg'); }
+.mark[data-icon='ADVOCATE'] { --mark-icon: url('/ballot-marks/advocate.svg'); }
+.mark[data-icon='THINKER'] { --mark-icon: url('/ballot-marks/thinker.svg'); }
+.mark[data-icon='ORGANIZER'] { --mark-icon: url('/ballot-marks/organizer.svg'); }
+.mark[data-icon='VOLUNTEER'] { --mark-icon: url('/ballot-marks/volunteer.svg'); }
+.mark[data-icon='CREATOR'] { --mark-icon: url('/ballot-marks/creator.svg'); }
+.mark[data-icon='LEADER'] { --mark-icon: url('/ballot-marks/leader.svg'); }
+.mark[data-icon='ANALYST'] { --mark-icon: url('/ballot-marks/analyst.svg'); }
+.mark[data-icon='VISIONARY'] { --mark-icon: url('/ballot-marks/visionary.svg'); }
+.mark[data-icon='BUILDER'] { --mark-icon: url('/ballot-marks/builder.svg'); }
 
 .mark[data-color='SEAL'] { --mark-background: #b8342e; }
 .mark[data-color='KRAFT'] { --mark-background: #c9a876; --mark-foreground: #1e2a3a; }
