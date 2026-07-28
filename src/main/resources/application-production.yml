@@ -1,0 +1,24 @@
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: INFO
+    org.springframework.web.servlet.mvc.method.annotation.RequestResponseBodyMethodProcessor: INFO
+    org.hibernate: INFO
+    org.hibernate.engine.transaction.internal.TransactionImpl: INFO
+    org.hibernate.stat: WARN
+
+spring:
+  jpa:
+    properties:
+      hibernate:
+        generate_statistics: false
+        session:
+          events:
+            log: false
+        log_slow_query: 0
