@@ -1,5 +1,6 @@
 'use client';
 
+import { BallotMark } from '@/features/profile/components/BallotMark';
 import type { Session, SocialProvider, UserProfile } from '@/shared/api/types';
 import type { SocialProviderId } from '@/shared/api/social-auth-api';
 import { useI18n } from '@/shared/i18n/I18nProvider';
@@ -17,6 +18,7 @@ interface VoterMastheadProps {
   onLogin: () => void;
   onRegister: () => void;
   onCreate: () => void;
+  onEditProfile: () => void;
   onLinkProvider: (provider: SocialProviderId) => void;
   onLogout: () => void;
   onLogoutAll: () => void;
@@ -33,6 +35,7 @@ export function VoterMasthead({
   onLogin,
   onRegister,
   onCreate,
+  onEditProfile,
   onLinkProvider,
   onLogout,
   onLogoutAll
@@ -83,7 +86,7 @@ export function VoterMasthead({
         {authenticated && profile && (
           <details className={styles.voterMenu} data-qa-voter-id>
             <summary aria-label={t('auth', 'openVoterMenu', { name: profile.displayName })}>
-              <span className={styles.initials} aria-hidden="true">{profile.initials}</span>
+              <BallotMark icon={profile.avatarIcon} color={profile.avatarColor} size="small" />
               <span className={styles.identityCopy}>
                 <strong>{profile.displayName}</strong>
                 <span>{profile.role} · {t('auth', 'signedIn')}</span>
@@ -97,6 +100,7 @@ export function VoterMasthead({
               <span>{t('auth', 'role', { role: profile.role })}</span>
               <span>{t('auth', 'verifiedSession')}</span>
               <div className={styles.menuActions} aria-label={t('auth', 'connectedProviders')}>
+                <button type="button" onClick={onEditProfile}>{t('profile', 'editProfile')}</button>
                 {linkedProviders.has('GOOGLE')
                   ? <span>{t('auth', 'googleLinked')}</span>
                   : googleEnabled && <button type="button" disabled={linkingProvider !== null} onClick={() => onLinkProvider('google')}>{linkingProvider === 'google' ? t('auth', 'connectingGoogle') : t('auth', 'linkGoogle')}</button>}
