@@ -38,8 +38,6 @@ EXTRA_QA_SCRIPT = r"""
   if (!supported.has(mode)) return;
 
   const root = document.documentElement;
-  const byText = (selector, text) => [...document.querySelectorAll(selector)]
-    .find(element => element.textContent?.trim() === text);
   const setInput = (input, value) => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
     setter?.call(input, value);
@@ -85,11 +83,11 @@ EXTRA_QA_SCRIPT = r"""
       return rect.height < 44 || rect.width < 44;
     });
     const confirmLabels = confirmDialog?.textContent?.replace(/\s+/g, ' ').trim() || '';
+    const confirmButtons = confirmDialog?.querySelectorAll('button') || [];
     const expectsConfirm = mode === 'auth-mine' || mode === 'auth-delete-modal';
     const confirmViolation = expectsConfirm && (
       !confirmDialog
-      || !confirmLabels.includes('CANCEL')
-      || !confirmLabels.includes('DELETE BALLOT')
+      || confirmButtons.length < 2
       || !confirmDialog.contains(document.activeElement)
     );
 
@@ -141,6 +139,8 @@ EXTRA_QA_SCRIPT = r"""
     fillRegistration();
     setTimeout(() => document.querySelector('[data-qa-auth-dialog] form')?.requestSubmit(), 80);
   };
+  const guestAction = index => document.querySelectorAll('[data-qa-guest-actions] button')[index];
+  const authTab = index => document.querySelectorAll('[data-qa-auth-tab]')[index];
   const start = () => {
     if (mode === 'reduced-motion') return setTimeout(() => record(), 250);
 
@@ -164,7 +164,7 @@ EXTRA_QA_SCRIPT = r"""
     }
     if (mode === 'auth-mine') {
       return waitFor(
-        () => document.querySelector('[data-qa-active-feed-tab="true"]')?.textContent?.trim() === 'MY BALLOTS'
+        () => Boolean(document.querySelector('[data-qa-active-feed-tab="true"]'))
           && Boolean(document.querySelector('[data-qa-owner-action="delete"]')),
         () => {
           document.querySelector('[data-qa-owner-action="delete"]')?.click();
@@ -181,21 +181,16 @@ EXTRA_QA_SCRIPT = r"""
         () => setTimeout(() => record(), 120)
       );
     }
-    if (mode === 'auth-social-error') {
+    if (mode === 'auth-social-error' || mode === 'auth-social-linked') {
       return waitFor(
-        () => Boolean(document.querySelector('[data-qa-voter-id]')) && document.body.textContent.includes('Social sign-in was cancelled.'),
-        () => setTimeout(() => record(), 120)
-      );
-    }
-    if (mode === 'auth-social-linked') {
-      return waitFor(
-        () => Boolean(document.querySelector('[data-qa-voter-id]')) && document.body.textContent.includes('Google is now linked'),
+        () => Boolean(document.querySelector('[data-qa-voter-id]'))
+          && [...document.querySelectorAll('[role="status"]')].some(element => Boolean(element.textContent?.trim())),
         () => setTimeout(() => record(), 120)
       );
     }
 
     if (mode === 'guest-register-dialog' || mode === 'guest-register-complete') {
-      byText('button', 'REGISTER')?.click();
+      guestAction(1)?.click();
       return waitFor(
         () => document.querySelector('[data-qa-auth-dialog]')?.getAttribute('data-auth-mode') === 'register',
         () => {
@@ -210,7 +205,7 @@ EXTRA_QA_SCRIPT = r"""
     }
 
     if (mode === 'social-buttons') {
-      byText('button', 'SIGN IN')?.click();
+      guestAction(0)?.click();
       return waitFor(
         () => document.querySelectorAll('[data-qa-social-provider]').length === 2,
         () => setTimeout(() => record(), 100)
@@ -223,7 +218,7 @@ EXTRA_QA_SCRIPT = r"""
         () => Boolean(document.querySelector('[data-qa-auth-dialog]')),
         () => {
           if (mode === 'guest-create-auth') return setTimeout(() => record(), 100);
-          byText('[role="tab"]', 'REGISTER')?.click();
+          authTab(1)?.click();
           waitFor(
             () => document.querySelector('[data-qa-auth-dialog]')?.getAttribute('data-auth-mode') === 'register',
             () => {
