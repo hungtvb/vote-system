@@ -37,16 +37,16 @@ interface ProfileDialogProps {
 }
 
 export function ProfileDialog({ profile, onClose, onSave }: ProfileDialogProps) {
-  const { formatNumber, t } = useI18n();
+  const { formatNumber, locale, t } = useI18n();
   const [displayName, setDisplayName] = useState(profile.displayName);
   const [bio, setBio] = useState(profile.bio ?? '');
-  const [avatarIcon, setAvatarIcon] = useState<AvatarIcon>(profile.avatarIcon);
-  const [avatarColor, setAvatarColor] = useState<AvatarColor>(profile.avatarColor);
-  const [preferredLocale, setPreferredLocale] = useState<PreferredLocale>(profile.preferredLocale);
+  const [avatarIcon, setAvatarIcon] = useState<AvatarIcon>(profile.avatarIcon ?? 'CITIZEN');
+  const [avatarColor, setAvatarColor] = useState<AvatarColor>(profile.avatarColor ?? 'NAVY');
+  const [preferredLocale, setPreferredLocale] = useState<PreferredLocale>(profile.preferredLocale ?? locale);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const modal = useModalDialog(onClose);
-  const linkedProviders = new Set<SocialProvider>(profile.linkedProviders);
+  const linkedProviders = new Set<SocialProvider>(profile.linkedProviders ?? []);
   const normalizedName = displayName.trim().replace(/\s+/g, ' ');
   const validName = normalizedName.length >= 2 && normalizedName.length <= 40;
 
