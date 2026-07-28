@@ -13,7 +13,8 @@ public record RateLimitProperties(
         Policy refresh,
         Policy socialStart,
         Policy createPost,
-        Policy vote
+        Policy vote,
+        Policy profileUpdate
 ) {
     public record Policy(int limit, Duration window) {
     }
