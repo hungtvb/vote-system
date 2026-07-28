@@ -1,0 +1,41 @@
+.mark {
+  --mark-background: #1e2a3a;
+  --mark-foreground: #f0e9d8;
+
+  align-items: center;
+  background: var(--mark-background);
+  border: 2px solid #3a362e;
+  border-radius: 50%;
+  box-shadow: 2px 2px 0 #3a362e;
+  color: var(--mark-foreground);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-family: var(--font-mono), monospace;
+  font-weight: 800;
+  justify-content: center;
+  line-height: 1;
+}
+
+.mark[data-size='small'] {
+  font-size: 0.75rem;
+  height: 2rem;
+  width: 2rem;
+}
+
+.mark[data-size='medium'] {
+  font-size: 1rem;
+  height: 2.75rem;
+  width: 2.75rem;
+}
+
+.mark[data-size='large'] {
+  font-size: 2rem;
+  height: 6rem;
+  width: 6rem;
+}
+
+.mark[data-color='SEAL'] { --mark-background: #b8342e; }
+.mark[data-color='KRAFT'] { --mark-background: #c9a876; --mark-foreground: #1e2a3a; }
+.mark[data-color='GRAPHITE'] { --mark-background: #3a362e; }
+.mark[data-color='MOSS'] { --mark-background: #52654a; }
+.mark[data-color='INK_BLUE'] { --mark-background: #315b78; }

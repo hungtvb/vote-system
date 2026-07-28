@@ -87,6 +87,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 && path.matches("/api/v1/posts/[0-9a-fA-F-]+/vote")) {
             return new Rule("vote", properties.vote(), true);
         }
+        if ("PATCH".equals(method) && "/api/v1/users/me".equals(path)) {
+            return new Rule("profile-update", properties.profileUpdate(), true);
+        }
         return null;
     }
 

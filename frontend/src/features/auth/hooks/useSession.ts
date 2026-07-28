@@ -4,8 +4,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { authApi } from '@/shared/api/auth-api';
 import { runAuthorizedRequest } from '@/shared/api/authorized-request';
 import { ApiError } from '@/shared/api/transport';
-import type { Session, UserProfile } from '@/shared/api/types';
+import type { Session, UpdateUserProfileRequest, UserProfile } from '@/shared/api/types';
 import { userApi } from '@/shared/api/user-api';
+
+type ProfileUpdater = (payload: UpdateUserProfileRequest) => Promise<UserProfile>;
+let activeProfileUpdater: ProfileUpdater | null = null;
+
+export function updateActiveUserProfile(payload: UpdateUserProfileRequest): Promise<UserProfile> {
+  if (!activeProfileUpdater) return Promise.reject(new Error('Authenticated profile session is unavailable'));
+  return activeProfileUpdater(payload);
+}
 
 export function useSession() {
   const [session, setSession] = useState<Session | null>(null);
@@ -64,6 +72,20 @@ export function useSession() {
       clearSession
     }), [clearSession, commitSession]);
 
+  const updateProfile = useCallback(async (payload: UpdateUserProfileRequest) => {
+    const nextProfile = await runAuthorized(activeSession =>
+      userApi.updateCurrent(payload, activeSession.accessToken));
+    setProfile(nextProfile);
+    return nextProfile;
+  }, [runAuthorized]);
+
+  useEffect(() => {
+    activeProfileUpdater = updateProfile;
+    return () => {
+      if (activeProfileUpdater === updateProfile) activeProfileUpdater = null;
+    };
+  }, [updateProfile]);
+
   const logout = useCallback(async () => {
     const active = sessionRef.current;
     try {
@@ -86,5 +108,5 @@ export function useSession() {
     }
   }, [clearSession]);
 
-  return { session, profile, restoring, saveSession, clearSession, runAuthorized, logout, logoutAll };
+  return { session, profile, restoring, saveSession, updateProfile, clearSession, runAuthorized, logout, logoutAll };
 }

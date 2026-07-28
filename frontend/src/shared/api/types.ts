@@ -3,6 +3,19 @@ export type VoteVerdict = 'UP' | 'DOWN' | 'UNDECIDED';
 export type BallotStatus = 'OPEN' | 'CLOSED';
 export type FeedType = 'LATEST' | 'HOT' | 'TOP_DAY' | 'TOP_WEEK' | 'MINE';
 export type SocialProvider = 'GOOGLE' | 'GITHUB';
+export type PreferredLocale = 'vi' | 'en';
+export type AvatarIcon =
+  | 'CITIZEN'
+  | 'ADVOCATE'
+  | 'THINKER'
+  | 'ORGANIZER'
+  | 'VOLUNTEER'
+  | 'CREATOR'
+  | 'LEADER'
+  | 'ANALYST'
+  | 'VISIONARY'
+  | 'BUILDER';
+export type AvatarColor = 'NAVY' | 'SEAL' | 'KRAFT' | 'GRAPHITE' | 'MOSS' | 'INK_BLUE';
 
 export interface Session {
   tokenType: string;
@@ -18,16 +31,40 @@ export interface UserProfile {
   email: string | null;
   displayName: string;
   initials: string;
+  bio: string | null;
+  avatarIcon: AvatarIcon;
+  avatarColor: AvatarColor;
+  preferredLocale: PreferredLocale;
   role: string;
   linkedProviders: SocialProvider[];
   createdAt: string;
   updatedAt: string;
 }
 
+export interface UpdateUserProfileRequest {
+  displayName: string;
+  bio: string | null;
+  avatarIcon: AvatarIcon;
+  avatarColor: AvatarColor;
+  preferredLocale: PreferredLocale;
+}
+
+export interface PublicUserProfile {
+  id: string;
+  displayName: string;
+  initials: string;
+  bio: string | null;
+  avatarIcon: AvatarIcon;
+  avatarColor: AvatarColor;
+  createdAt: string;
+}
+
 export interface AuthorSummary {
   id: string;
   displayName: string;
   initials: string;
+  avatarIcon?: AvatarIcon;
+  avatarColor?: AvatarColor;
 }
 
 export interface Ballot {
