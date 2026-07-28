@@ -25,6 +25,10 @@ function flatten(value, prefix = '') {
   });
 }
 
+function placeholders(message) {
+  return [...message.matchAll(/\{(\w+)\}/g)].map(match => match[1]).sort();
+}
+
 const [vi, en] = await Promise.all([load('vi'), load('en')]);
 const failures = [];
 
@@ -39,6 +43,14 @@ const enEntries = new Map(flatten(en));
 for (const [key, value] of viEntries) {
   if (!enEntries.has(key)) failures.push(`en is missing key: ${key}`);
   if (typeof value !== 'string' || value.trim() === '') failures.push(`vi has an invalid message: ${key}`);
+  const enValue = enEntries.get(key);
+  if (typeof value === 'string' && typeof enValue === 'string') {
+    const viPlaceholders = placeholders(value).join(',');
+    const enPlaceholders = placeholders(enValue).join(',');
+    if (viPlaceholders !== enPlaceholders) {
+      failures.push(`placeholder mismatch for ${key}: vi=[${viPlaceholders}] en=[${enPlaceholders}]`);
+    }
+  }
 }
 
 for (const [key, value] of enEntries) {
