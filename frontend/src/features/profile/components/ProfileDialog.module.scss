@@ -109,35 +109,63 @@
 
 .iconGrid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(52px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(5, minmax(60px, 1fr));
+  gap: 8px;
 }
 
 .iconChoice,
 .colorChoice {
+  box-sizing: border-box;
   min-height: 48px;
   display: grid;
   place-items: center;
+  justify-self: center;
   border: 2px solid transparent;
+  border-radius: 50%;
+  padding: 3px;
   background: transparent;
+  transition: transform .16s ease, border-color .16s ease, background-color .16s ease, box-shadow .16s ease;
+}
+
+.iconChoice {
+  width: 60px;
+  height: 60px;
+}
+
+.colorChoice {
+  width: 54px;
+  height: 54px;
+}
+
+.iconChoice:hover,
+.colorChoice:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--kraft) 12%, transparent);
+}
+
+.iconChoice:focus-visible,
+.colorChoice:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--seal) 42%, transparent);
+  outline-offset: 2px;
 }
 
 .iconChoice[aria-pressed='true'],
 .colorChoice[aria-pressed='true'],
 .localePicker button[aria-pressed='true'] {
   border-color: var(--seal);
-  box-shadow: 3px 3px 0 var(--kraft);
+  background: color-mix(in srgb, var(--kraft) 12%, var(--paper));
+  box-shadow: 2px 2px 0 var(--kraft);
 }
 
 .colorGrid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(44px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(6, minmax(54px, 1fr));
+  gap: 8px;
 }
 
 .colorChoice span {
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   border: 2px solid var(--graphite);
   border-radius: 50%;
   background: #1e2a3a;
@@ -253,15 +281,28 @@
   }
 
   .iconGrid {
-    grid-template-columns: repeat(5, minmax(44px, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .colorGrid {
-    grid-template-columns: repeat(3, minmax(44px, 1fr));
+    grid-template-columns: repeat(3, minmax(54px, 1fr));
   }
 
   .actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 360px) {
+  .iconGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .iconChoice,
+  .colorChoice {
+    transition: none;
   }
 }
