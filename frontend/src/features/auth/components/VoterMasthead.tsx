@@ -104,7 +104,7 @@ export function VoterMasthead({
           {authenticated && visibleProfile && (
             <details className={styles.voterMenu} data-qa-voter-id>
               <summary aria-label={t('auth', 'openVoterMenu', { name: visibleProfile.displayName })}>
-                <BallotMark icon={visibleProfile.avatarIcon} color={visibleProfile.avatarColor} size="small" />
+                <BallotMark icon={visibleProfile.avatarIcon ?? 'CITIZEN'} color={visibleProfile.avatarColor ?? 'NAVY'} size="small" />
                 <span className={styles.identityCopy}>
                   <strong>{visibleProfile.displayName}</strong>
                   <span>{visibleProfile.role} · {t('auth', 'signedIn')}</span>
