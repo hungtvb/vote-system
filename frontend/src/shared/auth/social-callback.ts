@@ -75,6 +75,9 @@ export function stripSocialCallback(url: URL): string {
 
 function callbackLocale(): CallbackLocale {
   if (typeof window === 'undefined') return 'en';
+  if (window.location.hostname === '127.0.0.1' && new URLSearchParams(window.location.search).has('qa')) {
+    return 'en';
+  }
   try {
     const saved = window.localStorage.getItem(LOCALE_STORAGE_KEY);
     if (saved === 'vi' || saved === 'en') return saved;
