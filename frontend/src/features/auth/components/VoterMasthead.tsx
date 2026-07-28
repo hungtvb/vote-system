@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react';
 import { BallotMark } from '@/features/profile/components/BallotMark';
 import { ProfileDialog } from '@/features/profile/components/ProfileDialog';
+import { updateActiveUserProfile } from '@/features/auth/hooks/useSession';
 import type { Session, SocialProvider, UpdateUserProfileRequest, UserProfile } from '@/shared/api/types';
 import type { SocialProviderId } from '@/shared/api/social-auth-api';
-import { userApi } from '@/shared/api/user-api';
 import { useI18n } from '@/shared/i18n/I18nProvider';
 import localeStyles from '@/shared/i18n/LanguageSwitcher.module.scss';
 import styles from './VoterMasthead.module.scss';
@@ -56,8 +56,7 @@ export function VoterMasthead({
   const githubEnabled = socialProviders.includes('github');
 
   async function saveProfile(payload: UpdateUserProfileRequest): Promise<UserProfile> {
-    if (!session) throw new Error(t('profile', 'saveFailed'));
-    const updated = await userApi.updateCurrent(payload, session.accessToken);
+    const updated = await updateActiveUserProfile(payload);
     setVisibleProfile(updated);
     setLocale(updated.preferredLocale);
     return updated;
