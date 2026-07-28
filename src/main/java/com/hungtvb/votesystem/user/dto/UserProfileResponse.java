@@ -3,6 +3,9 @@ package com.hungtvb.votesystem.user.dto;
 import com.hungtvb.votesystem.auth.social.SocialProvider;
 import com.hungtvb.votesystem.auth.social.UserIdentity;
 import com.hungtvb.votesystem.user.AppUser;
+import com.hungtvb.votesystem.user.AvatarColor;
+import com.hungtvb.votesystem.user.AvatarIcon;
+import com.hungtvb.votesystem.user.PreferredLocale;
 import com.hungtvb.votesystem.user.Role;
 import com.hungtvb.votesystem.user.UserIdentityFormatter;
 
@@ -17,6 +20,10 @@ public record UserProfileResponse(
         String email,
         String displayName,
         String initials,
+        String bio,
+        AvatarIcon avatarIcon,
+        AvatarColor avatarColor,
+        PreferredLocale preferredLocale,
         Role role,
         Set<SocialProvider> linkedProviders,
         Instant createdAt,
@@ -31,6 +38,10 @@ public record UserProfileResponse(
                 user.getEmail(),
                 user.getDisplayName(),
                 UserIdentityFormatter.initials(user.getDisplayName()),
+                user.getBio(),
+                user.getAvatarIcon(),
+                user.getAvatarColor(),
+                user.getPreferredLocale(),
                 user.getRole(),
                 providers,
                 user.getCreatedAt(),
