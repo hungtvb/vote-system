@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { authApi } from '@/shared/api/auth-api';
 import { runAuthorizedRequest } from '@/shared/api/authorized-request';
 import { ApiError } from '@/shared/api/transport';
-import type { Session, UserProfile } from '@/shared/api/types';
+import type { Session, UpdateUserProfileRequest, UserProfile } from '@/shared/api/types';
 import { userApi } from '@/shared/api/user-api';
 
 export function useSession() {
@@ -64,6 +64,13 @@ export function useSession() {
       clearSession
     }), [clearSession, commitSession]);
 
+  const updateProfile = useCallback(async (payload: UpdateUserProfileRequest) => {
+    const nextProfile = await runAuthorized(activeSession =>
+      userApi.updateCurrent(payload, activeSession.accessToken));
+    setProfile(nextProfile);
+    return nextProfile;
+  }, [runAuthorized]);
+
   const logout = useCallback(async () => {
     const active = sessionRef.current;
     try {
@@ -86,5 +93,5 @@ export function useSession() {
     }
   }, [clearSession]);
 
-  return { session, profile, restoring, saveSession, clearSession, runAuthorized, logout, logoutAll };
+  return { session, profile, restoring, saveSession, updateProfile, clearSession, runAuthorized, logout, logoutAll };
 }
