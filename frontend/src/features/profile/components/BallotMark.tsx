@@ -17,11 +17,12 @@ export function BallotMark({ icon, color, label, size = 'medium' }: BallotMarkPr
       data-color={color}
       data-icon={icon}
       data-size={size}
+      data-qa-ballot-mark={icon}
       role={label ? 'img' : undefined}
       aria-label={label}
       aria-hidden={label ? undefined : true}
     >
-      <span className={styles.glyph} aria-hidden="true" />
+      <span className={styles.glyph} data-qa-ballot-mark-glyph aria-hidden="true" />
     </span>
   );
 }
