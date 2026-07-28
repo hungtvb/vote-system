@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { useModalDialog } from '@/shared/hooks/useModalDialog';
+import { useI18n } from '@/shared/i18n/I18nProvider';
 import styles from './ConfirmDialog.module.scss';
 
 interface ConfirmDialogProps {
@@ -23,6 +24,7 @@ export function ConfirmDialog({
   onClose,
   onConfirm
 }: ConfirmDialogProps) {
+  const { t } = useI18n();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const requestClose = useCallback(() => {
@@ -37,7 +39,7 @@ export function ConfirmDialog({
     try {
       await onConfirm();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'The action could not be completed.');
+      setError(reason instanceof Error ? reason.message : t('errors', 'actionFailed'));
       setPending(false);
     }
   }
@@ -56,13 +58,13 @@ export function ConfirmDialog({
         aria-busy={pending}
         onKeyDown={modal.onDialogKeyDown}
       >
-        <p className={styles.eyebrow}>OFFICIAL RECORD ACTION</p>
+        <p className={styles.eyebrow}>{t('ballots', 'officialRecordAction')}</p>
         <h2 id="confirm-dialog-title">{title}</h2>
         {reference && <p className={styles.reference}>{reference}</p>}
         <p id="confirm-dialog-description" className={styles.description}>{description}</p>
         {error && <p className={styles.error} role="alert">{error}</p>}
         <div className={styles.actions}>
-          <button type="button" autoFocus disabled={pending} onClick={requestClose}>CANCEL</button>
+          <button type="button" autoFocus disabled={pending} onClick={requestClose}>{t('common', 'cancel')}</button>
           <button
             type="button"
             className={styles.danger}

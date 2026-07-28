@@ -4,9 +4,10 @@
   "version": "0.2.0",
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/verify_app_icons.mjs",
+    "verify:i18n": "node scripts/verify_i18n_catalogs.mjs",
+    "build": "npm run verify:i18n && next build && node scripts/verify_app_icons.mjs",
     "start": "next start",
-    "test": "node -e \"require('fs').rmSync('.test-dist',{recursive:true,force:true})\" && tsc -p tsconfig.test.json && node --test .test-dist/api/tests/*.test.js .test-dist/ballot/tests/*.test.js"
+    "test": "npm run verify:i18n && node -e \"require('fs').rmSync('.test-dist',{recursive:true,force:true})\" && tsc -p tsconfig.test.json && node --test .test-dist/api/tests/*.test.js .test-dist/ballot/tests/*.test.js"
   },
   "dependencies": {
     "next": "16.2.11",

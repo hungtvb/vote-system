@@ -3,9 +3,11 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useModalDialog } from '@/shared/hooks/useModalDialog';
+import { useI18n } from '@/shared/i18n/I18nProvider';
 import styles from './BallotApp.module.scss';
 
 export function CreateBallotDialog({ onClose, onCreate }: { onClose: () => void; onCreate: (title: string, content: string) => Promise<void> | void }) {
+  const { formatNumber, t } = useI18n();
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [busy, setBusy] = useState(false);
@@ -19,7 +21,7 @@ export function CreateBallotDialog({ onClose, onCreate }: { onClose: () => void;
     try {
       await onCreate(title.trim(), content.trim());
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to file ballot.');
+      setError(caught instanceof Error ? caught.message : t('errors', 'createBallot'));
     } finally {
       setBusy(false);
     }
@@ -37,17 +39,17 @@ export function CreateBallotDialog({ onClose, onCreate }: { onClose: () => void;
         onKeyDown={modal.onDialogKeyDown}
         data-qa-create-dialog
       >
-        <p className={styles.formTab}>FORM-8A: BALLOT SUBMISSION</p>
-        <h2 id="create-title">Create ballot</h2>
+        <p className={styles.formTab}>{t('ballots', 'createFormCode')}</p>
+        <h2 id="create-title">{t('ballots', 'createTitle')}</h2>
         <form onSubmit={submit}>
-          <label>BALLOT TITLE<input required autoFocus maxLength={200} value={title} onChange={event => setTitle(event.target.value)} /></label>
-          <label>DETAILED STATEMENT<textarea required maxLength={20000} rows={10} value={content} onChange={event => setContent(event.target.value)} /></label>
-          <small>{content.length} / 20,000</small>
+          <label>{t('ballots', 'ballotTitle')}<input required autoFocus maxLength={200} value={title} onChange={event => setTitle(event.target.value)} /></label>
+          <label>{t('ballots', 'detailedStatement')}<textarea required maxLength={20000} rows={10} value={content} onChange={event => setContent(event.target.value)} /></label>
+          <small>{formatNumber(content.length)} / {formatNumber(20000)}</small>
           {error && <span className={styles.error} role="alert">{error}</span>}
           <div className={styles.formActions}>
-            <button type="button" className={styles.textButton} onClick={onClose}>CANCEL</button>
+            <button type="button" className={styles.textButton} onClick={onClose}>{t('common', 'cancel')}</button>
             <button className={styles.primaryButton} disabled={busy || !title.trim() || !content.trim()} data-qa-submit-ballot>
-              {busy ? 'SUBMITTING...' : 'SUBMIT BALLOT'}
+              {busy ? t('ballots', 'submitting') : t('ballots', 'submitBallot')}
             </button>
           </div>
         </form>

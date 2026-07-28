@@ -1,6 +1,7 @@
 'use client';
 
 import { useModalDialog } from '@/shared/hooks/useModalDialog';
+import { useI18n } from '@/shared/i18n/I18nProvider';
 import type { Ballot, VoteType } from '@/shared/api/types';
 import { BallotActions } from './BallotActions';
 import { BallotOptions } from './BallotOptions';
@@ -19,6 +20,7 @@ interface BallotDetailDialogProps {
 }
 
 export function BallotDetailDialog({ ballot, busy, owned, onClose, onVote, onEdit, onDelete, onCloseBallot }: BallotDetailDialogProps) {
+  const { formatDate, formatNumber, t } = useI18n();
   const modal = useModalDialog(onClose);
 
   return (
@@ -29,13 +31,13 @@ export function BallotDetailDialog({ ballot, busy, owned, onClose, onVote, onEdi
             <p className={styles.formTab}>{ballot.ballotNumber}</p>
             <h2 id="ballot-detail-title">{ballot.title}</h2>
           </div>
-          <button type="button" autoFocus className={styles.textButton} onClick={onClose}>CLOSE</button>
+          <button type="button" autoFocus className={styles.textButton} onClick={onClose}>{t('common', 'close')}</button>
         </div>
 
         <div className={styles.detailMeta}>
-          <span>{ballot.status}</span>
-          <span>{new Date(ballot.createdAt).toLocaleString('vi-VN')}</span>
-          <span>{ballot.totalVotes} REGISTERED VOTES</span>
+          <span>{ballot.status === 'CLOSED' ? t('ballots', 'statusClosed') : t('ballots', 'statusOpen')}</span>
+          <span>{formatDate(ballot.createdAt, { dateStyle: 'medium', timeStyle: 'short' })}</span>
+          <span>{t('ballots', 'registeredVotes', { count: formatNumber(ballot.totalVotes) })}</span>
         </div>
 
         <div className={styles.detailBody}>
@@ -44,7 +46,7 @@ export function BallotDetailDialog({ ballot, busy, owned, onClose, onVote, onEdi
             <div className={styles.fullContent}>{ballot.content}</div>
             <div className={styles.authorLine} data-qa-author>
               <span className={styles.authorInitials} aria-hidden="true">{ballot.author.initials}</span>
-              <span><strong>FILED BY {ballot.author.displayName}</strong><small>PUBLIC AUTHOR RECORD</small></span>
+              <span><strong>{t('ballots', 'filedBy', { name: ballot.author.displayName })}</strong><small>{t('ballots', 'publicAuthorRecord')}</small></span>
             </div>
             <BallotActions
               owned={owned}

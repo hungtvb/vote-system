@@ -7,6 +7,7 @@ import { socialAuthApi, type SocialProviderId } from '@/shared/api/social-auth-a
 import type { Session } from '@/shared/api/types';
 import type { AuthIntent } from '@/shared/auth/auth-intent';
 import { useModalDialog } from '@/shared/hooks/useModalDialog';
+import { useI18n } from '@/shared/i18n/I18nProvider';
 import styles from '@/features/ballots/components/BallotApp.module.scss';
 import authStyles from './AuthDialog.module.scss';
 
@@ -46,6 +47,7 @@ export function AuthDialog({
   onClose,
   onAuthenticated
 }: AuthDialogProps) {
+  const { t } = useI18n();
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -68,14 +70,14 @@ export function AuthDialog({
       const response = await socialAuthApi.start(provider, intent);
       window.location.assign(response.authorizationUrl);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Social sign-in is unavailable.');
+      setError(caught instanceof Error ? caught.message : t('auth', 'socialUnavailable'));
       setSocialBusy(null);
     }
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (mode === 'register' && password !== confirm) return setError('Mật khẩu xác nhận không khớp.');
+    if (mode === 'register' && password !== confirm) return setError(t('auth', 'passwordMismatch'));
     setBusy(true);
     setError('');
     try {
@@ -84,7 +86,7 @@ export function AuthDialog({
         : await authApi.register(email, password, displayName);
       await onAuthenticated(session);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Authorization denied.');
+      setError(caught instanceof Error ? caught.message : t('auth', 'authorizationDenied'));
     } finally {
       setBusy(false);
     }
@@ -107,48 +109,48 @@ export function AuthDialog({
         data-auth-mode={mode}
         data-auth-intent={intent}
       >
-        <div className={styles.dialogTabs} role="tablist" aria-label="Authentication mode">
-          <button type="button" role="tab" aria-selected={mode === 'login'} data-qa-auth-tab style={{ minHeight: 44 }} onClick={() => changeMode('login')}>SIGN IN</button>
-          <button type="button" role="tab" aria-selected={mode === 'register'} data-qa-auth-tab style={{ minHeight: 44 }} onClick={() => changeMode('register')}>REGISTER</button>
+        <div className={styles.dialogTabs} role="tablist" aria-label={t('auth', 'voterAccount')}>
+          <button type="button" role="tab" aria-selected={mode === 'login'} data-qa-auth-tab style={{ minHeight: 44 }} onClick={() => changeMode('login')}>{t('auth', 'signIn')}</button>
+          <button type="button" role="tab" aria-selected={mode === 'register'} data-qa-auth-tab style={{ minHeight: 44 }} onClick={() => changeMode('register')}>{t('auth', 'register')}</button>
         </div>
-        <h2 id="auth-title">Voter account</h2>
-        <p>{intent === 'create-ballot' ? 'AUTHENTICATE TO CONTINUE YOUR BALLOT' : mode === 'login' ? 'ACCESS YOUR EXISTING VOTER ID' : 'CREATE A NEW VOTER ID'}</p>
+        <h2 id="auth-title">{t('auth', 'voterAccount')}</h2>
+        <p>{intent === 'create-ballot' ? t('auth', 'authenticateToCreate') : mode === 'login' ? t('auth', 'accessExisting') : t('auth', 'createNew')}</p>
 
         {hasSocialProviders && (
           <>
-            <div className={authStyles.socialActions} aria-label="Social sign-in providers">
+            <div className={authStyles.socialActions} aria-label={t('auth', 'connectedProviders')}>
               {socialProviders.includes('google') && (
                 <button type="button" className={authStyles.socialButton} disabled={locked} data-qa-social-provider="google" onClick={() => void startSocial('google')}>
                   <GoogleIcon />
-                  <span>{socialBusy === 'google' ? 'CONNECTING TO GOOGLE...' : 'CONTINUE WITH GOOGLE'}</span>
+                  <span>{socialBusy === 'google' ? t('auth', 'connectingGoogle') : t('auth', 'continueGoogle')}</span>
                 </button>
               )}
               {socialProviders.includes('github') && (
                 <button type="button" className={authStyles.socialButton} disabled={locked} data-qa-social-provider="github" onClick={() => void startSocial('github')}>
                   <GitHubIcon />
-                  <span>{socialBusy === 'github' ? 'CONNECTING TO GITHUB...' : 'CONTINUE WITH GITHUB'}</span>
+                  <span>{socialBusy === 'github' ? t('auth', 'connectingGithub') : t('auth', 'continueGithub')}</span>
                 </button>
               )}
             </div>
-            <div className={authStyles.divider}><span>OR USE EMAIL</span></div>
+            <div className={authStyles.divider}><span>{t('auth', 'orUseEmail')}</span></div>
           </>
         )}
 
         <form onSubmit={submit}>
           {mode === 'register' && (
             <label>
-              PUBLIC VOTER NAME (OPTIONAL)
-              <input style={{ minHeight: 44 }} maxLength={80} autoComplete="name" value={displayName} onChange={event => setDisplayName(event.target.value)} placeholder="A public name or stored pseudonym" />
+              {t('auth', 'publicName')}
+              <input style={{ minHeight: 44 }} maxLength={80} autoComplete="name" value={displayName} onChange={event => setDisplayName(event.target.value)} />
             </label>
           )}
-          <label>EMAIL<input required autoFocus style={{ minHeight: 44 }} type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} /></label>
-          <label>PASSWORD<input required style={{ minHeight: 44 }} minLength={8} type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={event => setPassword(event.target.value)} /></label>
-          {mode === 'register' && <label>CONFIRM PASSWORD<input required style={{ minHeight: 44 }} type="password" autoComplete="new-password" value={confirm} onChange={event => setConfirm(event.target.value)} /></label>}
+          <label>{t('auth', 'email')}<input required autoFocus style={{ minHeight: 44 }} type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} /></label>
+          <label>{t('auth', 'password')}<input required style={{ minHeight: 44 }} minLength={8} type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={event => setPassword(event.target.value)} /></label>
+          {mode === 'register' && <label>{t('auth', 'confirmPassword')}<input required style={{ minHeight: 44 }} type="password" autoComplete="new-password" value={confirm} onChange={event => setConfirm(event.target.value)} /></label>}
           {error && <span className={styles.error} role="alert">{error}</span>}
           <button className={styles.primaryButton} disabled={locked} data-qa-auth-submit>
-            {busy ? 'VERIFYING...' : mode === 'login' ? 'SIGN IN' : 'CREATE ACCOUNT'}
+            {busy ? t('auth', 'verifying') : mode === 'login' ? t('auth', 'signIn') : t('auth', 'createAccount')}
           </button>
-          <button type="button" className={styles.textButton} disabled={locked} onClick={onClose}>CANCEL</button>
+          <button type="button" className={styles.textButton} disabled={locked} onClick={onClose}>{t('common', 'cancel')}</button>
         </form>
       </section>
     </div>

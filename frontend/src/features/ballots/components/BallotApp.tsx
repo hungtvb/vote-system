@@ -36,6 +36,7 @@ import {
   type FeedRequestMode
 } from '@/shared/ballot/feed-request';
 import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue';
+import { useI18n } from '@/shared/i18n/I18nProvider';
 import { BallotCard } from './BallotCard';
 import { BallotDetailDialog } from './BallotDetailDialog';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -47,6 +48,9 @@ import styles from './BallotApp.module.scss';
 const PAGE_SIZE = 8;
 
 export function BallotApp() {
+  const { t, formatNumber } = useI18n();
+  const i18nRef = useRef({ t, formatNumber });
+  i18nRef.current = { t, formatNumber };
   const { session, profile, restoring, saveSession, runAuthorized, logout, logoutAll } = useSession();
   const [ballots, setBallots] = useState<Ballot[]>([]);
   const [feed, setFeed] = useState<FeedType>('LATEST');
@@ -112,23 +116,19 @@ export function BallotApp() {
     if (!callback) return;
     setSocialCallback(callback);
     window.history.replaceState({}, '', stripSocialCallback(new URL(window.location.href)));
-    if (callback.status === 'error') {
-      setSocialNotice(socialCallbackMessage(callback));
-    }
+    if (callback.status === 'error') setSocialNotice(socialCallbackMessage(callback));
   }, []);
 
   useEffect(() => {
     if (!socialCallback || socialCallback.status === 'error' || restoring) return;
     if (!session || !profile) {
-      setSocialNotice('Social authentication completed, but the Vote System session could not be restored.');
+      setSocialNotice(i18nRef.current.t('auth', 'sessionRestoreFailed'));
       setSocialCallback(null);
       return;
     }
 
     setSocialNotice(socialCallbackMessage(socialCallback));
-    if (socialCallback.status === 'success' && socialCallback.intent === 'create-ballot') {
-      setCreateOpen(true);
-    }
+    if (socialCallback.status === 'success' && socialCallback.intent === 'create-ballot') setCreateOpen(true);
     setSocialCallback(null);
   }, [profile, restoring, session, socialCallback]);
 
@@ -191,14 +191,10 @@ export function BallotApp() {
       setTotalPages(response.totalPages);
       setTotalElements(response.totalElements);
 
-      if (!append && nextPage === 0) {
-        setPendingEnrichmentKey(access === 'public' ? feedRequestKey : null);
-      }
+      if (!append && nextPage === 0) setPendingEnrichmentKey(access === 'public' ? feedRequestKey : null);
     } catch (error) {
       if (sequence !== requestSequence.current || isAbortError(error)) return;
-      if (!background) {
-        setMessage(error instanceof Error ? error.message : 'Không thể tải sổ phiếu.');
-      }
+      if (!background) setMessage(error instanceof Error ? error.message : i18nRef.current.t('errors', 'loadBallots'));
     } finally {
       if (activeFeedRequest.current === controller) activeFeedRequest.current = null;
       if (sequence === requestSequence.current && !background) setLoading(false);
@@ -222,14 +218,7 @@ export function BallotApp() {
   }, [cancelFeedRequest, feed, load, restoring, session]);
 
   useEffect(() => {
-    if (
-      !pendingEnrichmentKey
-      || pendingEnrichmentKey !== feedRequestKey
-      || feed === 'MINE'
-      || restoring
-      || !session
-    ) return;
-
+    if (!pendingEnrichmentKey || pendingEnrichmentKey !== feedRequestKey || feed === 'MINE' || restoring || !session) return;
     setPendingEnrichmentKey(null);
     void load(0, false, 'authenticated', true);
   }, [feed, feedRequestKey, load, pendingEnrichmentKey, restoring, session]);
@@ -253,7 +242,7 @@ export function BallotApp() {
         socialAuthApi.startLink(provider, activeSession.accessToken));
       window.location.assign(response.authorizationUrl);
     } catch (error) {
-      setSocialNotice(error instanceof Error ? error.message : 'Unable to start account linking.');
+      setSocialNotice(error instanceof Error ? error.message : t('auth', 'linkStartFailed'));
       setLinkingProvider(null);
     }
   }
@@ -284,8 +273,8 @@ export function BallotApp() {
           item.id === ballot.id ? rollbackVoteSnapshot(item, snapshot) : item));
       }
       setMessage(error instanceof ApiError && error.status === 429 && error.retryAfter !== undefined
-        ? `Đã đạt giới hạn. Thử lại sau ${error.retryAfter} giây.`
-        : error instanceof Error ? error.message : 'Không thể ghi nhận phiếu.');
+        ? t('ballots', 'rateLimited', { seconds: formatNumber(error.retryAfter) })
+        : error instanceof Error ? error.message : t('errors', 'recordVote'));
     } finally {
       markBusy(ballot.id, false);
     }
@@ -295,7 +284,7 @@ export function BallotApp() {
     await runAuthorized(activeSession => ballotApi.create({ title, content }, activeSession.accessToken));
     setCreateOpen(false);
     await load(0, false);
-    setMessage('Hồ sơ đã được ghi vào sổ công khai. Kết quả hiện tại đã được tải lại từ máy chủ.');
+    setMessage(t('ballots', 'createdNotice'));
   }
 
   async function updateBallot(ballot: Ballot, title: string, content: string) {
@@ -304,12 +293,9 @@ export function BallotApp() {
       const updated = await runAuthorized(activeSession =>
         ballotApi.update(ballot.id, { title, content }, activeSession.accessToken));
       setEditing(null);
-      if (query) {
-        await load(0, false);
-      } else {
-        setBallots(current => current.map(item => item.id === ballot.id ? updated : item));
-      }
-      setMessage('Hồ sơ đã được cập nhật.');
+      if (query) await load(0, false);
+      else setBallots(current => current.map(item => item.id === ballot.id ? updated : item));
+      setMessage(t('ballots', 'updatedNotice'));
     } finally {
       markBusy(ballot.id, false);
     }
@@ -321,9 +307,9 @@ export function BallotApp() {
       await runAuthorized(activeSession => ballotApi.delete(ballot.id, activeSession.accessToken));
       setSelectedId(current => current === ballot.id ? null : current);
       await load(0, false);
-      setMessage('Hồ sơ đã được xóa khỏi sổ công khai.');
+      setMessage(t('ballots', 'deletedNotice'));
     } catch (error) {
-      const failure = error instanceof Error ? error : new Error('Không thể xóa hồ sơ.');
+      const failure = error instanceof Error ? error : new Error(t('errors', 'deleteBallot'));
       setMessage(failure.message);
       throw failure;
     } finally {
@@ -332,16 +318,16 @@ export function BallotApp() {
   }
 
   async function closeBallot(ballot: Ballot) {
-    if (!window.confirm(`Close ballot ${ballot.ballotNumber}? Voting will stop permanently.`)) return;
+    if (!window.confirm(t('ballots', 'closeConfirm', { number: ballot.ballotNumber }))) return;
     markBusy(ballot.id, true);
     try {
       const closed = await runAuthorized(activeSession =>
         ballotApi.close(ballot.id, activeSession.accessToken));
       setBallots(current => current.map(item => item.id === ballot.id ? closed : item));
       if (status) await load(0, false);
-      setMessage('Lá phiếu đã được đóng và kết quả cuối cùng đã được chốt.');
+      setMessage(t('ballots', 'closedNotice'));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể đóng lá phiếu.');
+      setMessage(error instanceof Error ? error.message : t('errors', 'closeBallot'));
     } finally {
       markBusy(ballot.id, false);
     }
@@ -382,9 +368,9 @@ export function BallotApp() {
 
       <main id="top" className={styles.main} tabIndex={-1}>
         <section className={styles.hero}>
-          <p>PUBLIC DECISION REGISTRY · SERVER INDEX</p>
-          <h1>Official public record</h1>
-          <span>Search the complete registry, inspect ranked feeds, and cast a recorded decision.</span>
+          <p>{t('ballots', 'heroEyebrow')}</p>
+          <h1>{t('ballots', 'heroTitle')}</h1>
+          <span>{t('ballots', 'heroDescription')}</span>
         </section>
 
         <FeedControls
@@ -405,11 +391,11 @@ export function BallotApp() {
 
         {socialNotice && <div className={styles.notice} role="status">{socialNotice}</div>}
         {message && <div className={styles.notice} role="status">{message}</div>}
-        {loading && ballots.length === 0 && <BallotSkeleton />}
+        {loading && ballots.length === 0 && <BallotSkeleton label={t('ballots', 'loadingBallots')} />}
         {!loading && ballots.length === 0 && (
           <div className={styles.empty}>
-            <strong>NO SERVER RECORDS FOUND</strong>
-            <span>Không có hồ sơ phù hợp với feed và bộ lọc hiện tại.</span>
+            <strong>{t('ballots', 'emptyTitle')}</strong>
+            <span>{t('ballots', 'emptyDescription')}</span>
           </div>
         )}
         <section className={styles.feed} aria-live="polite" aria-busy={loading}>
@@ -429,7 +415,9 @@ export function BallotApp() {
         </section>
         {!lastPage && (
           <button className={styles.loadMore} disabled={loading} onClick={() => void load(page + 1, true)}>
-            {loading ? 'LOADING SERVER PAGE...' : `LOAD PAGE ${page + 2} OF ${totalPages}`}
+            {loading
+              ? t('ballots', 'loadingPage')
+              : t('ballots', 'loadPage', { page: formatNumber(page + 2), total: formatNumber(totalPages) })}
           </button>
         )}
       </main>
@@ -453,11 +441,11 @@ export function BallotApp() {
       {selected && <BallotDetailDialog ballot={selected} busy={busyIds.has(selected.id)} owned={session?.userId === selected.authorId} onClose={() => setSelectedId(null)} onVote={type => void vote(selected, type)} onEdit={() => { setSelectedId(null); setEditing(selected); }} onDelete={() => { setSelectedId(null); setDeleting(selected); }} onCloseBallot={() => void closeBallot(selected)} />}
       {deleting && (
         <ConfirmDialog
-          title="Delete ballot?"
+          title={t('ballots', 'deleteTitle')}
           reference={`${deleting.ballotNumber} · ${deleting.title}`}
-          description="This public record and its votes will be permanently removed. This action cannot be undone."
-          confirmLabel="DELETE BALLOT"
-          pendingLabel="DELETING..."
+          description={t('ballots', 'deleteDescription')}
+          confirmLabel={t('ballots', 'deleteConfirm')}
+          pendingLabel={t('ballots', 'deleting')}
           onClose={() => setDeleting(null)}
           onConfirm={confirmDelete}
         />
@@ -466,6 +454,6 @@ export function BallotApp() {
   );
 }
 
-function BallotSkeleton() {
-  return <div className={styles.skeleton} aria-label="Loading ballots"><span /><span /><span /></div>;
+function BallotSkeleton({ label }: { label: string }) {
+  return <div className={styles.skeleton} aria-label={label}><span /><span /><span /></div>;
 }
