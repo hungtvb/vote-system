@@ -118,7 +118,7 @@ export function ProfileDialog({ profile, onClose, onSave }: ProfileDialogProps) 
                   title={t('profile', `icon${toPascal(icon)}` as never)}
                   onClick={() => setAvatarIcon(icon)}
                 >
-                  <BallotMark icon={icon} color={avatarColor} size="small" />
+                  <BallotMark icon={icon} color={avatarColor} size="medium" />
                 </button>
               ))}
             </div>

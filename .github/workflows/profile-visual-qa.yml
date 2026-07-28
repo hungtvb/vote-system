@@ -1,0 +1,81 @@
+name: Profile Visual QA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/src/features/profile/**'
+      - 'frontend/public/ballot-marks/**'
+      - 'frontend/scripts/profile_qa_server.py'
+      - 'frontend/package*.json'
+      - '.github/workflows/profile-visual-qa.yml'
+  pull_request:
+    paths:
+      - 'frontend/src/features/profile/**'
+      - 'frontend/public/ballot-marks/**'
+      - 'frontend/scripts/profile_qa_server.py'
+      - 'frontend/package*.json'
+      - '.github/workflows/profile-visual-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  profile-visual-qa:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build frontend
+        run: npm run build
+      - name: Verify mobile profile editor SVG marks
+        run: |
+          set -euo pipefail
+          mkdir -p profile-visual-qa
+          python3 scripts/profile_qa_server.py > profile-visual-qa/server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          for attempt in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 40 ]; then
+              cat profile-visual-qa/server.log
+              exit 1
+            fi
+            sleep 0.25
+          done
+
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)
+          URL='http://127.0.0.1:4173/?qa=auth-profile-editor'
+          COMMON=(--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --run-all-compositor-stages-before-draw --virtual-time-budget=7000 --window-size=390,844)
+          "$CHROME" "${COMMON[@]}" --screenshot=profile-visual-qa/mobile-profile-editor.png "$URL"
+          "$CHROME" "${COMMON[@]}" --dump-dom "$URL" > profile-visual-qa/mobile-profile-editor.html
+
+          grep -q 'data-qa-scenario="complete"' profile-visual-qa/mobile-profile-editor.html
+          grep -q 'data-qa-overflow="false"' profile-visual-qa/mobile-profile-editor.html
+          grep -q 'data-qa-profile-dialog="true"' profile-visual-qa/mobile-profile-editor.html
+          grep -q 'data-qa-ballot-marks="11"' profile-visual-qa/mobile-profile-editor.html
+          grep -q 'data-qa-distinct-ballot-marks="10"' profile-visual-qa/mobile-profile-editor.html
+          grep -q 'data-qa-ballot-mark-mask-violations="0"' profile-visual-qa/mobile-profile-editor.html
+          grep -q 'data-qa-ballot-mark-size-violations="0"' profile-visual-qa/mobile-profile-editor.html
+          grep -q 'data-qa-focus-inside-dialog="true"' profile-visual-qa/mobile-profile-editor.html
+          grep -q 'data-qa-touch-violations="0"' profile-visual-qa/mobile-profile-editor.html
+      - name: Upload profile visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: profile-visual-qa
+          path: frontend/profile-visual-qa/**
+          if-no-files-found: error
+          retention-days: 14
