@@ -11,6 +11,7 @@ export interface SocialCallback {
 }
 
 const PROVIDERS = new Set<SocialProviderId>(['google', 'github']);
+const LOCALE_STORAGE_KEY = 'vote.locale';
 
 type CallbackLocale = 'vi' | 'en';
 
@@ -73,7 +74,13 @@ export function stripSocialCallback(url: URL): string {
 }
 
 function callbackLocale(): CallbackLocale {
-  if (typeof document === 'undefined') return 'en';
+  if (typeof window === 'undefined') return 'en';
+  try {
+    const saved = window.localStorage.getItem(LOCALE_STORAGE_KEY);
+    if (saved === 'vi' || saved === 'en') return saved;
+  } catch {
+    // Fall through to the current document language when storage is unavailable.
+  }
   return document.documentElement.lang.toLowerCase().startsWith('en') ? 'en' : 'vi';
 }
 
