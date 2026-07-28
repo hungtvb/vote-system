@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { BallotMark } from '@/features/profile/components/BallotMark';
 import { ProfileDialog } from '@/features/profile/components/ProfileDialog';
+import { PublicProfileDialog } from '@/features/profile/components/PublicProfileDialog';
 import { updateActiveUserProfile } from '@/features/auth/hooks/useSession';
 import type { Session, SocialProvider, UpdateUserProfileRequest, UserProfile } from '@/shared/api/types';
 import type { SocialProviderId } from '@/shared/api/social-auth-api';
@@ -44,12 +45,14 @@ export function VoterMasthead({
   const { locale, setLocale, t } = useI18n();
   const [visibleProfile, setVisibleProfile] = useState(profile);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [publicProfileOpen, setPublicProfileOpen] = useState(false);
   const appliedLocaleForUser = useRef<string | null>(null);
 
   useEffect(() => {
     setVisibleProfile(profile);
     if (!profile) {
       setProfileOpen(false);
+      setPublicProfileOpen(false);
       appliedLocaleForUser.current = null;
       return;
     }
@@ -69,6 +72,19 @@ export function VoterMasthead({
     setVisibleProfile(updated);
     setLocale(updated.preferredLocale);
     return updated;
+  }
+
+  function closeMenu(button: HTMLButtonElement) {
+    const details = button.closest('details');
+    if (details) details.open = false;
+  }
+
+  function showMyBallots(button: HTMLButtonElement) {
+    closeMenu(button);
+    document.querySelector<HTMLButtonElement>('[data-feed-value="MINE"]')?.click();
+    window.requestAnimationFrame(() => {
+      document.getElementById('top')?.focus({ preventScroll: true });
+    });
   }
 
   return (
@@ -129,12 +145,23 @@ export function VoterMasthead({
                   <button
                     type="button"
                     onClick={event => {
-                      const details = event.currentTarget.closest('details');
-                      if (details) details.open = false;
+                      closeMenu(event.currentTarget);
+                      setPublicProfileOpen(true);
+                    }}
+                  >
+                    {t('profile', 'viewProfile')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={event => {
+                      closeMenu(event.currentTarget);
                       setProfileOpen(true);
                     }}
                   >
                     {t('profile', 'editProfile')}
+                  </button>
+                  <button type="button" onClick={event => showMyBallots(event.currentTarget)}>
+                    {t('ballots', 'feedMine')}
                   </button>
                   {linkedProviders.has('GOOGLE')
                     ? <span>{t('auth', 'googleLinked')}</span>
@@ -156,6 +183,21 @@ export function VoterMasthead({
           profile={visibleProfile}
           onClose={() => setProfileOpen(false)}
           onSave={saveProfile}
+        />
+      )}
+      {publicProfileOpen && visibleProfile && (
+        <PublicProfileDialog
+          userId={visibleProfile.id}
+          initialProfile={{
+            id: visibleProfile.id,
+            displayName: visibleProfile.displayName,
+            initials: visibleProfile.initials,
+            bio: visibleProfile.bio,
+            avatarIcon: visibleProfile.avatarIcon,
+            avatarColor: visibleProfile.avatarColor,
+            createdAt: visibleProfile.createdAt
+          }}
+          onClose={() => setPublicProfileOpen(false)}
         />
       )}
     </>
