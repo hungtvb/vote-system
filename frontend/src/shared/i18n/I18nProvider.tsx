@@ -34,6 +34,9 @@ function isLocale(value: string | null): value is Locale {
 }
 
 function detectLocale(): Locale {
+  if (window.location.hostname === '127.0.0.1' && new URLSearchParams(window.location.search).has('qa')) {
+    return 'en';
+  }
   try {
     const saved = window.localStorage.getItem(STORAGE_KEY);
     return isLocale(saved) ? saved : DEFAULT_LOCALE;
