@@ -63,6 +63,8 @@ export interface AuthorSummary {
   id: string;
   displayName: string;
   initials: string;
+  avatarIcon: AvatarIcon;
+  avatarColor: AvatarColor;
 }
 
 export interface Ballot {
