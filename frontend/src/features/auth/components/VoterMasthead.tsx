@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BallotMark } from '@/features/profile/components/BallotMark';
 import { ProfileDialog } from '@/features/profile/components/ProfileDialog';
 import { updateActiveUserProfile } from '@/features/auth/hooks/useSession';
@@ -44,11 +44,20 @@ export function VoterMasthead({
   const { locale, setLocale, t } = useI18n();
   const [visibleProfile, setVisibleProfile] = useState(profile);
   const [profileOpen, setProfileOpen] = useState(false);
+  const appliedLocaleForUser = useRef<string | null>(null);
 
   useEffect(() => {
     setVisibleProfile(profile);
-    if (!profile) setProfileOpen(false);
-  }, [profile]);
+    if (!profile) {
+      setProfileOpen(false);
+      appliedLocaleForUser.current = null;
+      return;
+    }
+    if (appliedLocaleForUser.current !== profile.id) {
+      appliedLocaleForUser.current = profile.id;
+      setLocale(profile.preferredLocale ?? locale);
+    }
+  }, [locale, profile, setLocale]);
 
   const authenticated = Boolean(session && visibleProfile);
   const linkedProviders = new Set<SocialProvider>(visibleProfile?.linkedProviders ?? []);
