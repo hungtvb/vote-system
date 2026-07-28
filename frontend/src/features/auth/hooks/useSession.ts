@@ -7,6 +7,14 @@ import { ApiError } from '@/shared/api/transport';
 import type { Session, UpdateUserProfileRequest, UserProfile } from '@/shared/api/types';
 import { userApi } from '@/shared/api/user-api';
 
+type ProfileUpdater = (payload: UpdateUserProfileRequest) => Promise<UserProfile>;
+let activeProfileUpdater: ProfileUpdater | null = null;
+
+export function updateActiveUserProfile(payload: UpdateUserProfileRequest): Promise<UserProfile> {
+  if (!activeProfileUpdater) return Promise.reject(new Error('Authenticated profile session is unavailable'));
+  return activeProfileUpdater(payload);
+}
+
 export function useSession() {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -70,6 +78,13 @@ export function useSession() {
     setProfile(nextProfile);
     return nextProfile;
   }, [runAuthorized]);
+
+  useEffect(() => {
+    activeProfileUpdater = updateProfile;
+    return () => {
+      if (activeProfileUpdater === updateProfile) activeProfileUpdater = null;
+    };
+  }, [updateProfile]);
 
   const logout = useCallback(async () => {
     const active = sessionRef.current;
