@@ -12,6 +12,7 @@ export type MessageDomain = keyof MessageCatalog;
 export type MessageKey<D extends MessageDomain> = keyof MessageCatalog[D] & string;
 
 const STORAGE_KEY = 'vote.locale';
+const DEFAULT_LOCALE: Locale = 'vi';
 const intlLocales: Record<Locale, string> = { vi: 'vi-VN', en: 'en-VN' };
 const catalogs: Record<Locale, MessageCatalog> = { vi: viMessages, en: enMessages };
 
@@ -33,9 +34,12 @@ function isLocale(value: string | null): value is Locale {
 }
 
 function detectLocale(): Locale {
-  const saved = window.localStorage.getItem(STORAGE_KEY);
-  if (isLocale(saved)) return saved;
-  return window.navigator.language.toLowerCase().startsWith('en') ? 'en' : 'vi';
+  try {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    return isLocale(saved) ? saved : DEFAULT_LOCALE;
+  } catch {
+    return DEFAULT_LOCALE;
+  }
 }
 
 function interpolate(message: string, variables?: Variables): string {
@@ -46,7 +50,7 @@ function interpolate(message: string, variables?: Variables): string {
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>('vi');
+  const [locale, setLocaleState] = useState<Locale>(DEFAULT_LOCALE);
 
   useEffect(() => {
     setLocaleState(detectLocale());
@@ -58,7 +62,11 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<I18nContextValue>(() => {
     const setLocale = (nextLocale: Locale) => {
-      window.localStorage.setItem(STORAGE_KEY, nextLocale);
+      try {
+        window.localStorage.setItem(STORAGE_KEY, nextLocale);
+      } catch {
+        // Storage can be unavailable in privacy-restricted browser contexts.
+      }
       setLocaleState(nextLocale);
     };
     const intlLocale = intlLocales[locale];
