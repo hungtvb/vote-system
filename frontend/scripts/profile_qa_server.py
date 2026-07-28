@@ -30,6 +30,9 @@ PROFILE_QA_SCRIPT = r"""
   };
   const record = () => {
     const dialog = document.querySelector('[data-qa-profile-dialog]');
+    dialog?.scrollTo({ top: 0, behavior: 'auto' });
+    dialog?.querySelector('button')?.focus({ preventScroll: true });
+
     const marks = [...(dialog?.querySelectorAll('[data-qa-ballot-mark]') || [])];
     const distinctMarks = new Set(marks.map(mark => mark.getAttribute('data-qa-ballot-mark')).filter(Boolean));
     const maskViolations = marks.filter(mark => {
