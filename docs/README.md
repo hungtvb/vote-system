@@ -1,6 +1,6 @@
 # Vote System documentation
 
-This directory documents the current `main` branch. Generated OpenAPI remains the source of truth for controller schemas; these guides explain runtime behavior, deployment, security boundaries, and operational decisions that are not obvious from individual endpoints.
+This directory documents the current `main` branch. Controller mappings, DTOs, Flyway migrations, security configuration, runtime source, and active Spring profiles remain the implementation source of truth.
 
 ## Current production topology
 
@@ -12,31 +12,34 @@ Redis     Managed Redis
 DNS/TLS   Cloudflare and platform-managed certificates
 ```
 
-Render is not an active production target. The root `Dockerfile` is retained for combined-image CI/runtime smoke and optional single-service deployments. Railway uses `Dockerfile.railway`, while Vercel builds from `frontend/`.
+Render is not an active production target. The root `Dockerfile` is retained for combined-image CI/runtime smoke and optional single-service deployment. Railway builds `Dockerfile.railway`; Vercel builds from `frontend/`.
 
 ## Documentation map
 
 | Document | Purpose |
 |---|---|
-| [`../README.md`](../README.md) | Project overview, stack, capabilities, local development, and roadmap |
-| [`API.md`](API.md) | API overview, authentication, identity, feeds, rate limits, SSE, and observability endpoints |
-| [`FRONTEND-AUTH.md`](FRONTEND-AUTH.md) | Access-token memory model, refresh rotation, session restore, social callback continuation, and split-origin cookies |
-| [`SOCIAL-LOGIN.md`](SOCIAL-LOGIN.md) | Google OIDC, GitHub OAuth2, callback URLs, temporary OAuth session, and explicit account linking |
-| [`REALTIME-VOTES.md`](REALTIME-VOTES.md) | Public ballot SSE contract, convergence rules, bounded async delivery, and metrics |
-| [`DEPLOY-VERCEL-RAILWAY.md`](DEPLOY-VERCEL-RAILWAY.md) | Current production deployment and verification checklist |
-| [`../DESIGN.md`](../DESIGN.md) | Ballot Edition visual and interaction specification |
-| [`../design/stitch/ballot-edition/`](../design/stitch/ballot-edition/) | Approved Stitch reference artifacts and implementation notes |
+| [`../README.md`](../README.md) | Project overview, stack, capabilities, local development, and active roadmap |
+| [`API.md`](API.md) | Authentication bootstrap, profiles, ballots, feeds, voting, rate limits, SSE, and observability |
+| [`FRONTEND-AUTH.md`](FRONTEND-AUTH.md) | In-memory access token, refresh rotation, single-request restore, retry, logout, and rollout behavior |
+| [`PROFILE.md`](PROFILE.md) | Private/public profile contracts, Ballot Mark presets, validation, and privacy boundaries |
+| [`I18N.md`](I18N.md) | Current VI/EN locale behavior, catalogs, formatting, verification, and known gap TON-191 |
+| [`SOCIAL-LOGIN.md`](SOCIAL-LOGIN.md) | Google OIDC, GitHub OAuth2, callback URLs, temporary OAuth session, and explicit linking |
+| [`REALTIME-VOTES.md`](REALTIME-VOTES.md) | Public ballot SSE contract, convergence, bounded async delivery, and metrics |
+| [`DEPLOY-VERCEL-RAILWAY.md`](DEPLOY-VERCEL-RAILWAY.md) | Active production deployment, profiles, variables, and verification |
+| [`DOCUMENTATION-MAINTENANCE.md`](DOCUMENTATION-MAINTENANCE.md) | Documentation Definition of Done, audit procedure, and freshness history |
+| [`../DESIGN.md`](../DESIGN.md) | Implemented Ballot Edition visual, interaction, responsive, profile, and i18n rules |
+| [`../design/stitch/ballot-edition/`](../design/stitch/ballot-edition/) | Approved Stitch references; visual input, not production source |
 
 ## Source-of-truth order
 
-When documentation and implementation differ, use this order:
+When documentation and implementation differ:
 
-1. Flyway migrations, controller mappings, DTOs, security configuration, and runtime code
-2. Generated OpenAPI at `/v3/api-docs`
-3. This documentation set
-4. Historical PR descriptions and design exports
+1. Flyway, controllers, DTOs, `SecurityConfig`, runtime code, and active profile configuration.
+2. Generated OpenAPI from a non-production environment on the same commit.
+3. This documentation set.
+4. Historical PR descriptions, Linear issues, and design exports.
 
-Do not infer production configuration from example defaults alone. Platform secrets and current provider settings remain outside the repository.
+Production secrets and current platform settings remain outside the repository. Do not infer them from example defaults alone.
 
 ## Implemented system boundaries
 
@@ -45,9 +48,10 @@ Do not infer production configuration from example defaults alone. Platform secr
 PostgreSQL owns:
 
 - local users and linked provider identities;
-- refresh sessions and token-rotation history;
-- ballots, lifecycle metadata, counts, and verdict state;
-- individual votes.
+- rotating refresh sessions and replay/revocation history;
+- editable profile fields and preferred-locale value;
+- ballots, lifecycle metadata, vote counts, score, and verdict state;
+- individual user votes.
 
 ### Derived infrastructure
 
@@ -57,17 +61,43 @@ Redis owns rebuildable or short-lived state:
 - HOT, TOP_DAY, and TOP_WEEK sorted sets;
 - shared application cache entries.
 
-Ranked feeds fall back to latest-first PostgreSQL results when Redis is unavailable. Redis ranking state can be rebuilt from the database.
+Ranked feeds fall back to latest-first PostgreSQL results when Redis is unavailable. Ranking state can be rebuilt from PostgreSQL.
 
 ### Realtime delivery
 
-SSE is a convergence channel, not a durable event log. The current stream exposes only authoritative ballot aggregate snapshots. It excludes `myVote`, identity data, and activity-history semantics.
+SSE is a convergence channel, not a durable event log. It carries authoritative ballot aggregate snapshots and excludes `myVote`, identity data, and activity-history semantics.
 
-After a vote transaction commits, ranking and SSE work are enqueued to separate bounded FIFO executors. The HTTP request returns after enqueue instead of waiting for ordinary Redis and SSE network I/O. PostgreSQL remains authoritative, and ranking tasks re-read the latest ballot state before mutating Redis.
+After a vote transaction commits, ranking and SSE work are enqueued to separate bounded FIFO executors. The HTTP response does not wait for ordinary Redis or connected-client network I/O. PostgreSQL remains authoritative.
 
-## Observability baseline
+### Authentication and profile bootstrap
 
-Actuator exposes `health`, `info`, and `metrics`. Important metrics include:
+Register, login, and refresh return session fields plus the authenticated private profile. The normal frontend restore path uses one `POST /api/v1/auth/refresh` request and does not follow it with `/users/me`. A temporary compatibility fallback remains for a rolling deployment that reaches an older backend response.
+
+Access tokens remain in React memory. Refresh tokens remain in path-scoped `HttpOnly` cookies and are never returned in JSON or stored by frontend JavaScript.
+
+### Internationalization
+
+System-owned UI copy is available in Vietnamese and English with Vietnamese as the current default. Catalog key parity is verified during frontend test/build. User-generated content is never auto-translated.
+
+The persisted profile `preferredLocale` is not yet automatically applied during session bootstrap; TON-191 tracks that known gap.
+
+## Production profile and observability
+
+`Dockerfile.railway` sets:
+
+```text
+SPRING_PROFILES_ACTIVE=production
+```
+
+`application-production.yml`:
+
+- disables OpenAPI JSON and Swagger UI;
+- sets Spring Web and Hibernate logging to INFO;
+- disables Hibernate statistics and session-event metrics.
+
+The base `application.yml` keeps verbose diagnostic settings for local/performance investigation, but they are overridden in Railway production.
+
+Actuator exposes `health`, `info`, and `metrics`; only health is public. Important metrics include:
 
 ```text
 http.server.requests
@@ -83,50 +113,45 @@ vote.side_effect.execution
 vote.ranking.operations
 ```
 
-`X-Request-ID` is accepted when it matches the safe request-ID format; otherwise the backend generates one. Completion logs use route templates rather than concrete UUID paths. User IDs, ballot IDs, emails, cookies, refresh-token hashes, and raw tokens must never be added as metric tags or structured-log identifiers.
-
-### Temporary performance-diagnostic mode
-
-The current `application.yml` enables Spring Web DEBUG logging, transaction DEBUG logging, Hibernate statistics, and Hibernate statistics DEBUG output. This was added to collect evidence for the Railway latency investigation.
-
-Treat this as temporary diagnostic configuration:
-
-- watch Railway log volume and CPU overhead;
-- avoid copying request bodies, credentials, cookies, tokens, email, or provider payloads into custom logs;
-- use the bounded Micrometer metrics and `http_request_complete` route-template logs as the primary evidence;
-- disable DEBUG categories and `hibernate.generate_statistics` after the investigation has enough data.
-
-Do not normalize this verbose mode as the permanent production baseline.
+`X-Request-ID` is reused only when it matches the safe format; otherwise the backend generates one. Logs and metric tags must never contain user IDs, ballot IDs, emails, cookies, refresh-token hashes, or raw tokens.
 
 ## Active roadmap
 
-The next product sequence is managed in the Linear **Vote System** project:
+Completed M4 foundations:
 
 ```text
-TON-116 i18n Vietnamese/English
-    ↓
-TON-108 Profile + Ballot Mark
-    ↓
-TON-109 Admin + audit + moderation
-    ↓
-TON-110/111 Comments + comment voting
-    ↓
-TON-112/113/114 Notifications + outbox + realtime
-    ↓
-TON-115 Direct messaging
+TON-116  Vietnamese/English i18n foundation
+TON-108  Editable profile and Ballot Mark identity
+TON-187  Custom Ballot Mark SVG set
+TON-189  Empty public-bio cleanup
 ```
 
-Every feature after TON-116 must add Vietnamese and English system copy in the same PR. User-generated content remains in the language entered by its author.
+Next sequence:
 
-## Documentation maintenance checklist
+```text
+TON-109  Admin roles, audit log, moderation, and operational dashboard
+    ↓
+TON-140  Unified reports and moderation cases
+    ↓
+TON-110/111  Comments, replies, voting, and moderation
+    ↓
+TON-112/113/114  Notifications, transactional outbox, and realtime delivery
+    ↓
+TON-115  Constrained direct messaging
+```
 
-A feature PR should update the relevant document when it changes any of these contracts:
+TON-191 is a focused i18n correctness follow-up and does not change the order of the admin foundation.
 
-- public endpoint or DTO shape;
-- authentication, cookie, OAuth, CORS, or authorization behavior;
-- Flyway schema or durable/derived ownership;
-- feed ordering, fallback, rate limiting, or SSE semantics;
-- production topology or required environment variables;
-- metric names, tag sets, request logging, or operational checks;
-- Ballot Edition component or accessibility rules;
-- roadmap dependencies that affect implementation order.
+## Documentation maintenance
+
+Use [`DOCUMENTATION-MAINTENANCE.md`](DOCUMENTATION-MAINTENANCE.md) for the Definition of Done and audit process. Every PR must declare either:
+
+```text
+Docs updated: <files and reason>
+```
+
+or:
+
+```text
+Docs: N/A — <reason>
+```
