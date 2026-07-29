@@ -39,15 +39,19 @@ export function CreateBallotDialog({ onClose, onCreate }: { onClose: () => void;
         onKeyDown={modal.onDialogKeyDown}
         data-qa-create-dialog
       >
-        <p className={styles.formTab}>{t('ballots', 'createFormCode')}</p>
-        <h2 id="create-title">{t('ballots', 'createTitle')}</h2>
+        <div className={styles.dialogHeader}>
+          <div>
+            <p className={styles.formTab}>{t('ballots', 'createFormCode')}</p>
+            <h2 id="create-title">{t('ballots', 'createTitle')}</h2>
+          </div>
+          <button type="button" className={styles.closeIcon} onClick={onClose} disabled={busy} aria-label={t('common', 'close')}>×</button>
+        </div>
         <form onSubmit={submit}>
           <label>{t('ballots', 'ballotTitle')}<input required autoFocus maxLength={200} value={title} onChange={event => setTitle(event.target.value)} /></label>
           <label>{t('ballots', 'detailedStatement')}<textarea required maxLength={20000} rows={10} value={content} onChange={event => setContent(event.target.value)} /></label>
           <small>{formatNumber(content.length)} / {formatNumber(20000)}</small>
           {error && <span className={styles.error} role="alert">{error}</span>}
           <div className={styles.formActions}>
-            <button type="button" className={styles.textButton} onClick={onClose}>{t('common', 'cancel')}</button>
             <button className={styles.primaryButton} disabled={busy || !title.trim() || !content.trim()} data-qa-submit-ballot>
               {busy ? t('ballots', 'submitting') : t('ballots', 'submitBallot')}
             </button>

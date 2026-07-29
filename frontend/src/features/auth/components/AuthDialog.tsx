@@ -109,9 +109,12 @@ export function AuthDialog({
         data-auth-mode={mode}
         data-auth-intent={intent}
       >
-        <div className={styles.dialogTabs} role="tablist" aria-label={t('auth', 'voterAccount')}>
-          <button type="button" role="tab" aria-selected={mode === 'login'} data-qa-auth-tab style={{ minHeight: 44 }} onClick={() => changeMode('login')}>{t('auth', 'signIn')}</button>
-          <button type="button" role="tab" aria-selected={mode === 'register'} data-qa-auth-tab style={{ minHeight: 44 }} onClick={() => changeMode('register')}>{t('auth', 'register')}</button>
+        <div className={styles.dialogHeader}>
+          <div className={styles.dialogTabs} role="tablist" aria-label={t('auth', 'voterAccount')}>
+            <button type="button" role="tab" aria-selected={mode === 'login'} data-qa-auth-tab style={{ minHeight: 44 }} onClick={() => changeMode('login')}>{t('auth', 'signIn')}</button>
+            <button type="button" role="tab" aria-selected={mode === 'register'} data-qa-auth-tab style={{ minHeight: 44 }} onClick={() => changeMode('register')}>{t('auth', 'register')}</button>
+          </div>
+          <button type="button" className={styles.closeIcon} onClick={onClose} disabled={locked} aria-label={t('common', 'close')}>×</button>
         </div>
         <h2 id="auth-title">{t('auth', 'voterAccount')}</h2>
         <p>{intent === 'create-ballot' ? t('auth', 'authenticateToCreate') : mode === 'login' ? t('auth', 'accessExisting') : t('auth', 'createNew')}</p>
@@ -150,7 +153,6 @@ export function AuthDialog({
           <button className={styles.primaryButton} disabled={locked} data-qa-auth-submit>
             {busy ? t('auth', 'verifying') : mode === 'login' ? t('auth', 'signIn') : t('auth', 'createAccount')}
           </button>
-          <button type="button" className={styles.textButton} disabled={locked} onClick={onClose}>{t('common', 'cancel')}</button>
         </form>
       </section>
     </div>

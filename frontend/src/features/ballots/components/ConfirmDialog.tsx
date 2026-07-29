@@ -58,8 +58,13 @@ export function ConfirmDialog({
         aria-busy={pending}
         onKeyDown={modal.onDialogKeyDown}
       >
-        <p className={styles.eyebrow}>{t('ballots', 'officialRecordAction')}</p>
-        <h2 id="confirm-dialog-title">{title}</h2>
+        <div className={styles.header}>
+          <div>
+            <p className={styles.eyebrow}>{t('ballots', 'officialRecordAction')}</p>
+            <h2 id="confirm-dialog-title">{title}</h2>
+          </div>
+          <button type="button" className={styles.closeIcon} onClick={requestClose} disabled={pending} aria-label={t('common', 'close')}>×</button>
+        </div>
         {reference && <p className={styles.reference}>{reference}</p>}
         <p id="confirm-dialog-description" className={styles.description}>{description}</p>
         {error && <p className={styles.error} role="alert">{error}</p>}

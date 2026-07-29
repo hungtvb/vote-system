@@ -85,6 +85,48 @@
 .formTab { display: inline-block; margin: -42px 0 0 !important; padding: 6px 12px; border: 2px solid var(--navy); background: var(--paper); color: var(--navy) !important; }
 .formActions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 18px; border-top: 2px dashed var(--navy); }
 .error { padding: 8px 10px; border: 2px solid var(--seal); color: var(--seal); font-size: 12px; font-weight: 700; transform: rotate(-1deg); }
+
+/* Shared modal close-icon — matches Ballot Edition visual language */
+.closeIcon {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border: 2px solid var(--navy);
+  background: transparent;
+  color: var(--navy);
+  font-size: 26px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.closeIcon:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--navy) 10%, transparent);
+}
+.closeIcon:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: 2px;
+}
+.closeIcon:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Shared dialog header with close icon — sticky so it stays visible during scroll */
+.dialogHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--paper);
+}
+.dialogHeader > :first-child {
+  min-width: 0;
+}
 .skeleton { display: grid; gap: 16px; }
 .skeleton span { height: 210px; border: 2px solid var(--navy); background: linear-gradient(90deg, color-mix(in srgb, var(--kraft) 10%, var(--paper)), color-mix(in srgb, var(--kraft) 32%, var(--paper)), color-mix(in srgb, var(--kraft) 10%, var(--paper))); background-size: 200% 100%; animation: loading 1.2s linear infinite; }
 @keyframes loading { to { background-position: -200% 0; } }
@@ -119,6 +161,7 @@
   .dialog { max-width: calc(100vw - 20px); padding: 18px; box-shadow: 4px 4px 0 var(--navy); }
   .detailHeader { display: flex; flex-direction: column; gap: 10px; }
   .detailHeader h2 { margin-top: 8px; font-size: clamp(28px, 8vw, 32px); line-height: 1.05; }
+  .closeIcon { min-height: 44px; min-width: 44px; }
   .detailHeader .textButton { order: -1; align-self: flex-end; min-height: 36px; margin: 0; padding: 6px 10px; }
   .detailMeta { gap: 8px 12px; margin-block: 14px; font-size: 10px; }
   .fullContent { line-height: 1.6; }
