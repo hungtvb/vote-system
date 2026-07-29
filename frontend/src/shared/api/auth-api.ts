@@ -1,13 +1,13 @@
-import type { Session } from './types';
+import type { AuthBootstrap } from './types';
 import { http, type ApiRequester } from './transport';
 
 export function createAuthApi(request: ApiRequester = http.request) {
-  let refreshPromise: Promise<Session> | null = null;
+  let refreshPromise: Promise<AuthBootstrap> | null = null;
 
   return {
     register(email: string, password: string, displayName?: string) {
       const normalizedDisplayName = displayName?.trim();
-      return request<Session>('/api/v1/auth/register', {
+      return request<AuthBootstrap>('/api/v1/auth/register', {
         method: 'POST',
         body: JSON.stringify({
           email,
@@ -18,15 +18,15 @@ export function createAuthApi(request: ApiRequester = http.request) {
     },
 
     login(email: string, password: string) {
-      return request<Session>('/api/v1/auth/login', {
+      return request<AuthBootstrap>('/api/v1/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password })
       });
     },
 
-    refresh(): Promise<Session> {
+    refresh(): Promise<AuthBootstrap> {
       if (!refreshPromise) {
-        refreshPromise = request<Session>('/api/v1/auth/refresh', { method: 'POST' })
+        refreshPromise = request<AuthBootstrap>('/api/v1/auth/refresh', { method: 'POST' })
           .finally(() => { refreshPromise = null; });
       }
       return refreshPromise;
