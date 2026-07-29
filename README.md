@@ -1,6 +1,6 @@
 # Vote System
 
-A production-oriented voting platform built as a **modular monolith** with a Ballot Edition user experience. PostgreSQL remains the source of truth, while Redis provides rate limiting and ranked feeds. The public frontend is built with Next.js and deployed separately from the Spring Boot API.
+A production-oriented voting platform built as a **modular monolith** with a Ballot Edition user experience. PostgreSQL is the durable source of truth; Redis provides rate limiting, ranked feeds, and cache state. The Next.js frontend and Spring Boot API deploy independently.
 
 ## Production
 
@@ -20,14 +20,16 @@ Deployment details: [`docs/DEPLOY-VERCEL-RAILWAY.md`](docs/DEPLOY-VERCEL-RAILWAY
 Browser
 ├── Next.js 16 App Router + React 19
 │   ├── Ballot Edition UI
+│   ├── Vietnamese/English catalogs
 │   ├── typed API modules
 │   ├── in-memory access token
+│   ├── single-request auth bootstrap
 │   ├── optimistic voting
 │   └── SSE reconciliation
 │
 └── Spring Boot 3.5 modular monolith
     ├── auth + social identity
-    ├── users
+    ├── editable/private/public profiles
     ├── ballots/posts
     ├── votes + verdict aggregation
     ├── Redis ranking
@@ -38,7 +40,7 @@ Browser
     └── Redis
 ```
 
-PostgreSQL owns durable account, session, ballot, and vote state. Redis is derived infrastructure: it can be rebuilt from PostgreSQL and ranked feeds degrade to latest-first database results when Redis is unavailable.
+PostgreSQL owns account, identity, session, profile, ballot, and vote state. Redis is derived infrastructure: ranked feeds fall back to latest-first PostgreSQL results when Redis is unavailable, and ranking state can be rebuilt.
 
 ## Stack
 
@@ -48,14 +50,14 @@ PostgreSQL owns durable account, session, ballot, and vote state. Redis is deriv
 - Spring Boot 3.5.14
 - Spring Security
 - OAuth2 Resource Server and OAuth2 Client
-- signed JWT access tokens
+- HS256 JWT access tokens
 - rotating opaque refresh tokens in `HttpOnly` cookies
 - Spring Data JPA
 - PostgreSQL 17
 - Spring Data Redis and Spring Cache
 - Flyway migrations
 - Micrometer and Spring Boot Actuator
-- springdoc OpenAPI
+- springdoc OpenAPI for non-production environments
 - Testcontainers
 
 ### Frontend
@@ -66,23 +68,37 @@ PostgreSQL owns durable account, session, ballot, and vote state. Redis is deriv
 - SCSS Modules and shared design tokens
 - Ballot Edition visual system
 - static export-compatible production build
+- typed Vietnamese/English catalogs
 - dependency-light Node tests
 - deterministic headless visual and accessibility QA
 
 ## Current capabilities
 
-### Authentication and identity
+### Authentication, identity, and profile
 
 - Email/password registration and login
 - Optional Google OpenID Connect and GitHub OAuth2 login
 - Explicit authenticated social-account linking
-- Provider discovery so disabled social providers do not render dead actions
+- Provider discovery so disabled providers do not render dead actions
 - 15-minute JWT access tokens held in browser memory only
 - Rotating refresh tokens in path-scoped `HttpOnly` cookies
-- SHA-256 refresh-token hashes stored in PostgreSQL; raw refresh tokens are never persisted
-- Logout, logout-all, expiry handling, and refresh-token replay detection
-- `GET /api/v1/users/me` Voter ID profile with display name, initials, role, optional email, and linked providers
-- Privacy-safe public author summaries; public ballot responses never expose account email
+- SHA-256 refresh-token hashes in PostgreSQL; raw refresh tokens are never persisted
+- Logout, logout-all, expiry handling, rotation, and replay detection
+- Register/login/refresh bootstrap responses containing session plus private profile
+- Editable display name, optional bio, one of ten Ballot Mark icons, six colors, and preferred locale
+- Privacy-safe public profiles and ballot author summaries
+- Public profile views hide empty bios instead of presenting placeholder copy as user content
+
+### Internationalization
+
+- Vietnamese and English system UI with Vietnamese as the current default
+- Domain-separated catalogs and build-time key-parity verification
+- `Intl` date, number, and relative-time formatting with `vi-VN` and `en-VN`
+- Persisted local language switcher selection
+- Stable language-neutral backend/domain values
+- User-generated ballots and bios remain in the language entered by the author
+
+Authenticated `preferredLocale` automatic application and browser-language fallback are tracked by TON-191. The current behavior is documented in [`docs/I18N.md`](docs/I18N.md).
 
 ### Ballots and voting
 
@@ -90,7 +106,7 @@ PostgreSQL owns durable account, session, ballot, and vote state. Redis is deriv
 - Category, closing time, verdict threshold, and OPEN/CLOSED lifecycle
 - Feed modes: `LATEST`, `HOT`, `TOP_DAY`, `TOP_WEEK`, and authenticated `MINE`
 - Server-owned filtering by query, category, and status across the complete dataset
-- Upvote, downvote, change vote, and remove vote
+- Upvote, downvote, change vote, repeated-choice removal, and explicit removal
 - One vote per user/ballot enforced by the database
 - Atomic up/down/total counts and score updates
 - Server-side projected/final verdict calculation
@@ -101,13 +117,13 @@ PostgreSQL owns durable account, session, ballot, and vote state. Redis is deriv
 
 - Atomic sliding-window Redis rate limits with `429` and `Retry-After`
 - Per-IP limits for login, registration, refresh, and social-login start
-- Per-user limits for ballot creation and voting
+- Per-user limits for ballot creation, voting, and profile update
 - Redis sorted-set ranking for HOT, TOP_DAY, and TOP_WEEK
-- Automatic ranking rebuild from PostgreSQL when a current ranking key is empty
+- Automatic ranking rebuild from PostgreSQL when current ranking data is empty
 - Database fallback when Redis is unavailable
-- Public per-ballot SSE stream for authoritative vote aggregates
+- Public per-ballot SSE stream for authoritative aggregate updates
 - Initial snapshot, heartbeat, reconnect hint, duplicate/regressive update suppression, and emitter cleanup
-- Ranking and SSE post-commit work runs through separate bounded FIFO executors so normal Redis/network latency does not remain on the vote HTTP request thread
+- Ranking and SSE post-commit work on separate bounded FIFO executors
 
 ### Reliability and observability
 
@@ -117,8 +133,9 @@ PostgreSQL owns durable account, session, ballot, and vote state. Redis is deriv
 - Production runtime smoke covering auth, ballot persistence/search, vote aggregation, refresh rotation, Redis, and SSE
 - Request correlation through `X-Request-ID`
 - Route-template HTTP latency metrics with API/stream/actuator classification
-- Auth restore, rate-limit, vote transaction, post-commit, and SSE connection metrics
-- Bounded metric tags: no user IDs, ballot IDs, emails, cookies, or tokens in labels
+- Auth restore, rate-limit, vote transaction, post-commit, and SSE metrics
+- Bounded metric tags: no user IDs, ballot IDs, emails, cookies, or tokens
+- Production profile disables Swagger/OpenAPI, verbose Spring/Hibernate logging, and Hibernate statistics
 
 ## Run locally
 
@@ -130,16 +147,11 @@ Requirements:
 - npm
 - Docker
 
-Copy backend environment defaults when needed:
+Copy environment examples:
 
 ```bash
 cp .env.example .env
-```
-
-Create `frontend/.env.local` for local API calls:
-
-```env
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
+cp frontend/.env.example frontend/.env.local
 ```
 
 Start PostgreSQL and Redis:
@@ -168,10 +180,13 @@ Open:
 Frontend:   http://localhost:3000
 Backend:    http://localhost:8080
 Swagger UI: http://localhost:8080/swagger-ui.html
+OpenAPI:    http://localhost:8080/v3/api-docs
 Health:     http://localhost:8080/actuator/health
 ```
 
-The local frontend calls `http://localhost:8080` through `NEXT_PUBLIC_API_BASE_URL`. Backend CORS defaults to `http://localhost:3000`, and credentialed requests use `credentials: include` for the refresh cookie.
+Swagger/OpenAPI is available for local/non-production use. Railway activates the `production` profile, which disables both endpoints.
+
+The frontend uses `NEXT_PUBLIC_API_BASE_URL`. Credentialed requests send `credentials: include`; backend CORS defaults to `http://localhost:3000` locally.
 
 ## Test and build
 
@@ -216,6 +231,8 @@ POST   /api/v1/auth/social/{provider}/start
 POST   /api/v1/auth/social/{provider}/link/start
 
 GET    /api/v1/users/me
+PATCH  /api/v1/users/me
+GET    /api/v1/users/{userId}
 
 GET    /api/v1/posts
 POST   /api/v1/posts
@@ -229,17 +246,17 @@ DELETE /api/v1/posts/{postId}/vote
 GET    /api/v1/posts/{postId}/events
 ```
 
-Generated API documentation and detailed contracts: [`docs/API.md`](docs/API.md).
+Detailed contracts: [`docs/API.md`](docs/API.md).
 
 ## Authentication lifecycle
 
-The access token is a signed JWT with a default lifetime of 15 minutes. The refresh token is an opaque random value stored only in an `HttpOnly` cookie. PostgreSQL stores its hash and session metadata.
+The access token is a short-lived signed JWT held in React memory. The refresh token is an opaque random value stored only in an `HttpOnly` cookie; PostgreSQL stores its hash and session metadata.
 
-Every successful refresh rotates the token. Reusing a rotated token is treated as possible token theft and revokes all active refresh sessions for that user. Revoking a refresh session does not query the database for every bearer-authenticated request; an already-issued access token remains valid until its short expiry.
+Every successful refresh rotates the token. Reusing a rotated token revokes all active refresh sessions for the affected user. An already-issued access token remains valid until its short expiry.
 
-The public feed does not wait for session restore. On startup, public LATEST/HOT/TOP requests begin immediately while refresh/profile restoration runs in parallel. `MINE` remains protected until a valid session exists, and public results are reconciled after identity restoration so `myVote` becomes authoritative without hiding the already-rendered feed.
+The public feed starts independently of session restore. In parallel, the frontend calls one `POST /api/v1/auth/refresh`; a successful response contains session and private profile. The normal path does not call `/users/me` afterward. `MINE` waits for authenticated identity, and public results are reconciled in the background so `myVote` becomes authoritative without hiding the first page.
 
-Detailed browser/session behavior: [`docs/FRONTEND-AUTH.md`](docs/FRONTEND-AUTH.md).
+Detailed behavior: [`docs/FRONTEND-AUTH.md`](docs/FRONTEND-AUTH.md).
 
 ## Rate-limit defaults
 
@@ -251,30 +268,34 @@ Detailed browser/session behavior: [`docs/FRONTEND-AUTH.md`](docs/FRONTEND-AUTH.
 | Social start | 20 / minute / IP |
 | Create ballot | 10 / hour / user |
 | Vote | 30 / minute / user |
+| Profile update | 10 / hour / user |
 
 Rate limiting is Redis-backed and fail-open by default for availability. Security-sensitive deployments can set `RATE_LIMIT_FAIL_OPEN=false` after validating Redis reliability.
 
 ## Documentation
 
-- [`docs/README.md`](docs/README.md) — documentation index and current-state guide
-- [`docs/API.md`](docs/API.md) — API, filters, identity, social login, rate limits, SSE, and operational endpoints
-- [`docs/FRONTEND-AUTH.md`](docs/FRONTEND-AUTH.md) — frontend token/session lifecycle
-- [`docs/SOCIAL-LOGIN.md`](docs/SOCIAL-LOGIN.md) — Google/GitHub configuration and linking rules
-- [`docs/REALTIME-VOTES.md`](docs/REALTIME-VOTES.md) — SSE contract and async delivery model
-- [`docs/DEPLOY-VERCEL-RAILWAY.md`](docs/DEPLOY-VERCEL-RAILWAY.md) — current production deployment
-- [`DESIGN.md`](DESIGN.md) — Ballot Edition UI specification
+Start at [`docs/README.md`](docs/README.md). Key documents:
+
+- [`docs/API.md`](docs/API.md) — API, auth bootstrap, profiles, feeds, rate limits, SSE, and operations
+- [`docs/FRONTEND-AUTH.md`](docs/FRONTEND-AUTH.md) — browser token/session lifecycle and rollout compatibility
+- [`docs/PROFILE.md`](docs/PROFILE.md) — private/public profile and Ballot Mark contracts
+- [`docs/I18N.md`](docs/I18N.md) — implemented VI/EN behavior and known locale gap
+- [`docs/SOCIAL-LOGIN.md`](docs/SOCIAL-LOGIN.md) — Google/GitHub configuration and linking
+- [`docs/REALTIME-VOTES.md`](docs/REALTIME-VOTES.md) — SSE contract and async delivery
+- [`docs/DEPLOY-VERCEL-RAILWAY.md`](docs/DEPLOY-VERCEL-RAILWAY.md) — production deployment
+- [`docs/DOCUMENTATION-MAINTENANCE.md`](docs/DOCUMENTATION-MAINTENANCE.md) — documentation Definition of Done
+- [`DESIGN.md`](DESIGN.md) — implemented Ballot Edition UI specification
 
 ## Roadmap
 
-Completed foundations include Next.js migration, Ballot Edition, server-owned feeds, Redis rate limiting/ranking, realtime vote updates, social login, split deployment, runtime QA, and initial performance instrumentation.
+Completed foundations include Next.js migration, Ballot Edition, server-owned feeds, Redis rate limiting/ranking, realtime vote updates, social login, VI/EN i18n, editable profiles, custom Ballot Marks, split deployment, runtime QA, and performance instrumentation.
 
-The active planned sequence in Linear is:
+The active sequence is:
 
-1. `TON-116` — Vietnamese/English internationalization foundation
-2. `TON-108` — editable profile and Ballot Mark avatar presets
-3. `TON-109` — admin roles, audit log, moderation, and operational dashboard
-4. `TON-110` / `TON-111` — comments, replies, voting, and moderation
-5. `TON-112` / `TON-113` / `TON-114` — notification persistence, transactional outbox, and realtime bell UI
-6. `TON-115` — constrained one-to-one text messaging after moderation and event reliability are stable
+1. `TON-109` — admin roles, audit log, moderation controls, and operational dashboard
+2. `TON-140` — unified reporting and moderation-case workflow
+3. `TON-110` / `TON-111` — comments, replies, voting, and moderation
+4. `TON-112` / `TON-113` / `TON-114` — notifications, transactional outbox, and realtime delivery
+5. `TON-115` — constrained one-to-one text messaging after moderation/event reliability are stable
 
-User-generated ballots, bios, comments, and messages will remain in the language entered by the author; system UI and machine-owned copy will support Vietnamese and English.
+`TON-191` is a focused locale-correctness follow-up discovered during the documentation freshness audit.

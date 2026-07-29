@@ -1,30 +1,38 @@
 # Vote System API documentation
 
-The backend generates its OpenAPI specification from Spring MVC controllers through springdoc-openapi. Controller mappings, DTOs, validation annotations, Flyway migrations, and security configuration remain the implementation source of truth.
+The backend generates OpenAPI from Spring MVC controllers through springdoc-openapi. Controller mappings, DTOs, validation annotations, Flyway migrations, security configuration, and active Spring profiles remain the implementation source of truth.
 
-## Local URLs
+## API documentation visibility
 
-After starting Spring Boot on port `8080`:
+Local and non-production Spring Boot runs expose:
 
-- Swagger UI: `http://localhost:8080/swagger-ui.html`
-- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
-- OpenAPI YAML: `http://localhost:8080/v3/api-docs.yaml`
-- Public health: `http://localhost:8080/actuator/health`
+```text
+Swagger UI   http://localhost:8080/swagger-ui.html
+OpenAPI JSON http://localhost:8080/v3/api-docs
+OpenAPI YAML http://localhost:8080/v3/api-docs.yaml
+Health       http://localhost:8080/actuator/health
+```
 
-Swagger/OpenAPI and health routes are public. Other Actuator routes, including metrics, require authentication. Protected API operations use the `bearerAuth` HTTP security scheme.
+Railway runs with `SPRING_PROFILES_ACTIVE=production`. `application-production.yml` disables both OpenAPI generation and Swagger UI, so production verification should expect those routes to be unavailable. Public production health remains:
 
-## Session contract
+```http
+GET https://api.ballotbox.io.vn/actuator/health
+```
 
-Email/password and social authentication converge on the same Vote System session model:
+Other Actuator routes, including `info` and `metrics`, require authentication.
 
-- short-lived HS256 JWT access token, held in frontend memory;
+## Session and auth bootstrap
+
+Email/password and social authentication converge on one Vote System session model:
+
+- short-lived HS256 JWT access token held in frontend memory;
 - opaque rotating refresh token in an `HttpOnly` cookie;
-- SHA-256 refresh-token hash and session metadata persisted in PostgreSQL;
-- replay detection that revokes all active sessions for the affected user.
+- SHA-256 refresh-token hash and session metadata in PostgreSQL;
+- replay detection that revokes all active refresh sessions for the affected user.
 
 Default access-token lifetime is 15 minutes. Default refresh-token lifetime is 30 days.
 
-Register, login, and refresh return an additive bootstrap response containing both session fields and the authenticated private profile:
+Register, login, and refresh return existing session fields plus the authenticated private profile:
 
 ```json
 {
@@ -52,9 +60,9 @@ Register, login, and refresh return an additive bootstrap response containing bo
 }
 ```
 
-The refresh token is never returned in JSON. Existing top-level `userId`, `email`, and `role` fields remain for backward compatibility while clients migrate to the bootstrap profile.
+The refresh token is never returned in JSON. Top-level `userId`, `email`, and `role` remain during the backward-compatibility window.
 
-## Email/password authentication
+### Email/password endpoints
 
 ```http
 POST /api/v1/auth/register
@@ -74,13 +82,15 @@ Registration accepts:
 }
 ```
 
-`displayName` is optional. When omitted, the backend persists a privacy-safe pseudonym instead of deriving a public identity from the email address.
+`displayName` is optional during registration. When omitted, the backend persists a privacy-safe pseudonym instead of deriving public identity from email.
 
-Login, registration, refresh, or a successful social callback writes the rotating refresh token as an `HttpOnly` cookie. The frontend uses the bootstrap profile directly and does not need a second `/users/me` request on the normal path.
+Login, registration, refresh, and a successful social callback write the rotating refresh cookie. The normal frontend restore/login/register path uses the returned `profile` and does not make a second `/users/me` request.
+
+Detailed browser behavior: [`FRONTEND-AUTH.md`](FRONTEND-AUTH.md).
 
 ## Google and GitHub social authentication
 
-Load providers configured on the current backend:
+Configured provider discovery:
 
 ```http
 GET /api/v1/auth/social/providers
@@ -92,9 +102,9 @@ GET /api/v1/auth/social/providers
 }
 ```
 
-An installation without social credentials returns an empty array and continues to support email/password authentication.
+An installation without provider credentials returns an empty list and keeps email/password auth usable.
 
-Start public authentication or pending create-ballot continuation:
+Start public authentication or create-ballot continuation:
 
 ```http
 POST /api/v1/auth/social/google/start
@@ -103,7 +113,7 @@ Content-Type: application/json
 {"intent":"authenticate"}
 ```
 
-Allowed public intents are `authenticate` and `create-ballot`. The response contains a backend-generated authorization URL.
+Allowed public intents are `authenticate` and `create-ballot`.
 
 Start explicit linking from an authenticated account:
 
@@ -112,29 +122,29 @@ POST /api/v1/auth/social/github/link/start
 Authorization: Bearer <access-token>
 ```
 
-Spring Security handles provider callbacks at:
+Provider callbacks:
 
 ```text
 /login/oauth2/code/google
 /login/oauth2/code/github
 ```
 
-The callback redirect never contains Vote System tokens, provider tokens, authorization codes, email, or provider subject. Provider identities are keyed by `(provider, providerSubject)`. Verified-email collisions require explicit authenticated linking; accounts are never silently merged by email.
+Callback redirects contain only safe status metadata. Provider tokens, authorization codes, email, and provider subjects are never reflected to the frontend. Provider identities are keyed by `(provider, providerSubject)`. Verified-email collisions require explicit authenticated linking; accounts are not silently merged by email.
 
-After callback, the frontend restores the normal Vote System session through `POST /api/v1/auth/refresh`; the returned profile includes the current linked-provider set.
+After callback, the frontend restores session/profile through `POST /api/v1/auth/refresh`.
 
 Detailed setup and security rules: [`SOCIAL-LOGIN.md`](SOCIAL-LOGIN.md).
 
 ## Voter identity and profile
 
-Explicit private profile retrieval remains available:
+Private profile retrieval:
 
 ```http
 GET /api/v1/users/me
 Authorization: Bearer <access-token>
 ```
 
-Authenticated profile update:
+Profile update:
 
 ```http
 PATCH /api/v1/users/me
@@ -142,23 +152,17 @@ Authorization: Bearer <access-token>
 Content-Type: application/json
 ```
 
-Public-safe profile lookup:
+Public-safe lookup:
 
 ```http
 GET /api/v1/users/{userId}
 ```
 
-The private profile contains:
+The private profile contains local user ID, optional account email, public display name, initials, optional bio, Ballot Mark icon/color, preferred locale, role, linked providers, and timestamps.
 
-- local user ID and optional account email;
-- public display name and initials;
-- optional bio;
-- one of ten Ballot Mark avatar icons and one of six colors;
-- preferred locale `vi` or `en`;
-- role and linked social providers;
-- account timestamps.
+Public profile and ballot-author responses exclude email, role, preferred locale, sessions, and linked providers. An empty bio is represented as empty/null data; the public UI renders no placeholder as user-authored content.
 
-A social-only account may have `email: null`. Public profile and ballot-author responses do not expose email, role, or linked-provider data. When a public bio is empty, the frontend renders no placeholder as user-authored content.
+Detailed contract and enum values: [`PROFILE.md`](PROFILE.md). Locale behavior: [`I18N.md`](I18N.md).
 
 ## Ballot lifecycle
 
@@ -197,17 +201,17 @@ POST   /api/v1/posts/{postId}/close
 DELETE /api/v1/posts/{postId}
 ```
 
-Only the author can update, close, or delete a ballot. The backend owns OPEN/CLOSED lifecycle transitions and final-verdict semantics.
+Only the author can update, close, or delete a ballot. The backend owns lifecycle transitions and final-verdict semantics.
 
-## Ballot feeds, search, and filters
+## Feeds, search, and filters
 
 `GET /api/v1/posts` accepts:
 
 - `feed`: `LATEST`, `HOT`, `TOP_DAY`, `TOP_WEEK`, or `MINE`; default `LATEST`;
-- `query`: optional, maximum 200 characters; case-insensitive substring search across title, content, and ballot number; `%` and `_` are treated literally;
+- `query`: optional, maximum 200 characters; case-insensitive substring search across title, content, and ballot number; `%` and `_` are literal;
 - `category`: optional, maximum 50 characters; exact match after upper-case normalization;
 - `status`: optional `OPEN` or `CLOSED`;
-- `page`: zero-based index, minimum `0`;
+- `page`: zero-based, minimum `0`;
 - `size`: `1` through `100`, default `20`.
 
 Examples:
@@ -221,19 +225,17 @@ GET /api/v1/posts?feed=MINE&page=0&size=20
 Authorization: Bearer <access-token>
 ```
 
-`MINE` is backend-owned and requires authentication. Clients must not emulate it by filtering an already-loaded public page.
+`MINE` is backend-owned and requires authentication. Clients must not emulate it by filtering a public page.
 
-### Ordering semantics
+Ordering:
 
-- `LATEST`: matching ballots ordered by `createdAt DESC` in PostgreSQL;
-- `MINE`: the current user's matching ballots ordered by `createdAt DESC`;
-- `HOT`: matching ballots retain Redis hot-score order;
-- `TOP_DAY`: matching ballots retain current UTC-day Redis ranking;
-- `TOP_WEEK`: matching ballots retain current UTC-week Redis ranking.
+- `LATEST`: PostgreSQL `createdAt DESC`;
+- `MINE`: authenticated author's `createdAt DESC`;
+- `HOT`: Redis hot-score order;
+- `TOP_DAY`: current UTC-day Redis order;
+- `TOP_WEEK`: current UTC-week Redis order.
 
-Filtering applies across the complete ranked set before selecting a page. `totalElements` and `totalPages` therefore describe the filtered dataset, not only the rows already loaded by the frontend.
-
-If Redis is unavailable, ranked feeds degrade to matching PostgreSQL results in latest-first order. Filtering and pagination remain correct, but rank order is temporarily unavailable.
+Filtering applies across the complete ranked set before pagination. If Redis is unavailable, ranked feeds degrade to matching PostgreSQL results in latest-first order.
 
 ## Voting
 
@@ -250,7 +252,7 @@ DELETE /api/v1/posts/{postId}/vote
 Authorization: Bearer <access-token>
 ```
 
-The backend supports add, change, repeated-choice removal, and explicit removal semantics. Aggregate counts and score are updated atomically while the individual `(user_id, post_id)` vote is protected by a database uniqueness constraint.
+The backend supports add, change, repeated-choice removal, and explicit removal. Aggregate counts and score update atomically; `(user_id, post_id)` uniqueness prevents duplicate rows.
 
 Ballot responses expose authoritative:
 
@@ -258,30 +260,26 @@ Ballot responses expose authoritative:
 - `downVotes`;
 - `totalVotes`;
 - `voteScore`;
-- `myVote` for authenticated REST responses;
-- verdict threshold and projected/final verdict;
-- lifecycle status and timestamps.
+- authenticated `myVote`;
+- threshold and projected/final verdict;
+- lifecycle and timestamps.
 
 ## Realtime vote updates
-
-Active ballots expose a public SSE endpoint:
 
 ```http
 GET /api/v1/posts/{postId}/events
 Accept: text/event-stream
 ```
 
-The server sends an authoritative aggregate snapshot, heartbeat comments, a reconnect hint, and future `vote-update` events. Events deliberately exclude `myVote` and identity data.
+The public stream sends an authoritative aggregate snapshot, heartbeat comments, reconnect hint, and future `vote-update` events. It excludes `myVote` and identity data.
 
-After the database transaction commits, SSE delivery is enqueued to a bounded FIFO executor. The HTTP vote response does not normally wait for connected-client network I/O. Event history is not persisted; reconnect converges through the latest database snapshot.
+After commit, SSE delivery is enqueued to a bounded FIFO executor. The vote HTTP response does not normally wait for connected-client network I/O. Event history is not persisted; reconnect converges through the latest database snapshot.
 
 Detailed contract: [`REALTIME-VOTES.md`](REALTIME-VOTES.md).
 
 ## Redis rate limiting
 
-Default policies:
-
-| Rule | Limit | Identity |
+| Rule | Default | Identity |
 |---|---:|---|
 | Login | 5 / minute | IP |
 | Register | 3 / hour | IP |
@@ -289,12 +287,15 @@ Default policies:
 | Social start | 20 / minute | IP |
 | Create ballot | 10 / hour | authenticated user |
 | Vote | 30 / minute | authenticated user |
+| Profile update | 10 / hour | authenticated user |
 
-The implementation uses an atomic Redis sorted-set/Lua sliding window. Rejected requests return `429 Too Many Requests` with `Retry-After`. The default is fail-open when Redis cannot be reached; this is configurable through `RATE_LIMIT_FAIL_OPEN`.
+The implementation uses an atomic Redis sorted-set/Lua sliding window. Rejected requests return `429 Too Many Requests` with `Retry-After`. Default behavior is fail-open when Redis cannot be reached; configure `RATE_LIMIT_FAIL_OPEN=false` only after validating Redis reliability.
 
-## Error contract
+## Error contract and localization
 
-Validation, authentication, authorization, resource, conflict, and rate-limit failures use Problem Details-compatible JSON. Frontend code branches on HTTP status and stable machine-owned fields rather than parsing free-form text. User-facing error copy is mapped through the VI/EN catalog; backend domain values remain language-neutral and user-generated content is not translated automatically.
+Validation, authentication, authorization, resource, conflict, and rate-limit failures use Problem Details-compatible JSON. Frontend code branches on HTTP status and stable machine-owned fields rather than parsing free-form text.
+
+User-facing system copy is mapped through VI/EN catalogs. Backend domain values remain language-neutral. User-generated content is not translated automatically.
 
 ## Health, metrics, and request correlation
 
@@ -304,9 +305,9 @@ Public:
 GET /actuator/health
 ```
 
-Authenticated Actuator access includes `info` and `metrics` because only health is explicitly public in Spring Security.
+Authenticated Actuator access includes `info` and `metrics`.
 
-Important metric names:
+Important metrics:
 
 ```text
 http.server.requests
@@ -322,20 +323,20 @@ vote.side_effect.execution
 vote.ranking.operations
 ```
 
-API responses include `X-Request-ID`. A safe inbound value is reused; otherwise the backend generates a UUID. Request logs use bounded route templates, not concrete ballot UUID paths.
+Responses include `X-Request-ID`. A safe inbound value is reused; otherwise a UUID is generated. Completion logs use route templates rather than concrete ballot UUID paths.
 
-No user ID, ballot ID, email, cookie, refresh-token hash, raw token, or dynamic exception text may be added as a metric tag.
+User IDs, ballot IDs, email, cookies, refresh-token hashes, raw tokens, and dynamic exception text must not become metric tags.
 
 ## CORS
 
-Credentialed frontend requests require an explicit origin allow-list. Wildcard `*` is not used with cookies. Exposed response headers include:
+Credentialed frontend requests require an explicit origin allow-list. Wildcard `*` is not used with cookies. Exposed response headers:
 
 ```text
 Retry-After
 X-Request-ID
 ```
 
-Current production frontend origin:
+Production frontend origin:
 
 ```text
 https://app.ballotbox.io.vn
@@ -343,11 +344,13 @@ https://app.ballotbox.io.vn
 
 ## Source of truth
 
-Global OpenAPI and JWT configuration:
+Key configuration:
 
 ```text
 src/main/java/com/hungtvb/votesystem/common/config/OpenApiConfig.java
 src/main/java/com/hungtvb/votesystem/common/config/SecurityConfig.java
+src/main/resources/application.yml
+src/main/resources/application-production.yml
 ```
 
-For exact request/response schemas, use the generated OpenAPI document from the deployed backend or the controller/DTO source on the same commit.
+For exact schemas, use controller/DTO source or generated OpenAPI from a non-production environment on the same commit.
