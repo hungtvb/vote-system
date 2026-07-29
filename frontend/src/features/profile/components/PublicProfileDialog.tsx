@@ -67,7 +67,7 @@ export function PublicProfileDialog({ userId, initialProfile, onClose }: PublicP
               label={t('profile', 'avatarLabel', { name: profile.displayName })}
             />
             <h2 id="public-profile-title">{profile.displayName}</h2>
-            {bio && <p className={styles.bio}>{bio}</p>}
+            {bio && <p className={styles.bio} data-qa-public-profile-bio>{bio}</p>}
             <time dateTime={profile.createdAt}>
               {formatDate(profile.createdAt, { dateStyle: 'long' })}
             </time>
