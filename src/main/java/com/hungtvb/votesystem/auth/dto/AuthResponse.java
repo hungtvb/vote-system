@@ -1,5 +1,7 @@
 package com.hungtvb.votesystem.auth.dto;
 
+import com.hungtvb.votesystem.user.dto.UserProfileResponse;
+
 import java.util.UUID;
 
 public record AuthResponse(
@@ -9,6 +11,7 @@ public record AuthResponse(
         long refreshExpiresInSeconds,
         UUID userId,
         String email,
-        String role
+        String role,
+        UserProfileResponse profile
 ) {
 }
