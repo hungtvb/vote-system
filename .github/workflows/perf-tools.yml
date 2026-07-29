@@ -10,6 +10,28 @@ on:
     paths:
       - 'scripts/perf/**'
       - '.github/workflows/perf-tools.yml'
+  workflow_dispatch:
+    inputs:
+      scenarios:
+        description: 'Comma-separated scenarios: public-feed,authenticated-feed,vote,refresh'
+        required: true
+        default: 'public-feed'
+        type: string
+      samples:
+        description: 'Measured warm samples per scenario'
+        required: true
+        default: '50'
+        type: string
+      warmup:
+        description: 'Warmup requests per scenario'
+        required: true
+        default: '5'
+        type: string
+      base_url:
+        description: 'Production API base URL'
+        required: true
+        default: 'https://api.ballotbox.io.vn'
+        type: string
 
 permissions:
   contents: read
@@ -34,3 +56,57 @@ jobs:
           ACCESS_TOKEN=dummy \
           POST_ID=00000000-0000-0000-0000-000000000000 \
           node scripts/perf/benchmark-api.mjs
+
+  production-benchmark:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      BASE_URL: ${{ inputs.base_url }}
+      SCENARIOS: ${{ inputs.scenarios }}
+      SAMPLES: ${{ inputs.samples }}
+      WARMUP: ${{ inputs.warmup }}
+      RAILWAY_REGION: asia-southeast1
+      SUPABASE_REGION: ap-southeast-1
+      UPSTASH_REGION: ap-southeast-1
+      ACCESS_TOKEN: ${{ secrets.PERF_ACCESS_TOKEN }}
+      COOKIE_HEADER: ${{ secrets.PERF_COOKIE_HEADER }}
+      POST_ID: ${{ secrets.PERF_POST_ID }}
+      VOTE_TYPE: UP
+      VOTE_DELAY_MS: '2100'
+      REFRESH_DELAY_MS: '3100'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate requested scenarios and required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          case ",${SCENARIOS}," in
+            *,authenticated-feed,*|*,vote,*)
+              test -n "${ACCESS_TOKEN}" || { echo 'PERF_ACCESS_TOKEN is required'; exit 1; }
+              ;;
+          esac
+          case ",${SCENARIOS}," in
+            *,vote,*)
+              test -n "${POST_ID}" || { echo 'PERF_POST_ID is required'; exit 1; }
+              ;;
+          esac
+          case ",${SCENARIOS}," in
+            *,refresh,*)
+              test -n "${COOKIE_HEADER}" || { echo 'PERF_COOKIE_HEADER is required'; exit 1; }
+              ;;
+          esac
+      - name: Run production API benchmark
+        run: node scripts/perf/benchmark-api.mjs
+      - name: Upload sanitized benchmark reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-benchmark-${{ github.run_id }}
+          path: perf-results/
+          if-no-files-found: error
+          retention-days: 14
