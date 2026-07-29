@@ -1,0 +1,81 @@
+name: Auth Bootstrap QA
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/src/features/auth/**'
+      - 'frontend/src/shared/api/auth-api.ts'
+      - 'frontend/src/shared/api/types.ts'
+      - 'frontend/src/shared/auth/session-bootstrap.ts'
+      - 'frontend/scripts/ton106_qa_server.py'
+      - 'frontend/package*.json'
+      - '.github/workflows/auth-bootstrap-qa.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/src/features/auth/**'
+      - 'frontend/src/shared/api/auth-api.ts'
+      - 'frontend/src/shared/api/types.ts'
+      - 'frontend/src/shared/auth/session-bootstrap.ts'
+      - 'frontend/scripts/ton106_qa_server.py'
+      - 'frontend/package*.json'
+      - '.github/workflows/auth-bootstrap-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  single-request-bootstrap:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build frontend
+        run: npm run build
+      - name: Verify bootstrap without users-me waterfall
+        run: |
+          set -euo pipefail
+          mkdir -p auth-bootstrap-qa
+          python3 scripts/ton106_qa_server.py > auth-bootstrap-qa/server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          for attempt in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 40 ]; then
+              cat auth-bootstrap-qa/server.log
+              exit 1
+            fi
+            sleep 0.25
+          done
+
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)
+          URL='http://127.0.0.1:4173/?qa=auth-bootstrap'
+          COMMON=(--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --run-all-compositor-stages-before-draw --virtual-time-budget=7000 --window-size=390,844)
+          "$CHROME" "${COMMON[@]}" --screenshot=auth-bootstrap-qa/mobile-auth-bootstrap.png "$URL"
+          "$CHROME" "${COMMON[@]}" --dump-dom "$URL" > auth-bootstrap-qa/mobile-auth-bootstrap.html
+
+          grep -q 'data-qa-scenario="complete"' auth-bootstrap-qa/mobile-auth-bootstrap.html
+          grep -q 'data-qa-voter-after-auth="true"' auth-bootstrap-qa/mobile-auth-bootstrap.html
+          grep -q 'data-qa-overflow="false"' auth-bootstrap-qa/mobile-auth-bootstrap.html
+          grep -q 'Alexandria Registry Participant' auth-bootstrap-qa/mobile-auth-bootstrap.html
+          ! grep -q 'Unexpected legacy profile request' auth-bootstrap-qa/mobile-auth-bootstrap.html
+      - name: Upload bootstrap evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-bootstrap-qa
+          path: frontend/auth-bootstrap-qa/**
+          if-no-files-found: error
+          retention-days: 14
