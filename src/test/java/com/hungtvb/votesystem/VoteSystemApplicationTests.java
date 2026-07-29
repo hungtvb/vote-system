@@ -106,6 +106,12 @@ class VoteSystemApplicationTests {
                 .andExpect(jsonPath("$.accessToken").isString())
                 .andExpect(jsonPath("$.expiresInSeconds").value(900))
                 .andExpect(jsonPath("$.refreshExpiresInSeconds").value(2_592_000))
+                .andExpect(jsonPath("$.profile.id").isString())
+                .andExpect(jsonPath("$.profile.email").value("refresh-rotation@example.com"))
+                .andExpect(jsonPath("$.profile.avatarIcon").value("CITIZEN"))
+                .andExpect(jsonPath("$.profile.avatarColor").value("NAVY"))
+                .andExpect(jsonPath("$.profile.preferredLocale").value("vi"))
+                .andExpect(jsonPath("$.profile.linkedProviders").isEmpty())
                 .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("HttpOnly")))
                 .andReturn();
 
@@ -154,6 +160,11 @@ class VoteSystemApplicationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + email + "\",\"password\":\"strong-password\"}"))
                 .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.profile.id").isString())
+                .andExpect(jsonPath("$.profile.email").value(email))
+                .andExpect(jsonPath("$.profile.displayName").isString())
+                .andExpect(jsonPath("$.profile.role").value("USER"))
+                .andExpect(jsonPath("$.profile.linkedProviders").isEmpty())
                 .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("SameSite=Lax")))
                 .andReturn();
         return authSession(result);
@@ -164,6 +175,9 @@ class VoteSystemApplicationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + email + "\",\"password\":\"strong-password\"}"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profile.id").isString())
+                .andExpect(jsonPath("$.profile.email").value(email))
+                .andExpect(jsonPath("$.profile.role").value("USER"))
                 .andReturn();
         return authSession(result);
     }
