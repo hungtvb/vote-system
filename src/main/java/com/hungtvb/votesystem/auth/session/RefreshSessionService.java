@@ -3,7 +3,6 @@ package com.hungtvb.votesystem.auth.session;
 import com.hungtvb.votesystem.auth.metrics.AuthRestoreMetrics;
 import com.hungtvb.votesystem.common.config.RefreshTokenProperties;
 import com.hungtvb.votesystem.common.error.UnauthorizedException;
-import com.hungtvb.votesystem.security.AuthenticatedUser;
 import com.hungtvb.votesystem.user.AppUser;
 import com.hungtvb.votesystem.user.UserRepository;
 import org.springframework.stereotype.Service;
@@ -40,8 +39,8 @@ public class RefreshSessionService {
     }
 
     @Transactional
-    public RefreshGrant issue(AuthenticatedUser user) {
-        IssuedToken issuedToken = createSession(user.id(), Instant.now());
+    public RefreshGrant issue(AppUser user) {
+        IssuedToken issuedToken = createSession(user.getId(), Instant.now());
         return new RefreshGrant(user, issuedToken.rawToken(), properties.ttl().toSeconds());
     }
 
@@ -99,7 +98,7 @@ public class RefreshSessionService {
         );
 
         return new RefreshGrant(
-                AuthenticatedUser.from(user),
+                user,
                 replacement.rawToken(),
                 properties.ttl().toSeconds()
         );
