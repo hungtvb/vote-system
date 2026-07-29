@@ -11,10 +11,12 @@ import com.hungtvb.votesystem.auth.social.SocialProvider;
 import com.hungtvb.votesystem.auth.social.UserIdentityRepository;
 import com.hungtvb.votesystem.user.AppUser;
 import com.hungtvb.votesystem.user.UserRepository;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -62,6 +64,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @AutoConfigureMockMvc
 class SocialLoginIntegrationTests {
+    private static final String REFRESH_COOKIE = "vote_refresh";
+
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17-alpine");
 
@@ -102,7 +106,7 @@ class SocialLoginIntegrationTests {
     }
 
     @Test
-    void verifiedGoogleEmailRequiresExplicitAuthenticatedLinking() {
+    void verifiedGoogleEmailRequiresExplicitAuthenticatedLinking() throws Exception {
         AppUser existing = userRepository.saveAndFlush(AppUser.create(
                 "existing-google@example.com",
                 "Existing Voter",
@@ -123,6 +127,22 @@ class SocialLoginIntegrationTests {
         assertEquals(existing.getId(), linked.getId());
         assertEquals(SocialProvider.GOOGLE,
                 identityRepository.findAllByUserId(existing.getId()).getFirst().getProvider());
+
+        MvcResult login = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"existing-google@example.com","password":"runtime-password"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profile.id").value(existing.getId().toString()))
+                .andExpect(jsonPath("$.profile.linkedProviders[0]").value("GOOGLE"))
+                .andReturn();
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(extractRefreshCookie(login)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profile.id").value(existing.getId().toString()))
+                .andExpect(jsonPath("$.profile.linkedProviders[0]").value("GOOGLE"));
     }
 
     @Test
@@ -227,6 +247,16 @@ class SocialLoginIntegrationTests {
                 .orElseThrow()
                 .getUser();
         assertNull(user.getEmail());
+    }
+
+    private Cookie extractRefreshCookie(MvcResult result) {
+        String setCookie = result.getResponse().getHeader(HttpHeaders.SET_COOKIE);
+        assertTrue(setCookie != null && setCookie.contains(REFRESH_COOKIE + "="));
+        String prefix = REFRESH_COOKIE + "=";
+        int start = setCookie.indexOf(prefix);
+        int end = setCookie.indexOf(';', start);
+        String value = setCookie.substring(start + prefix.length(), end < 0 ? setCookie.length() : end);
+        return new Cookie(REFRESH_COOKIE, value);
     }
 
     private Map<String, String> query(String rawQuery) {
