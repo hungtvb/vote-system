@@ -1,18 +1,23 @@
 'use client';
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import enMessages from './messages/en.json';
 import viMessages from './messages/vi.json';
+import {
+  DEFAULT_LOCALE,
+  resolveGuestLocale,
+  supportedLocales
+} from './locale-policy';
+import type { Locale } from './locale-policy';
 
-export const supportedLocales = ['vi', 'en'] as const;
-export type Locale = (typeof supportedLocales)[number];
+export { supportedLocales };
+export type { Locale };
 export type MessageCatalog = typeof viMessages;
 export type MessageDomain = keyof MessageCatalog;
 export type MessageKey<D extends MessageDomain> = keyof MessageCatalog[D] & string;
 
 const STORAGE_KEY = 'vote.locale';
-const DEFAULT_LOCALE: Locale = 'vi';
 const intlLocales: Record<Locale, string> = { vi: 'vi-VN', en: 'en-VN' };
 const catalogs: Record<Locale, MessageCatalog> = { vi: viMessages, en: enMessages };
 
@@ -21,6 +26,8 @@ type Variables = Record<string, string | number>;
 interface I18nContextValue {
   locale: Locale;
   setLocale: (locale: Locale) => void;
+  applyLocale: (locale: Locale) => void;
+  resetLocale: () => void;
   t: <D extends MessageDomain>(domain: D, key: MessageKey<D>, variables?: Variables) => string;
   formatDate: (value: Date | string | number, options?: Intl.DateTimeFormatOptions) => string;
   formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
@@ -29,20 +36,25 @@ interface I18nContextValue {
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
-function isLocale(value: string | null): value is Locale {
-  return value === 'vi' || value === 'en';
-}
-
 function detectLocale(): Locale {
   if (window.location.hostname === '127.0.0.1' && new URLSearchParams(window.location.search).has('qa')) {
     return 'en';
   }
+
+  let savedLocale: string | null = null;
   try {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    return isLocale(saved) ? saved : DEFAULT_LOCALE;
+    savedLocale = window.localStorage.getItem(STORAGE_KEY);
   } catch {
-    return DEFAULT_LOCALE;
+    // Storage can be unavailable in privacy-restricted browser contexts.
   }
+
+  const browserLanguages = window.navigator.languages?.length
+    ? [...window.navigator.languages]
+    : window.navigator.language
+      ? [window.navigator.language]
+      : [];
+
+  return resolveGuestLocale(savedLocale, browserLanguages);
 }
 
 function interpolate(message: string, variables?: Variables): string {
@@ -55,34 +67,45 @@ function interpolate(message: string, variables?: Variables): string {
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(DEFAULT_LOCALE);
 
-  useEffect(() => {
+  const applyLocale = useCallback((nextLocale: Locale) => {
+    setLocaleState(nextLocale);
+  }, []);
+
+  const setLocale = useCallback((nextLocale: Locale) => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, nextLocale);
+    } catch {
+      // Storage can be unavailable in privacy-restricted browser contexts.
+    }
+    setLocaleState(nextLocale);
+  }, []);
+
+  const resetLocale = useCallback(() => {
     setLocaleState(detectLocale());
   }, []);
+
+  useEffect(() => {
+    resetLocale();
+  }, [resetLocale]);
 
   useEffect(() => {
     document.documentElement.lang = locale;
   }, [locale]);
 
   const value = useMemo<I18nContextValue>(() => {
-    const setLocale = (nextLocale: Locale) => {
-      try {
-        window.localStorage.setItem(STORAGE_KEY, nextLocale);
-      } catch {
-        // Storage can be unavailable in privacy-restricted browser contexts.
-      }
-      setLocaleState(nextLocale);
-    };
     const intlLocale = intlLocales[locale];
 
     return {
       locale,
       setLocale,
+      applyLocale,
+      resetLocale,
       t: (domain, key, variables) => interpolate(String(catalogs[locale][domain][key]), variables),
       formatDate: (input, options) => new Intl.DateTimeFormat(intlLocale, options).format(new Date(input)),
       formatNumber: (input, options) => new Intl.NumberFormat(intlLocale, options).format(input),
       formatRelativeTime: (input, unit) => new Intl.RelativeTimeFormat(intlLocale, { numeric: 'auto' }).format(input, unit)
     };
-  }, [locale]);
+  }, [applyLocale, locale, resetLocale, setLocale]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
