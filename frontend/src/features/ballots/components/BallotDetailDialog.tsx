@@ -31,7 +31,7 @@ export function BallotDetailDialog({ ballot, busy, owned, onClose, onVote, onEdi
             <p className={styles.formTab}>{ballot.ballotNumber}</p>
             <h2 id="ballot-detail-title">{ballot.title}</h2>
           </div>
-          <button type="button" autoFocus className={styles.textButton} onClick={onClose}>{t('common', 'close')}</button>
+          <button type="button" className={styles.closeIcon} onClick={onClose} aria-label={t('common', 'close')}>×</button>
         </div>
 
         <div className={styles.detailMeta}>
