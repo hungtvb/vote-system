@@ -1,4 +1,4 @@
-import type { AuthBootstrap, Session, UserProfile } from '@/shared/api/types';
+import type { AuthBootstrap, Session, UserProfile } from '../api/types';
 
 export type LegacyProfileLoader = (accessToken: string) => Promise<UserProfile>;
 
