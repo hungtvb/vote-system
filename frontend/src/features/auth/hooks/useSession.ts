@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { authApi } from '@/shared/api/auth-api';
 import { runAuthorizedRequest } from '@/shared/api/authorized-request';
 import { ApiError } from '@/shared/api/transport';
-import type { Session, UpdateUserProfileRequest, UserProfile } from '@/shared/api/types';
+import type { AuthBootstrap, Session, UpdateUserProfileRequest, UserProfile } from '@/shared/api/types';
 import { userApi } from '@/shared/api/user-api';
 
 type ProfileUpdater = (payload: UpdateUserProfileRequest) => Promise<UserProfile>;
@@ -13,6 +13,22 @@ let activeProfileUpdater: ProfileUpdater | null = null;
 export function updateActiveUserProfile(payload: UpdateUserProfileRequest): Promise<UserProfile> {
   if (!activeProfileUpdater) return Promise.reject(new Error('Authenticated profile session is unavailable'));
   return activeProfileUpdater(payload);
+}
+
+function sessionOnly(next: Session): Session {
+  return {
+    tokenType: next.tokenType,
+    accessToken: next.accessToken,
+    expiresInSeconds: next.expiresInSeconds,
+    userId: next.userId,
+    email: next.email,
+    role: next.role
+  };
+}
+
+function hasBootstrapProfile(next: Session): next is AuthBootstrap {
+  const profile = (next as Partial<AuthBootstrap>).profile;
+  return Boolean(profile && profile.id === next.userId);
 }
 
 export function useSession() {
@@ -33,8 +49,13 @@ export function useSession() {
 
   const saveSession = useCallback(async (next: Session) => {
     try {
-      const nextProfile = await userApi.current(next.accessToken);
-      commitSession(next);
+      // The /users/me fallback supports one rolling-deploy window with an older backend.
+      // Normal register, login and refresh responses include profile and never take it.
+      const nextProfile = hasBootstrapProfile(next)
+        ? next.profile
+        : await userApi.current(next.accessToken);
+      if (nextProfile.id !== next.userId) throw new Error('Authenticated profile does not match the issued session');
+      commitSession(sessionOnly(next));
       setProfile(nextProfile);
       return nextProfile;
     } catch (error) {
@@ -43,15 +64,18 @@ export function useSession() {
     }
   }, [clearSession, commitSession]);
 
+  const refreshSession = useCallback(async () => {
+    const next = await authApi.refresh();
+    await saveSession(next);
+    return sessionOnly(next);
+  }, [saveSession]);
+
   useEffect(() => {
     let active = true;
     void authApi.refresh()
       .then(async next => {
-        const nextProfile = await userApi.current(next.accessToken);
-        if (active) {
-          commitSession(next);
-          setProfile(nextProfile);
-        }
+        if (!active) return;
+        await saveSession(next);
       })
       .catch(error => {
         if (!active) return;
@@ -62,15 +86,15 @@ export function useSession() {
       })
       .finally(() => { if (active) setRestoring(false); });
     return () => { active = false; };
-  }, [clearSession, commitSession]);
+  }, [clearSession, saveSession]);
 
   const runAuthorized = useCallback(<T,>(operation: (activeSession: Session) => Promise<T>) =>
     runAuthorizedRequest(operation, {
       getSession: () => sessionRef.current,
-      refresh: authApi.refresh,
+      refresh: refreshSession,
       setSession: commitSession,
       clearSession
-    }), [clearSession, commitSession]);
+    }), [clearSession, commitSession, refreshSession]);
 
   const updateProfile = useCallback(async (payload: UpdateUserProfileRequest) => {
     const nextProfile = await runAuthorized(activeSession =>
