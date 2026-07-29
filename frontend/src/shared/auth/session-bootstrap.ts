@@ -14,14 +14,16 @@ export function sessionOnly(next: Session): Session {
 }
 
 export function hasBootstrapProfile(next: Session): next is AuthBootstrap {
-  const profile = (next as Partial<AuthBootstrap>).profile;
-  return Boolean(profile && profile.id === next.userId);
+  return Boolean((next as Partial<AuthBootstrap>).profile);
 }
 
 export async function resolveAuthProfile(
   next: Session,
   loadLegacyProfile: LegacyProfileLoader
 ): Promise<UserProfile> {
-  if (hasBootstrapProfile(next)) return next.profile;
-  return loadLegacyProfile(next.accessToken);
+  if (!hasBootstrapProfile(next)) return loadLegacyProfile(next.accessToken);
+  if (next.profile.id !== next.userId) {
+    throw new Error('Authenticated profile does not match the issued session');
+  }
+  return next.profile;
 }
