@@ -6,6 +6,7 @@ import { runAuthorizedRequest } from '@/shared/api/authorized-request';
 import { ApiError } from '@/shared/api/transport';
 import type { Session, UpdateUserProfileRequest, UserProfile } from '@/shared/api/types';
 import { userApi } from '@/shared/api/user-api';
+import { resolveAuthProfile, sessionOnly } from '@/shared/auth/session-bootstrap';
 
 type ProfileUpdater = (payload: UpdateUserProfileRequest) => Promise<UserProfile>;
 let activeProfileUpdater: ProfileUpdater | null = null;
@@ -31,27 +32,40 @@ export function useSession() {
     setProfile(null);
   }, [commitSession]);
 
+  const prepareSession = useCallback(async (next: Session) => {
+    // The /users/me fallback supports one rolling-deploy window with an older backend.
+    // Normal register, login and refresh responses include profile and never take it.
+    const nextProfile = await resolveAuthProfile(next, userApi.current);
+    if (nextProfile.id !== next.userId) throw new Error('Authenticated profile does not match the issued session');
+    return { nextSession: sessionOnly(next), nextProfile };
+  }, []);
+
   const saveSession = useCallback(async (next: Session) => {
     try {
-      const nextProfile = await userApi.current(next.accessToken);
-      commitSession(next);
-      setProfile(nextProfile);
-      return nextProfile;
+      const prepared = await prepareSession(next);
+      commitSession(prepared.nextSession);
+      setProfile(prepared.nextProfile);
+      return prepared.nextProfile;
     } catch (error) {
       clearSession();
       throw error;
     }
-  }, [clearSession, commitSession]);
+  }, [clearSession, commitSession, prepareSession]);
+
+  const refreshSession = useCallback(async () => {
+    const next = await authApi.refresh();
+    await saveSession(next);
+    return sessionOnly(next);
+  }, [saveSession]);
 
   useEffect(() => {
     let active = true;
     void authApi.refresh()
-      .then(async next => {
-        const nextProfile = await userApi.current(next.accessToken);
-        if (active) {
-          commitSession(next);
-          setProfile(nextProfile);
-        }
+      .then(prepareSession)
+      .then(prepared => {
+        if (!active) return;
+        commitSession(prepared.nextSession);
+        setProfile(prepared.nextProfile);
       })
       .catch(error => {
         if (!active) return;
@@ -62,15 +76,15 @@ export function useSession() {
       })
       .finally(() => { if (active) setRestoring(false); });
     return () => { active = false; };
-  }, [clearSession, commitSession]);
+  }, [clearSession, commitSession, prepareSession]);
 
   const runAuthorized = useCallback(<T,>(operation: (activeSession: Session) => Promise<T>) =>
     runAuthorizedRequest(operation, {
       getSession: () => sessionRef.current,
-      refresh: authApi.refresh,
+      refresh: refreshSession,
       setSession: commitSession,
       clearSession
-    }), [clearSession, commitSession]);
+    }), [clearSession, commitSession, refreshSession]);
 
   const updateProfile = useCallback(async (payload: UpdateUserProfileRequest) => {
     const nextProfile = await runAuthorized(activeSession =>

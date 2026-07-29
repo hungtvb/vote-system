@@ -17,6 +17,7 @@ EXTRA_QA_SCRIPT = r"""
     'feed',
     'detail',
     'auth',
+    'auth-bootstrap',
     'auth-menu',
     'auth-stamp',
     'server-search',
@@ -248,13 +249,30 @@ base.QA_SCRIPT = base.QA_SCRIPT + EXTRA_QA_SCRIPT
 
 
 class Handler(base.Handler):
+    def _profile(self) -> dict:
+        linked = ["GOOGLE"] if self._fixture_mode() == "auth-social-linked" else []
+        return {
+            **base.PROFILE,
+            "bio": "",
+            "avatarIcon": "CITIZEN",
+            "avatarColor": "NAVY",
+            "preferredLocale": "en",
+            "linkedProviders": linked,
+        }
+
+    def _bootstrap(self) -> dict:
+        return {**base.SESSION, "profile": self._profile()}
+
     def do_POST(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
         if path in ("/api/v1/auth/login", "/api/v1/auth/register"):
             content_length = int(self.headers.get("Content-Length") or 0)
             if content_length:
                 self.rfile.read(content_length)
-            self._json(200 if path.endswith("login") else 201, base.SESSION)
+            self._json(200 if path.endswith("login") else 201, self._bootstrap())
+            return
+        if path == "/api/v1/auth/refresh" and self._authenticated_fixture():
+            self._json(200, self._bootstrap())
             return
         super().do_POST()
 
@@ -265,9 +283,11 @@ class Handler(base.Handler):
             self._json(200, {"providers": ["google", "github"]})
             return
         if parsed.path == "/api/v1/users/me":
+            if mode == "auth-bootstrap":
+                self._json(500, {"title": "Unexpected legacy profile request"})
+                return
             if self.headers.get("Authorization") == "Bearer visual-qa-access-token":
-                linked = ["GOOGLE"] if mode == "auth-social-linked" else []
-                self._json(200, {**base.PROFILE, "linkedProviders": linked})
+                self._json(200, self._profile())
             else:
                 self._json(401, {"title": "Unauthorized"})
             return

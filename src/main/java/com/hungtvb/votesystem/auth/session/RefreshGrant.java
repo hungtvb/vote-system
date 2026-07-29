@@ -1,9 +1,9 @@
 package com.hungtvb.votesystem.auth.session;
 
-import com.hungtvb.votesystem.security.AuthenticatedUser;
+import com.hungtvb.votesystem.user.AppUser;
 
 public record RefreshGrant(
-        AuthenticatedUser user,
+        AppUser user,
         String refreshToken,
         long expiresInSeconds
 ) {

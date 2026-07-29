@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { authApi } from '@/shared/api/auth-api';
 import { socialAuthApi, type SocialProviderId } from '@/shared/api/social-auth-api';
-import type { Session } from '@/shared/api/types';
+import type { AuthBootstrap } from '@/shared/api/types';
 import type { AuthIntent } from '@/shared/auth/auth-intent';
 import { useModalDialog } from '@/shared/hooks/useModalDialog';
 import { useI18n } from '@/shared/i18n/I18nProvider';
@@ -18,7 +18,7 @@ interface AuthDialogProps {
   intent?: AuthIntent;
   socialProviders?: SocialProviderId[];
   onClose: () => void;
-  onAuthenticated: (session: Session) => void | Promise<void>;
+  onAuthenticated: (session: AuthBootstrap) => void | Promise<void>;
 }
 
 function GoogleIcon() {

@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { createAuthApi } from '../auth-api';
 import { runAuthorizedRequest } from '../authorized-request';
-import type { Session } from '../types';
+import type { AuthBootstrap, Session, UserProfile } from '../types';
 import { ApiError, createHttpClient, parseRetryAfter, type ApiRequester } from '../transport';
 
 const OLD_SESSION: Session = {
@@ -15,12 +15,32 @@ const OLD_SESSION: Session = {
   role: 'USER'
 };
 
-const NEW_SESSION: Session = { ...OLD_SESSION, accessToken: 'new-token' };
+const PROFILE: UserProfile = {
+  id: OLD_SESSION.userId,
+  email: OLD_SESSION.email,
+  displayName: 'Registry Voter',
+  initials: 'RV',
+  bio: null,
+  avatarIcon: 'CITIZEN',
+  avatarColor: 'NAVY',
+  preferredLocale: 'vi',
+  role: OLD_SESSION.role,
+  linkedProviders: [],
+  createdAt: '2026-07-20T09:00:00Z',
+  updatedAt: '2026-07-29T01:00:00Z'
+};
 
-test('concurrent refresh calls share one in-flight request', async () => {
+const NEW_BOOTSTRAP: AuthBootstrap = {
+  ...OLD_SESSION,
+  accessToken: 'new-token',
+  refreshExpiresInSeconds: 2_592_000,
+  profile: PROFILE
+};
+
+test('concurrent refresh calls share one in-flight bootstrap request', async () => {
   let refreshCalls = 0;
-  let resolveRefresh!: (session: Session) => void;
-  const refreshGate = new Promise<Session>(resolve => { resolveRefresh = resolve; });
+  let resolveRefresh!: (session: AuthBootstrap) => void;
+  const refreshGate = new Promise<AuthBootstrap>(resolve => { resolveRefresh = resolve; });
   const request: ApiRequester = <T>() => {
     refreshCalls += 1;
     return refreshGate as Promise<T>;
@@ -32,14 +52,14 @@ test('concurrent refresh calls share one in-flight request', async () => {
 
   assert.strictEqual(first, second);
   assert.equal(refreshCalls, 1);
-  resolveRefresh(NEW_SESSION);
-  assert.deepEqual(await Promise.all([first, second]), [NEW_SESSION, NEW_SESSION]);
+  resolveRefresh(NEW_BOOTSTRAP);
+  assert.deepEqual(await Promise.all([first, second]), [NEW_BOOTSTRAP, NEW_BOOTSTRAP]);
 });
 
-test('concurrent 401 operations trigger one refresh and retry once with the new token', async () => {
+test('concurrent 401 operations trigger one bootstrap refresh and retry once with the new token', async () => {
   let refreshCalls = 0;
-  let resolveRefresh!: (session: Session) => void;
-  const refreshGate = new Promise<Session>(resolve => { resolveRefresh = resolve; });
+  let resolveRefresh!: (session: AuthBootstrap) => void;
+  const refreshGate = new Promise<AuthBootstrap>(resolve => { resolveRefresh = resolve; });
   const auth = createAuthApi(<T>(path: string) => {
     assert.equal(path, '/api/v1/auth/refresh');
     refreshCalls += 1;
@@ -66,7 +86,7 @@ test('concurrent 401 operations trigger one refresh and retry once with the new 
   await new Promise(resolve => setImmediate(resolve));
 
   assert.equal(refreshCalls, 1);
-  resolveRefresh(NEW_SESSION);
+  resolveRefresh(NEW_BOOTSTRAP);
   assert.deepEqual(await Promise.all([first, second]), ['new-token', 'new-token']);
   assert.equal(attempts.get('old-token'), 2);
   assert.equal(attempts.get('new-token'), 2);
@@ -106,7 +126,7 @@ test('a retried 401 is not refreshed again and clears the session', async () => 
       async () => { operationCalls += 1; throw new ApiError('Still expired', 401); },
       {
         getSession: () => current,
-        refresh: async () => { refreshCalls += 1; return NEW_SESSION; },
+        refresh: async () => { refreshCalls += 1; return NEW_BOOTSTRAP; },
         setSession: session => { current = session; },
         clearSession: () => { current = null; clearCalls += 1; }
       }
