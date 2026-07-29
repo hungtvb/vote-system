@@ -77,8 +77,9 @@ jobs:
             "$CHROME" "${COMMON[@]}" --screenshot="locale-visual-qa/mobile-${locale}.png" "$url"
             "$CHROME" "${COMMON[@]}" --dump-dom "$url" > "locale-visual-qa/mobile-${locale}.html"
             grep -q "lang=\"${locale}\"" "locale-visual-qa/mobile-${locale}.html"
+            grep -q 'data-qa-scenario="complete"' "locale-visual-qa/mobile-${locale}.html"
             grep -q 'data-qa-overflow="false"' "locale-visual-qa/mobile-${locale}.html"
-            grep -q 'data-qa-cards="3"' "locale-visual-qa/mobile-${locale}.html"
+            test "$(grep -o '<article' "locale-visual-qa/mobile-${locale}.html" | wc -l | tr -d ' ')" -eq 3
             grep -q "$expected_copy" "locale-visual-qa/mobile-${locale}.html"
           }
 
