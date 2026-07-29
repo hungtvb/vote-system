@@ -24,6 +24,36 @@ Email/password and social authentication converge on the same Vote System sessio
 
 Default access-token lifetime is 15 minutes. Default refresh-token lifetime is 30 days.
 
+Register, login, and refresh return an additive bootstrap response containing both session fields and the authenticated private profile:
+
+```json
+{
+  "tokenType": "Bearer",
+  "accessToken": "<jwt>",
+  "expiresInSeconds": 900,
+  "refreshExpiresInSeconds": 2592000,
+  "userId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "email": "voter@example.com",
+  "role": "USER",
+  "profile": {
+    "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "email": "voter@example.com",
+    "displayName": "Public Voter Name",
+    "initials": "PV",
+    "bio": "Short public introduction",
+    "avatarIcon": "CITIZEN",
+    "avatarColor": "NAVY",
+    "preferredLocale": "vi",
+    "role": "USER",
+    "linkedProviders": ["GOOGLE"],
+    "createdAt": "2026-07-20T09:00:00Z",
+    "updatedAt": "2026-07-29T01:00:00Z"
+  }
+}
+```
+
+The refresh token is never returned in JSON. Existing top-level `userId`, `email`, and `role` fields remain for backward compatibility while clients migrate to the bootstrap profile.
+
 ## Email/password authentication
 
 ```http
@@ -46,7 +76,7 @@ Registration accepts:
 
 `displayName` is optional. When omitted, the backend persists a privacy-safe pseudonym instead of deriving a public identity from the email address.
 
-The refresh token is not entered into Swagger authorization. Login, registration, refresh, or a successful social callback writes it as an `HttpOnly` cookie.
+Login, registration, refresh, or a successful social callback writes the rotating refresh token as an `HttpOnly` cookie. The frontend uses the bootstrap profile directly and does not need a second `/users/me` request on the normal path.
 
 ## Google and GitHub social authentication
 
@@ -91,28 +121,44 @@ Spring Security handles provider callbacks at:
 
 The callback redirect never contains Vote System tokens, provider tokens, authorization codes, email, or provider subject. Provider identities are keyed by `(provider, providerSubject)`. Verified-email collisions require explicit authenticated linking; accounts are never silently merged by email.
 
+After callback, the frontend restores the normal Vote System session through `POST /api/v1/auth/refresh`; the returned profile includes the current linked-provider set.
+
 Detailed setup and security rules: [`SOCIAL-LOGIN.md`](SOCIAL-LOGIN.md).
 
-## Voter identity
+## Voter identity and profile
+
+Explicit private profile retrieval remains available:
 
 ```http
 GET /api/v1/users/me
 Authorization: Bearer <access-token>
 ```
 
+Authenticated profile update:
+
+```http
+PATCH /api/v1/users/me
+Authorization: Bearer <access-token>
+Content-Type: application/json
+```
+
+Public-safe profile lookup:
+
+```http
+GET /api/v1/users/{userId}
+```
+
 The private profile contains:
 
-- local user ID;
-- optional account email;
-- public display name;
-- initials;
-- role;
-- linked social providers;
+- local user ID and optional account email;
+- public display name and initials;
+- optional bio;
+- one of ten Ballot Mark avatar icons and one of six colors;
+- preferred locale `vi` or `en`;
+- role and linked social providers;
 - account timestamps.
 
-A social-only account may have `email: null`. Public ballot responses include only a safe author summary with `id`, `displayName`, and `initials`; they do not expose email or linked-provider data.
-
-Editable bio, Ballot Mark avatar presets, and `preferredLocale` are planned under TON-108/TON-116 and are not part of the current API yet.
+A social-only account may have `email: null`. Public profile and ballot-author responses do not expose email, role, or linked-provider data. When a public bio is empty, the frontend renders no placeholder as user-authored content.
 
 ## Ballot lifecycle
 
@@ -248,9 +294,7 @@ The implementation uses an atomic Redis sorted-set/Lua sliding window. Rejected 
 
 ## Error contract
 
-Validation, authentication, authorization, resource, conflict, and rate-limit failures use Problem Details-compatible JSON. Frontend code should branch on HTTP status and stable machine-owned fields rather than parsing free-form text.
-
-TON-116 will formalize localized frontend error mapping. Backend domain values remain language-neutral; user-generated content is not translated automatically.
+Validation, authentication, authorization, resource, conflict, and rate-limit failures use Problem Details-compatible JSON. Frontend code branches on HTTP status and stable machine-owned fields rather than parsing free-form text. User-facing error copy is mapped through the VI/EN catalog; backend domain values remain language-neutral and user-generated content is not translated automatically.
 
 ## Health, metrics, and request correlation
 
