@@ -20,6 +20,7 @@ export function PublicProfileDialog({ userId, initialProfile, onClose }: PublicP
   const [loading, setLoading] = useState(!initialProfile);
   const [error, setError] = useState('');
   const modal = useModalDialog(onClose);
+  const bio = profile?.bio?.trim();
 
   useEffect(() => {
     if (initialProfile) return;
@@ -66,7 +67,7 @@ export function PublicProfileDialog({ userId, initialProfile, onClose }: PublicP
               label={t('profile', 'avatarLabel', { name: profile.displayName })}
             />
             <h2 id="public-profile-title">{profile.displayName}</h2>
-            <p className={styles.bio}>{profile.bio?.trim() || t('profile', 'bioFallback')}</p>
+            {bio && <p className={styles.bio} data-qa-public-profile-bio>{bio}</p>}
             <time dateTime={profile.createdAt}>
               {formatDate(profile.createdAt, { dateStyle: 'long' })}
             </time>

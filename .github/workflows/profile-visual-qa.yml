@@ -37,7 +37,7 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Build frontend
         run: npm run build
-      - name: Verify mobile profile editor SVG marks
+      - name: Verify mobile profile dialogs
         run: |
           set -euo pipefail
           mkdir -p profile-visual-qa
@@ -57,10 +57,11 @@ jobs:
           done
 
           CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)
-          URL='http://127.0.0.1:4173/?qa=auth-profile-editor'
           COMMON=(--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --run-all-compositor-stages-before-draw --virtual-time-budget=7000 --window-size=390,844)
-          "$CHROME" "${COMMON[@]}" --screenshot=profile-visual-qa/mobile-profile-editor.png "$URL"
-          "$CHROME" "${COMMON[@]}" --dump-dom "$URL" > profile-visual-qa/mobile-profile-editor.html
+
+          EDIT_URL='http://127.0.0.1:4173/?qa=auth-profile-editor'
+          "$CHROME" "${COMMON[@]}" --screenshot=profile-visual-qa/mobile-profile-editor.png "$EDIT_URL"
+          "$CHROME" "${COMMON[@]}" --dump-dom "$EDIT_URL" > profile-visual-qa/mobile-profile-editor.html
 
           grep -q 'data-qa-scenario="complete"' profile-visual-qa/mobile-profile-editor.html
           grep -q 'data-qa-overflow="false"' profile-visual-qa/mobile-profile-editor.html
@@ -71,6 +72,17 @@ jobs:
           grep -q 'data-qa-ballot-mark-size-violations="0"' profile-visual-qa/mobile-profile-editor.html
           grep -q 'data-qa-focus-inside-dialog="true"' profile-visual-qa/mobile-profile-editor.html
           grep -q 'data-qa-touch-violations="0"' profile-visual-qa/mobile-profile-editor.html
+
+          PUBLIC_URL='http://127.0.0.1:4173/?qa=auth-public-profile'
+          "$CHROME" "${COMMON[@]}" --screenshot=profile-visual-qa/mobile-public-profile-empty-bio.png "$PUBLIC_URL"
+          "$CHROME" "${COMMON[@]}" --dump-dom "$PUBLIC_URL" > profile-visual-qa/mobile-public-profile-empty-bio.html
+
+          grep -q 'data-qa-scenario="complete"' profile-visual-qa/mobile-public-profile-empty-bio.html
+          grep -q 'data-qa-overflow="false"' profile-visual-qa/mobile-public-profile-empty-bio.html
+          grep -q 'data-qa-public-profile-dialog="true"' profile-visual-qa/mobile-public-profile-empty-bio.html
+          grep -q 'data-qa-public-profile-bio="false"' profile-visual-qa/mobile-public-profile-empty-bio.html
+          grep -q 'data-qa-public-profile-default-copy="false"' profile-visual-qa/mobile-public-profile-empty-bio.html
+          grep -q 'data-qa-focus-inside-dialog="true"' profile-visual-qa/mobile-public-profile-empty-bio.html
       - name: Upload profile visual evidence
         if: always()
         uses: actions/upload-artifact@v4
