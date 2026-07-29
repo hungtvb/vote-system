@@ -41,6 +41,11 @@ export interface UserProfile {
   updatedAt: string;
 }
 
+export interface AuthBootstrap extends Session {
+  refreshExpiresInSeconds: number;
+  profile: UserProfile;
+}
+
 export interface UpdateUserProfileRequest {
   displayName: string;
   bio: string | null;
