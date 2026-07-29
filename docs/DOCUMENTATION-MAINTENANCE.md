@@ -65,6 +65,7 @@ TON-190 corrected these stale claims:
 - production docs still described Swagger/OpenAPI as reachable after the production profile disabled springdoc.
 - `docs/README.md` still described temporary DEBUG/Hibernate statistics as the production baseline after production hardening.
 - the root API overview omitted profile update and public-profile endpoints.
+- `SOCIAL-LOGIN.md` still described callback restore as `refresh` followed by `/users/me` instead of the single bootstrap response.
 - the root environment example omitted profile-update rate-limit settings.
 - the completed i18n foundation had no dedicated current-behavior document.
 
