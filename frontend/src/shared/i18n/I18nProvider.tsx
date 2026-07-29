@@ -37,8 +37,11 @@ interface I18nContextValue {
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 function detectLocale(): Locale {
-  if (window.location.hostname === '127.0.0.1' && new URLSearchParams(window.location.search).has('qa')) {
-    return 'en';
+  const searchParams = new URLSearchParams(window.location.search);
+  if (window.location.hostname === '127.0.0.1') {
+    const qaLocale = searchParams.get('qaLocale');
+    if (qaLocale === 'vi' || qaLocale === 'en') return qaLocale;
+    if (searchParams.has('qa')) return 'en';
   }
 
   let savedLocale: string | null = null;
