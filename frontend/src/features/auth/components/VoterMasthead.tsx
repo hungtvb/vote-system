@@ -8,6 +8,10 @@ import { updateActiveUserProfile } from '@/features/auth/hooks/useSession';
 import type { Session, SocialProvider, UpdateUserProfileRequest, UserProfile } from '@/shared/api/types';
 import type { SocialProviderId } from '@/shared/api/social-auth-api';
 import { useI18n } from '@/shared/i18n/I18nProvider';
+import {
+  resolveProfileBootstrapLocale,
+  resolveProfileSavedLocale
+} from '@/shared/i18n/locale-policy';
 import localeStyles from '@/shared/i18n/LanguageSwitcher.module.scss';
 import styles from './VoterMasthead.module.scss';
 
@@ -42,7 +46,7 @@ export function VoterMasthead({
   onLogout,
   onLogoutAll
 }: VoterMastheadProps) {
-  const { locale, setLocale, t } = useI18n();
+  const { applyLocale, locale, resetLocale, setLocale, t } = useI18n();
   const [visibleProfile, setVisibleProfile] = useState(profile);
   const [profileOpen, setProfileOpen] = useState(false);
   const [publicProfileOpen, setPublicProfileOpen] = useState(false);
@@ -50,17 +54,19 @@ export function VoterMasthead({
 
   useEffect(() => {
     setVisibleProfile(profile);
+    const hadAppliedProfile = appliedLocaleForUser.current !== null;
+    const decision = resolveProfileBootstrapLocale(appliedLocaleForUser.current, profile);
+    appliedLocaleForUser.current = decision.appliedUserId;
+
     if (!profile) {
       setProfileOpen(false);
       setPublicProfileOpen(false);
-      appliedLocaleForUser.current = null;
+      if (hadAppliedProfile) resetLocale();
       return;
     }
-    if (appliedLocaleForUser.current !== profile.id) {
-      appliedLocaleForUser.current = profile.id;
-      setLocale(profile.preferredLocale ?? locale);
-    }
-  }, [locale, profile, setLocale]);
+
+    if (decision.localeToApply) applyLocale(decision.localeToApply);
+  }, [applyLocale, profile, resetLocale]);
 
   const authenticated = Boolean(session && visibleProfile);
   const linkedProviders = new Set<SocialProvider>(visibleProfile?.linkedProviders ?? []);
@@ -70,7 +76,11 @@ export function VoterMasthead({
   async function saveProfile(payload: UpdateUserProfileRequest): Promise<UserProfile> {
     const updated = await updateActiveUserProfile(payload);
     setVisibleProfile(updated);
-    setLocale(updated.preferredLocale);
+
+    const decision = resolveProfileSavedLocale(updated);
+    appliedLocaleForUser.current = decision.appliedUserId;
+    if (decision.localeToApply) setLocale(decision.localeToApply);
+
     return updated;
   }
 
