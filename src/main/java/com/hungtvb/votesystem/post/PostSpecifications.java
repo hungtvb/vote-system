@@ -11,7 +11,7 @@ public final class PostSpecifications {
     }
 
     public static Specification<Post> matches(PostFilter filter) {
-        Specification<Post> specification = (root, query, criteriaBuilder) -> criteriaBuilder.conjunction();
+        Specification<Post> specification = publiclyVisible();
 
         if (filter.query() != null) {
             String pattern = "%" + escapeLike(filter.query().toLowerCase(Locale.ROOT)) + "%";
@@ -34,6 +34,11 @@ public final class PostSpecifications {
                     criteriaBuilder.equal(root.get("authorId"), filter.authorId()));
         }
         return specification;
+    }
+
+    public static Specification<Post> publiclyVisible() {
+        return (root, query, criteriaBuilder) ->
+                criteriaBuilder.equal(root.get("moderationStatus"), ModerationStatus.VISIBLE);
     }
 
     public static Specification<Post> idIn(Collection<UUID> ids) {
