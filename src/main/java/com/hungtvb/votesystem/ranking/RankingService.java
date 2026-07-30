@@ -59,7 +59,7 @@ public class RankingService {
 
     public void applyLatest(UUID postId) {
         Instant now = clock.instant();
-        postRepository.findById(postId).ifPresentOrElse(
+        postRepository.findById(postId).filter(Post::isPubliclyVisible).ifPresentOrElse(
                 post -> rankingRepository.upsert(
                         post.getId(),
                         post.getVoteScore(),
@@ -104,7 +104,9 @@ public class RankingService {
 
     private Page<Post> rankedPage(FeedType feed, Pageable pageable, Instant now) {
         List<UUID> ids = rankingRepository.range(feed, pageable.getOffset(), pageable.getPageSize(), now);
-        Map<UUID, Post> byId = postRepository.findAllById(ids).stream()
+        Map<UUID, Post> byId = postRepository.findAll(
+                        PostSpecifications.publiclyVisible().and(PostSpecifications.idIn(ids)))
+                .stream()
                 .collect(Collectors.toMap(Post::getId, Function.identity()));
         List<Post> ordered = ids.stream().map(byId::get).filter(java.util.Objects::nonNull).toList();
         return new PageImpl<>(ordered, pageable, rankingRepository.count(feed, now));
@@ -146,7 +148,8 @@ public class RankingService {
     }
 
     private void ensureRankings(FeedType feed, Instant now) {
-        if (rankingRepository.isEmpty(feed, now) && postRepository.count() > 0) {
+        if (rankingRepository.isEmpty(feed, now)
+                && postRepository.count(PostSpecifications.publiclyVisible()) > 0) {
             rebuild();
         }
     }
@@ -154,7 +157,7 @@ public class RankingService {
     public void rebuild() {
         Instant now = clock.instant();
         rankingRepository.clearCurrent(now);
-        for (Post post : postRepository.findAll()) {
+        for (Post post : postRepository.findAll(PostSpecifications.publiclyVisible())) {
             rankingRepository.upsert(post.getId(), post.getVoteScore(),
                     formula.score(post.getVoteScore(), post.getCreatedAt(), now), post.getCreatedAt(), now);
         }
