@@ -6,6 +6,7 @@ public enum AdminAuditAction {
     ADMIN_DELETE_POST(AdminAuditTargetType.POST),
     ADMIN_SUSPEND_USER(AdminAuditTargetType.USER),
     ADMIN_BAN_USER(AdminAuditTargetType.USER),
+    ADMIN_RESTORE_USER(AdminAuditTargetType.USER),
     ADMIN_REVOKE_SESSIONS(AdminAuditTargetType.USER),
     ADMIN_REBUILD_RANKING(AdminAuditTargetType.RANKING);
 

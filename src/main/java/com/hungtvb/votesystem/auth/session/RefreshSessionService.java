@@ -3,6 +3,7 @@ package com.hungtvb.votesystem.auth.session;
 import com.hungtvb.votesystem.auth.metrics.AuthRestoreMetrics;
 import com.hungtvb.votesystem.common.config.RefreshTokenProperties;
 import com.hungtvb.votesystem.common.error.UnauthorizedException;
+import com.hungtvb.votesystem.user.AccountAccessPolicy;
 import com.hungtvb.votesystem.user.AppUser;
 import com.hungtvb.votesystem.user.UserRepository;
 import org.springframework.stereotype.Service;
@@ -25,21 +26,25 @@ public class RefreshSessionService {
     private final RefreshSessionRepository sessionRepository;
     private final UserRepository userRepository;
     private final RefreshTokenProperties properties;
+    private final AccountAccessPolicy accountAccessPolicy;
     private final AuthRestoreMetrics metrics;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public RefreshSessionService(RefreshSessionRepository sessionRepository,
                                  UserRepository userRepository,
                                  RefreshTokenProperties properties,
+                                 AccountAccessPolicy accountAccessPolicy,
                                  AuthRestoreMetrics metrics) {
         this.sessionRepository = sessionRepository;
         this.userRepository = userRepository;
         this.properties = properties;
+        this.accountAccessPolicy = accountAccessPolicy;
         this.metrics = metrics;
     }
 
     @Transactional
     public RefreshGrant issue(AppUser user) {
+        accountAccessPolicy.requireActive(user);
         IssuedToken issuedToken = createSession(user.getId(), Instant.now());
         return new RefreshGrant(user, issuedToken.rawToken(), properties.ttl().toSeconds());
     }
@@ -84,9 +89,20 @@ public class RefreshSessionService {
         AppUser user = metrics.timeStage(
                 AuthRestoreMetrics.OPERATION_REFRESH,
                 "user_lookup",
-                () -> userRepository.findById(current.getUserId())
+                () -> userRepository.findByIdForUpdate(current.getUserId())
                         .orElseThrow(() -> invalidSession(RefreshSessionFailureException.Reason.INVALID))
         );
+        try {
+            accountAccessPolicy.requireActive(user, now);
+        } catch (UnauthorizedException exception) {
+            metrics.timeStage(
+                    AuthRestoreMetrics.OPERATION_REFRESH,
+                    "access_revoke_all",
+                    () -> sessionRepository.revokeAllActiveByUserId(current.getUserId(), now)
+            );
+            throw exception;
+        }
+
         IssuedToken replacement = metrics.timeStage(
                 AuthRestoreMetrics.OPERATION_REFRESH,
                 "rotation_write",

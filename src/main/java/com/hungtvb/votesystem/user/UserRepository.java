@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -16,4 +17,15 @@ public interface UserRepository extends JpaRepository<AppUser, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from AppUser u where u.id = :id")
     Optional<AppUser> findByIdForUpdate(@Param("id") UUID id);
+
+    @Query("""
+            select count(u)
+              from AppUser u
+             where u.role = com.hungtvb.votesystem.user.Role.ADMIN
+               and (
+                    u.accountStatus = com.hungtvb.votesystem.user.AccountStatus.ACTIVE
+                    or (u.statusUntil is not null and u.statusUntil <= :now)
+               )
+            """)
+    long countEffectiveActiveAdmins(@Param("now") Instant now);
 }

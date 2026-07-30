@@ -18,6 +18,7 @@ type CallbackLocale = 'vi' | 'en';
 const ERROR_MESSAGES: Record<CallbackLocale, Record<string, string>> = {
   vi: {
     access_denied: 'Đăng nhập mạng xã hội đã bị hủy.',
+    account_unavailable: 'Tài khoản này hiện không thể đăng nhập. Vui lòng liên hệ quản trị viên nếu bạn cho rằng đây là nhầm lẫn.',
     account_link_required: 'Email đã xác minh này đã thuộc một tài khoản Vote System. Hãy đăng nhập bằng tài khoản đó rồi liên kết nhà cung cấp từ Mã cử tri.',
     identity_already_linked: 'Danh tính từ nhà cung cấp này đã được liên kết với một tài khoản Vote System khác.',
     provider_already_linked: 'Nhà cung cấp này đã được liên kết với tài khoản Vote System của bạn.',
@@ -26,6 +27,7 @@ const ERROR_MESSAGES: Record<CallbackLocale, Record<string, string>> = {
   },
   en: {
     access_denied: 'Social sign-in was cancelled.',
+    account_unavailable: 'This account is currently unavailable for sign-in. Contact an administrator if you believe this is a mistake.',
     account_link_required: 'This verified email already belongs to a Vote System account. Sign in with that account, then link the provider from Voter ID.',
     identity_already_linked: 'This provider identity is already linked to another Vote System account.',
     provider_already_linked: 'This provider is already linked to your Vote System account.',

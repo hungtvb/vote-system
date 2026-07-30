@@ -1,29 +1,32 @@
 # Admin foundation
 
-This document covers the authorization boundary and controlled bootstrap introduced by TON-192, the immutable audit-log foundation introduced by TON-194, and the audited ballot-moderation boundary introduced by TON-195. User moderation, operational controls, and the protected admin dashboard remain later phases of TON-109.
+This document covers the implemented administrator authorization, controlled bootstrap, immutable audit log, ballot moderation, and account moderation boundaries.
 
 ## Roles and authorization
 
-Vote System accepts two application roles:
+Vote System accepts two roles:
 
 ```text
 USER
 ADMIN
 ```
 
-Registration and social onboarding always create `USER` accounts. Clients cannot request a role during registration or profile updates.
-
-Every route under `/api/v1/admin/**` requires `ROLE_ADMIN` in the Spring Security request chain. Admin controller methods also use `@PreAuthorize("hasRole('ADMIN')")` as defense in depth.
-
-Expected boundary behavior:
+Registration and social onboarding always create `USER`. Clients cannot request or update roles. Every `/api/v1/admin/**` route requires `ROLE_ADMIN` in the request chain, and admin controllers use `@PreAuthorize("hasRole('ADMIN')")` as defense in depth.
 
 ```text
 anonymous request       -> 401 Unauthorized
 authenticated USER      -> 403 Forbidden
-authenticated ADMIN     -> allowed by the admin boundary
+authenticated ADMIN     -> evaluated by the admin operation
 ```
 
-Access tokens carry a `roles` claim. The resource server maps each value to a Spring Security `ROLE_*` authority.
+Role and account status are separate:
+
+```text
+Role            USER | ADMIN
+AccountStatus   ACTIVE | SUSPENDED | BANNED
+```
+
+A valid ADMIN role does not bypass account-status enforcement. A suspended or banned administrator cannot use an old JWT, refresh, complete social login, or call admin APIs.
 
 ## Probe endpoint
 
@@ -35,12 +38,10 @@ Authorization: Bearer <admin access token>
 Successful response:
 
 ```json
-{
-  "status": "ok"
-}
+{"status":"ok"}
 ```
 
-The probe verifies the request-level matcher, JWT role conversion, and method-level guard. It is not a general health endpoint and does not expose infrastructure details.
+The probe verifies request authorization, JWT role conversion, account-status enforcement, and method security. It is not a general infrastructure health endpoint.
 
 ## Controlled administrator bootstrap
 
@@ -51,48 +52,33 @@ ADMIN_BOOTSTRAP_ENABLED=false
 ADMIN_BOOTSTRAP_EMAIL=
 ```
 
-It only promotes an existing account selected by normalized email. It never creates an account, password, refresh token, or OAuth identity.
+It promotes only an existing effective-`ACTIVE` account selected by normalized email. It never creates an account, password, token, refresh session, or provider identity. A missing, invalid, suspended, or banned target causes startup to fail without logging the configured email or credentials.
 
-### Promotion procedure
+Procedure:
 
-1. Register or sign in normally so the target account already exists as `USER`.
-2. Set `ADMIN_BOOTSTRAP_EMAIL` to that account's email.
-3. Set `ADMIN_BOOTSTRAP_ENABLED=true`.
-4. Deploy the backend once.
-5. Confirm the deployment starts and the account can obtain a fresh token with role `ADMIN`.
-6. Set `ADMIN_BOOTSTRAP_ENABLED=false` and clear `ADMIN_BOOTSTRAP_EMAIL`.
-7. Deploy again so routine restarts no longer execute bootstrap logic.
+1. Register or sign in normally so the target exists as `USER` and is `ACTIVE`.
+2. Set `ADMIN_BOOTSTRAP_EMAIL` and temporarily enable bootstrap.
+3. Deploy once and obtain a fresh token showing `ADMIN`.
+4. Disable bootstrap, clear the email, and deploy again.
 
-Promotion is idempotent: an account already holding `ADMIN` remains unchanged. Existing access tokens retain their original claims until login or refresh issues a new token.
-
-### Failure behavior
-
-When bootstrap is enabled:
-
-- a blank or invalid email causes startup to fail;
-- a target account that does not exist causes startup to fail;
-- logs describe the bootstrap result without printing the configured email, passwords, or tokens.
-
-This fail-closed behavior prevents a deployment from appearing healthy when the requested administrator promotion did not happen.
+Promotion is idempotent. Existing JWTs keep their original role claim until login or refresh issues a new token.
 
 ## Immutable audit log
 
-`admin_audit_logs` is the append-only source for successful administrator mutations. TON-194 provides the storage/read foundation; TON-195 is the first mutation flow that writes audit records transactionally.
-
-Each record contains:
+`admin_audit_logs` is the append-only source for successful administrator mutations.
 
 ```text
 id          UUID audit record ID
-actorId     authenticated administrator user ID
-action      controlled AdminAuditAction value
+actorId     administrator user ID
+action      controlled AdminAuditAction
 targetType  POST, USER, or RANKING
-targetId    bounded string identifying the affected target
+targetId    bounded target identifier
 reason      required administrator reason
 metadata    bounded flat JSON object
 createdAt   UTC instant
 ```
 
-Initial action vocabulary:
+Implemented action vocabulary:
 
 ```text
 ADMIN_HIDE_POST
@@ -100,37 +86,29 @@ ADMIN_RESTORE_POST
 ADMIN_DELETE_POST
 ADMIN_SUSPEND_USER
 ADMIN_BAN_USER
+ADMIN_RESTORE_USER
 ADMIN_REVOKE_SESSIONS
 ADMIN_REBUILD_RANKING
 ```
 
-### Append contract
+Action-to-target compatibility is enforced in Java and PostgreSQL. There is no public endpoint that accepts arbitrary audit events.
 
-Audit records are created only through the internal transactional `AdminAuditLogService.append(...)` API. There is no public HTTP endpoint that accepts arbitrary audit events.
+### Privacy and validation
 
-The append service:
+Audit append:
 
-- requires actor, action, target type, target ID, and reason;
-- trims target ID, reason, keys, and values;
+- requires actor, action, target, and reason;
 - limits reason to 500 characters and target ID to 128 characters;
-- limits metadata to 20 flat string entries;
-- allows lowercase machine keys up to 50 characters;
-- limits each metadata value to 200 characters and the serialized payload to 3 KiB;
-- rejects metadata keys containing password, secret, token, authorization, cookie, credential, or email terms;
-- rejects metadata values containing email-like `@` content, bearer-token text, or control characters;
-- never includes rejected raw metadata values in validation exceptions.
+- limits metadata to 20 flat string entries and 3 KiB serialized;
+- rejects secret, password, token, authorization, cookie, credential, and email keys;
+- rejects email-like, bearer-token, and control-character values;
+- does not reflect rejected raw values in errors.
 
-Metadata is intended for non-sensitive operational context such as request IDs, previous status values, feed names, and bounded counts. Do not store email addresses, display names, request bodies, cookies, provider payloads, access tokens, refresh tokens, password material, or secrets.
+Metadata may contain previous/new machine states, restriction expiry, feed names, request IDs, and bounded counts. It must not contain email, display name, request bodies, cookies, provider payloads, tokens, password material, or secrets.
 
 ### Append-only enforcement
 
-The application model uses:
-
-- a Hibernate `@Immutable` entity;
-- a read-only Spring Data repository surface with no save/update/delete methods;
-- a dedicated insert-only store based on `EntityManager.persist`.
-
-PostgreSQL also installs a trigger that rejects every `UPDATE` or `DELETE` against `admin_audit_logs`. This protects against accidental application or SQL mutation. It is not a claim of cryptographic tamper evidence against a database owner who can alter schema, triggers, or backups.
+The application uses a Hibernate `@Immutable` entity, read-only repository surface, and insert-only store. PostgreSQL rejects every audit-row `UPDATE` and `DELETE` through a trigger. This protects against accidental mutation; it is not cryptographic tamper evidence against a database owner who can change schema or backups.
 
 ### Read API
 
@@ -139,7 +117,7 @@ GET /api/v1/admin/audit-logs?page=0&size=20
 Authorization: Bearer <admin access token>
 ```
 
-Optional exact-match filters:
+Optional exact filters:
 
 ```text
 action
@@ -148,63 +126,16 @@ targetType
 targetId
 ```
 
-Example:
-
-```http
-GET /api/v1/admin/audit-logs?action=ADMIN_HIDE_POST&targetType=POST&targetId=aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa&page=0&size=20
-Authorization: Bearer <admin access token>
-```
-
-The response uses an explicit stable page DTO:
-
-```json
-{
-  "content": [
-    {
-      "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-      "actorId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      "action": "ADMIN_HIDE_POST",
-      "targetType": "POST",
-      "targetId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-      "reason": "Contains prohibited content",
-      "metadata": {
-        "previous_status": "VISIBLE",
-        "new_status": "HIDDEN"
-      },
-      "createdAt": "2026-07-30T07:00:00Z"
-    }
-  ],
-  "page": 0,
-  "size": 20,
-  "totalElements": 1,
-  "totalPages": 1,
-  "first": true,
-  "last": true
-}
-```
-
-Ordering is always deterministic:
-
-```text
-createdAt DESC, id DESC
-```
-
-Page is zero-based. Size must be from 1 through 100.
-
-### Retention and archival
-
-TON-194 does not add automatic deletion, expiry, export, or archival. Audit records remain in PostgreSQL. A future retention policy must preserve append-only guarantees and use an explicitly reviewed migration or archival process rather than application delete methods.
+Ordering is always `createdAt DESC, id DESC`. Page is zero-based and size is 1–100. No automatic deletion, expiry, export, or archival is implemented.
 
 ## Ballot moderation
 
-Ballot lifecycle and moderation are separate state machines:
+Ballot lifecycle and moderation are independent:
 
 ```text
 BallotStatus       OPEN | CLOSED
 ModerationStatus   VISIBLE | HIDDEN | DELETED
 ```
-
-Protected mutations:
 
 ```http
 POST /api/v1/admin/posts/{postId}/hide
@@ -216,33 +147,58 @@ Content-Type: application/json
 {"reason":"Violates published community rules"}
 ```
 
-Transition rules:
+Transitions:
 
-- `VISIBLE -> HIDDEN` through hide;
-- `HIDDEN -> VISIBLE` through restore;
-- `VISIBLE/HIDDEN -> DELETED` through administrator soft-delete;
-- `DELETED` is terminal in this phase;
-- repeated or incompatible transitions return `409 Conflict` without another audit record.
+- `VISIBLE -> HIDDEN`;
+- `HIDDEN -> VISIBLE`;
+- `VISIBLE/HIDDEN -> DELETED`;
+- `DELETED` is terminal in this phase.
 
-Each transition acquires a pessimistic ballot lock. Moderation state and its matching `ADMIN_*_POST` audit row commit in one PostgreSQL transaction. Audit failure rolls back the state change. Ranking and SSE effects are transaction-bound and run only after commit.
+State and audit append commit in one transaction under a ballot lock. Hidden/deleted ballots are excluded from public detail, feeds, vote, SSE, and owner mutations. Redis ranking and SSE subscriber changes happen only after commit. Administrator soft-delete preserves ballot and vote rows. See [`MODERATION.md`](MODERATION.md).
 
-Hidden and deleted ballots are excluded from public detail, every public feed, voting, SSE subscription, and author mutations. Those paths return a generic not-found response and do not reveal moderation status or reason. Administrator soft-delete preserves the ballot and vote rows; it is distinct from the existing author-owned hard delete.
+## Account moderation
 
-Detailed state, visibility, Redis, SSE, and concurrency rules: [`MODERATION.md`](MODERATION.md).
+```http
+POST /api/v1/admin/users/{userId}/suspend
+POST /api/v1/admin/users/{userId}/ban
+POST /api/v1/admin/users/{userId}/restore
+POST /api/v1/admin/users/{userId}/revoke-sessions
+```
+
+Suspend or ban:
+
+```json
+{
+  "reason": "Repeated abuse after warning",
+  "until": "2026-08-15T12:00:00Z"
+}
+```
+
+`until` is optional. Null means permanent; temporary restrictions may be at most 365 days. Restore and revoke-session requests contain only `reason`.
+
+Restriction and audit append commit atomically. Every active refresh session is revoked in the same transaction. PostgreSQL remains authoritative for local/social login, refresh, and every request carrying a JWT. An expired restriction is treated as `ACTIVE` without a scheduler.
+
+Safeguards:
+
+- administrators cannot suspend, ban, or revoke sessions for their own current account;
+- the last effective active administrator cannot be restricted;
+- a PostgreSQL advisory transaction lock serializes concurrent administrator-count decisions;
+- refresh and moderation use `refresh sessions -> user` lock order to avoid deadlocks;
+- repeated/incompatible actions return `409` without duplicate audit rows.
+
+Public profile and historical content remain available anonymously. Detailed contract: [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md).
 
 ## Verification
 
-Backend tests cover:
+Backend coverage includes:
 
-- anonymous `401` and authenticated `USER` `403` at admin boundaries;
-- issued `ADMIN` JWT access and direct method-security rejection;
-- registration response remains `USER`;
-- disabled, normalized, missing-target, and idempotent bootstrap behavior;
-- audit validation, metadata privacy, JSONB persistence, filtering, and deterministic ordering;
-- database-trigger rejection of audit updates and deletes;
-- ballot hide, restore, and terminal soft-delete transitions;
-- preservation of lifecycle state across moderation;
-- public feed/detail/vote/SSE/owner-mutation visibility enforcement;
-- stale Redis-member filtering and post-commit convergence;
-- transaction rollback when audit validation fails;
-- concurrent moderation producing one state transition and one audit record.
+- anonymous `401`, USER `403`, ADMIN access, and direct method-security rejection;
+- bootstrap normalization, idempotency, missing target, invalid configuration, and restricted-target rejection;
+- audit privacy, JSONB persistence, filtering, deterministic ordering, and append-only trigger;
+- ballot transitions, public visibility, stale Redis filtering, rollback, concurrency, and SSE cleanup;
+- account suspend, ban, restore, explicit session revocation, temporary expiry, and public-history behavior;
+- old JWT, login, refresh, authenticated write, and authenticated SSE rejection;
+- social callback rejection without refresh-cookie issuance;
+- self-lockout and last-active-admin protection;
+- concurrent cross-restriction and refresh-vs-suspension convergence;
+- rollback of account state and session revocation when audit validation fails.

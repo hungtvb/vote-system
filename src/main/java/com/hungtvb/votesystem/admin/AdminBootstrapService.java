@@ -5,6 +5,7 @@ import com.hungtvb.votesystem.user.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.Locale;
 
 @Service
@@ -20,6 +21,9 @@ public class AdminBootstrapService {
         String normalizedEmail = normalizeEmail(configuredEmail);
         AppUser user = userRepository.findByEmail(normalizedEmail)
                 .orElseThrow(() -> new IllegalStateException("Configured admin bootstrap target was not found"));
+        if (!user.hasActiveAccess(Instant.now())) {
+            throw new IllegalStateException("Configured admin bootstrap target is unavailable");
+        }
 
         if (!user.promoteToAdmin()) {
             return false;

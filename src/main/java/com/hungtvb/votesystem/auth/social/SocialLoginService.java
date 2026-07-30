@@ -1,6 +1,7 @@
 package com.hungtvb.votesystem.auth.social;
 
 import com.hungtvb.votesystem.common.error.ResourceNotFoundException;
+import com.hungtvb.votesystem.user.AccountAccessPolicy;
 import com.hungtvb.votesystem.user.AppUser;
 import com.hungtvb.votesystem.user.UserRepository;
 import jakarta.persistence.EntityManager;
@@ -15,13 +16,16 @@ public class SocialLoginService {
     private final EntityManager entityManager;
     private final UserRepository userRepository;
     private final UserIdentityRepository identityRepository;
+    private final AccountAccessPolicy accountAccessPolicy;
 
     public SocialLoginService(EntityManager entityManager,
                               UserRepository userRepository,
-                              UserIdentityRepository identityRepository) {
+                              UserIdentityRepository identityRepository,
+                              AccountAccessPolicy accountAccessPolicy) {
         this.entityManager = entityManager;
         this.userRepository = userRepository;
         this.identityRepository = identityRepository;
+        this.accountAccessPolicy = accountAccessPolicy;
     }
 
     @Transactional
@@ -37,7 +41,9 @@ public class SocialLoginService {
         }
 
         if (existingIdentity != null) {
-            return existingIdentity.getUser();
+            AppUser user = existingIdentity.getUser();
+            accountAccessPolicy.requireActive(user);
+            return user;
         }
 
         String verifiedEmail = profile.emailVerified() ? normalizeEmail(profile.email()) : null;
@@ -63,8 +69,10 @@ public class SocialLoginService {
             throw new SocialLoginException("invalid_link_context", "Social account link context is missing");
         }
         if (existingIdentity != null) {
-            if (existingIdentity.getUser().getId().equals(linkUserId)) {
-                return existingIdentity.getUser();
+            AppUser owner = existingIdentity.getUser();
+            accountAccessPolicy.requireActive(owner);
+            if (owner.getId().equals(linkUserId)) {
+                return owner;
             }
             throw new SocialLoginException(
                     "identity_already_linked",
@@ -73,6 +81,7 @@ public class SocialLoginService {
 
         AppUser user = userRepository.findByIdForUpdate(linkUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        accountAccessPolicy.requireActive(user);
         if (identityRepository.existsByUserIdAndProvider(linkUserId, profile.provider())) {
             throw new SocialLoginException(
                     "provider_already_linked",
