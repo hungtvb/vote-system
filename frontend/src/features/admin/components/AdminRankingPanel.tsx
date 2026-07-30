@@ -61,7 +61,7 @@ export function AdminRankingPanel() {
     }
   }
 
-  const unavailable = status?.availability === 'UNAVAILABLE';
+  const unavailable = !status || status.availability === 'UNAVAILABLE';
   const busy = rebuilding || status?.rebuildInProgress === true;
 
   return (
@@ -98,8 +98,8 @@ export function AdminRankingPanel() {
           <div className={styles.metricGrid}>
             <Metric label={copy.visibleBallots} value={status?.visibleBallots} note={copy.authoritative} formatNumber={formatNumber} />
             <Metric label={copy.hotMembers} value={status?.hotMembers} note={copy.published} formatNumber={formatNumber} />
-            <Metric label="TOP DAY" value={status?.topDayMembers} note={`${copy.expected} ${formatNumber(status?.eligibleDayBallots ?? 0)}`} formatNumber={formatNumber} />
-            <Metric label="TOP WEEK" value={status?.topWeekMembers} note={`${copy.expected} ${formatNumber(status?.eligibleWeekBallots ?? 0)}`} formatNumber={formatNumber} />
+            <Metric label="TOP DAY" value={status?.topDayMembers} note={expectedNote(status?.eligibleDayBallots, copy, formatNumber)} formatNumber={formatNumber} />
+            <Metric label="TOP WEEK" value={status?.topWeekMembers} note={expectedNote(status?.eligibleWeekBallots, copy, formatNumber)} formatNumber={formatNumber} />
           </div>
 
           <section className={styles.rankingPlaceholder}>
@@ -148,6 +148,10 @@ function Metric({ label, value, note, formatNumber }: {
       <small>{note}</small>
     </article>
   );
+}
+
+function expectedNote(value: number | null | undefined, copy: Copy, formatNumber: (value: number) => string): string {
+  return `${copy.expected} ${value === null || value === undefined ? '—' : formatNumber(value)}`;
 }
 
 function availabilityDescription(availability: RankingAvailability | undefined, copy: Copy): string {
