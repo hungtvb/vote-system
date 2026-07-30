@@ -17,6 +17,11 @@ CREATE TABLE admin_audit_logs (
         'ADMIN_REBUILD_RANKING'
     )),
     CONSTRAINT ck_admin_audit_logs_target_type CHECK (target_type IN ('POST', 'USER', 'RANKING')),
+    CONSTRAINT ck_admin_audit_logs_action_target CHECK (
+        (action IN ('ADMIN_HIDE_POST', 'ADMIN_RESTORE_POST', 'ADMIN_DELETE_POST') AND target_type = 'POST')
+        OR (action IN ('ADMIN_SUSPEND_USER', 'ADMIN_BAN_USER', 'ADMIN_REVOKE_SESSIONS') AND target_type = 'USER')
+        OR (action = 'ADMIN_REBUILD_RANKING' AND target_type = 'RANKING')
+    ),
     CONSTRAINT ck_admin_audit_logs_target_id CHECK (CHAR_LENGTH(BTRIM(target_id)) BETWEEN 1 AND 128),
     CONSTRAINT ck_admin_audit_logs_reason CHECK (CHAR_LENGTH(BTRIM(reason)) BETWEEN 1 AND 500),
     CONSTRAINT ck_admin_audit_logs_metadata CHECK (
