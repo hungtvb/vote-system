@@ -2,8 +2,6 @@ package com.hungtvb.votesystem.admin;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.hungtvb.votesystem.user.AppUser;
-import com.hungtvb.votesystem.user.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -18,7 +16,9 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -35,7 +35,7 @@ class AdminAuthorizationIntegrationTests {
 
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
-    @Autowired UserRepository userRepository;
+    @Autowired AdminBootstrapService adminBootstrapService;
     @Autowired AdminProbeController adminProbeController;
 
     @Test
@@ -50,9 +50,8 @@ class AdminAuthorizationIntegrationTests {
                         .header("Authorization", "Bearer " + userToken))
                 .andExpect(status().isForbidden());
 
-        AppUser user = userRepository.findByEmail(email).orElseThrow();
-        user.promoteToAdmin();
-        userRepository.saveAndFlush(user);
+        assertTrue(adminBootstrapService.promoteExistingUser("  ADMIN-BOUNDARY@EXAMPLE.COM "));
+        assertFalse(adminBootstrapService.promoteExistingUser(email));
 
         String adminToken = login(email);
         mockMvc.perform(get("/api/v1/admin/probe")
