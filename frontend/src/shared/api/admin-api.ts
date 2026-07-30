@@ -3,6 +3,7 @@ import { http, type ApiRequester } from './transport';
 
 export type AccountStatus = 'ACTIVE' | 'SUSPENDED' | 'BANNED';
 export type ModerationStatus = 'VISIBLE' | 'HIDDEN' | 'DELETED';
+export type RankingAvailability = 'HEALTHY' | 'STALE' | 'REBUILDING' | 'UNAVAILABLE';
 export type AdminSection = 'overview' | 'ballots' | 'users' | 'audit' | 'ranking';
 
 export interface AdminPage<T> {
@@ -64,6 +65,19 @@ export interface AdminAuditLog {
   createdAt: string;
 }
 
+export interface AdminRankingStatus {
+  availability: RankingAvailability;
+  visibleBallots: number;
+  eligibleDayBallots: number;
+  eligibleWeekBallots: number;
+  hotMembers: number | null;
+  topDayMembers: number | null;
+  topWeekMembers: number | null;
+  generation?: string;
+  lastSuccessfulRebuildAt?: string;
+  rebuildInProgress: boolean;
+}
+
 export interface AdminUserModerationResponse {
   id: string;
   accountStatus: AccountStatus;
@@ -118,6 +132,10 @@ export function createAdminApi(request: ApiRequester = http.request) {
       request<AdminPost>(`/api/v1/admin/posts/${encodeURIComponent(postId)}`, { signal }, token),
     auditLogs: (params: AdminAuditListParams, token: string, signal?: AbortSignal) =>
       request<AdminPage<AdminAuditLog>>(`/api/v1/admin/audit-logs${queryString(params)}`, { signal }, token),
+    rankingStatus: (token: string, signal?: AbortSignal) =>
+      request<AdminRankingStatus>('/api/v1/admin/rankings/status', { signal }, token),
+    rebuildRanking: (reason: string, token: string) =>
+      mutate<AdminRankingStatus>(request, '/api/v1/admin/rankings/rebuild', { reason }, token),
     suspendUser: (userId: string, reason: string, until: string | null, token: string) =>
       mutate<AdminModerationResponse>(request, `/api/v1/admin/users/${encodeURIComponent(userId)}/suspend`, { reason, until }, token),
     banUser: (userId: string, reason: string, until: string | null, token: string) =>
