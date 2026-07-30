@@ -1,5 +1,6 @@
 package com.hungtvb.votesystem.common.config;
 
+import com.hungtvb.votesystem.admin.AdminBootstrapProperties;
 import com.hungtvb.votesystem.auth.social.DiscardingOAuth2AuthorizedClientRepository;
 import com.hungtvb.votesystem.auth.social.SocialAuthenticationFailureHandler;
 import com.hungtvb.votesystem.auth.social.SocialAuthenticationSuccessHandler;
@@ -31,6 +32,8 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
@@ -52,7 +55,8 @@ import java.util.List;
         JwtProperties.class,
         RefreshTokenProperties.class,
         RateLimitProperties.class,
-        CorsProperties.class
+        CorsProperties.class,
+        AdminBootstrapProperties.class
 })
 public class SecurityConfig {
 
@@ -61,7 +65,8 @@ public class SecurityConfig {
                                              RateLimitFilter rateLimitFilter,
                                              SocialAuthenticationSuccessHandler socialSuccessHandler,
                                              SocialAuthenticationFailureHandler socialFailureHandler,
-                                             DiscardingOAuth2AuthorizedClientRepository authorizedClientRepository) throws Exception {
+                                             DiscardingOAuth2AuthorizedClientRepository authorizedClientRepository,
+                                             JwtAuthenticationConverter jwtAuthenticationConverter) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
@@ -87,14 +92,27 @@ public class SecurityConfig {
                                 HttpMethod.GET.name()
                         )).permitAll()
                         .requestMatchers("/actuator/health/**").permitAll()
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .oauth2Login(oauth2 -> oauth2
                         .authorizedClientRepository(authorizedClientRepository)
                         .successHandler(socialSuccessHandler)
                         .failureHandler(socialFailureHandler))
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)))
                 .addFilterAfter(rateLimitFilter, BearerTokenAuthenticationFilter.class)
                 .build();
+    }
+
+    @Bean
+    JwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtGrantedAuthoritiesConverter authoritiesConverter = new JwtGrantedAuthoritiesConverter();
+        authoritiesConverter.setAuthoritiesClaimName("roles");
+        authoritiesConverter.setAuthorityPrefix("ROLE_");
+
+        JwtAuthenticationConverter authenticationConverter = new JwtAuthenticationConverter();
+        authenticationConverter.setJwtGrantedAuthoritiesConverter(authoritiesConverter);
+        return authenticationConverter;
     }
 
     @Bean
