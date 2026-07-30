@@ -37,8 +37,12 @@ export function AdminActionDialog({
   onConfirm
 }: AdminActionDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const busyRef = useRef(busy);
+  const onCloseRef = useRef(onClose);
   const [reason, setReason] = useState('');
   const [until, setUntil] = useState('');
+  busyRef.current = busy;
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -46,14 +50,14 @@ export function AdminActionDialog({
     dialog.showModal();
     const handleCancel = (event: Event) => {
       event.preventDefault();
-      if (!busy) onClose();
+      if (!busyRef.current) onCloseRef.current();
     };
     dialog.addEventListener('cancel', handleCancel);
     return () => {
       dialog.removeEventListener('cancel', handleCancel);
       if (dialog.open) dialog.close();
     };
-  }, [busy, onClose]);
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

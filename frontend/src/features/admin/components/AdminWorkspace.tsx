@@ -63,6 +63,18 @@ export function AdminWorkspace() {
     router.replace('/?admin=signin');
   }, [restoring, router, session]);
 
+  useEffect(() => {
+    if (isAdmin) return;
+    setOverview({ unavailable: false });
+    setUsers(null);
+    setPosts(null);
+    setAudit(null);
+    setNotice('');
+    setError('');
+    setPendingAction(null);
+    setMutationError('');
+  }, [isAdmin]);
+
   const updateUrl = useCallback((changes: Record<string, string | number | null>) => {
     const next = new URLSearchParams(searchParams.toString());
     for (const [key, value] of Object.entries(changes)) {
