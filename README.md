@@ -30,7 +30,7 @@ Browser
 └── Spring Boot 3.5 modular monolith
     ├── auth + social identity
     ├── editable/private/public profiles
-    ├── admin authorization boundary
+    ├── admin authorization + audit trail
     ├── ballots/posts
     ├── votes + verdict aggregation
     ├── Redis ranking
@@ -41,7 +41,7 @@ Browser
     └── Redis
 ```
 
-PostgreSQL owns account, identity, session, profile, ballot, and vote state. Redis is derived infrastructure: ranked feeds fall back to latest-first PostgreSQL results when Redis is unavailable, and ranking state can be rebuilt.
+PostgreSQL owns account, identity, session, profile, ballot, vote, and administrator audit state. Redis is derived infrastructure: ranked feeds fall back to latest-first PostgreSQL results when Redis is unavailable, and ranking state can be rebuilt.
 
 ## Stack
 
@@ -108,8 +108,13 @@ PostgreSQL owns account, identity, session, profile, ballot, and vote state. Red
 - `/api/v1/admin/**` is protected at request and method levels
 - Controlled, disabled-by-default promotion of an existing account through environment configuration
 - No bootstrap-created password, token, account, or provider identity
+- Flyway-managed append-only administrator audit table with bounded JSONB metadata
+- Action-to-target compatibility enforced in service validation and PostgreSQL constraints
+- Hibernate immutable entity, insert-only store, and read-only repository surface
+- PostgreSQL trigger rejecting every audit-row update and delete
+- Protected deterministic audit-log pagination and exact action/actor/target filters
 
-The audit log, moderation actions, operational APIs, and protected dashboard remain later phases of TON-109. Current boundary and bootstrap procedure: [`docs/ADMIN.md`](docs/ADMIN.md).
+Moderation mutations, operational admin actions, and the protected dashboard remain later phases of TON-109. Current authorization, bootstrap, audit, privacy, and retention contracts: [`docs/ADMIN.md`](docs/ADMIN.md).
 
 ### Ballots and voting
 
@@ -246,6 +251,7 @@ PATCH  /api/v1/users/me
 GET    /api/v1/users/{userId}
 
 GET    /api/v1/admin/probe
+GET    /api/v1/admin/audit-logs
 
 GET    /api/v1/posts
 POST   /api/v1/posts
@@ -259,7 +265,7 @@ DELETE /api/v1/posts/{postId}/vote
 GET    /api/v1/posts/{postId}/events
 ```
 
-Detailed contracts: [`docs/API.md`](docs/API.md). Admin authorization and bootstrap: [`docs/ADMIN.md`](docs/ADMIN.md).
+Detailed contracts: [`docs/API.md`](docs/API.md). Admin authorization, bootstrap, audit-log API, and privacy boundaries: [`docs/ADMIN.md`](docs/ADMIN.md).
 
 ## Authentication lifecycle
 
@@ -293,7 +299,7 @@ Start at [`docs/README.md`](docs/README.md). Key documents:
 - [`docs/FRONTEND-AUTH.md`](docs/FRONTEND-AUTH.md) — browser token/session lifecycle and rollout compatibility
 - [`docs/PROFILE.md`](docs/PROFILE.md) — private/public profile and Ballot Mark contracts
 - [`docs/I18N.md`](docs/I18N.md) — implemented VI/EN behavior and locale policy
-- [`docs/ADMIN.md`](docs/ADMIN.md) — admin role boundary and controlled bootstrap
+- [`docs/ADMIN.md`](docs/ADMIN.md) — admin role boundary, controlled bootstrap, immutable audit log, privacy, and retention
 - [`docs/SOCIAL-LOGIN.md`](docs/SOCIAL-LOGIN.md) — Google/GitHub configuration and linking
 - [`docs/REALTIME-VOTES.md`](docs/REALTIME-VOTES.md) — SSE contract and async delivery
 - [`docs/DEPLOY-VERCEL-RAILWAY.md`](docs/DEPLOY-VERCEL-RAILWAY.md) — production deployment
@@ -302,13 +308,14 @@ Start at [`docs/README.md`](docs/README.md). Key documents:
 
 ## Roadmap
 
-Completed foundations include Next.js migration, Ballot Edition, server-owned feeds, Redis rate limiting/ranking, realtime vote updates, social login, VI/EN i18n, editable profiles, custom Ballot Marks, split deployment, runtime QA, performance instrumentation, and locale preference synchronization.
+Completed foundations include Next.js migration, Ballot Edition, server-owned feeds, Redis rate limiting/ranking, realtime vote updates, social login, VI/EN i18n, editable profiles, custom Ballot Marks, split deployment, runtime QA, performance instrumentation, locale preference synchronization, and the admin authorization boundary.
 
 The active sequence is:
 
 1. `TON-109` — admin foundation
    - `TON-192` — authorization boundary and controlled bootstrap
-   - audit log and admin operations
+   - `TON-194` — immutable administrator audit-log foundation
+   - moderation and operational admin mutations
    - protected admin dashboard
 2. `TON-140` — unified reporting and moderation-case workflow
 3. `TON-110` / `TON-111` — comments, replies, voting, and moderation
