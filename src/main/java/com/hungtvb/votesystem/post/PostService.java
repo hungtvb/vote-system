@@ -69,7 +69,7 @@ public class PostService {
 
     @Transactional
     public PostResponse update(UUID authorId, UUID postId, UpdatePostRequest request) {
-        Post post = findOwnedPost(authorId, postId);
+        Post post = findOwnedPostForUpdate(authorId, postId);
         if (!post.isOpen()) {
             throw new ConflictException("Closed ballots cannot be edited");
         }
@@ -89,7 +89,7 @@ public class PostService {
 
     @Transactional
     public PostResponse close(UUID authorId, UUID postId) {
-        Post post = findOwnedPost(authorId, postId);
+        Post post = findOwnedPostForUpdate(authorId, postId);
         if (!post.isOpen()) {
             throw new ConflictException("Ballot is already closed");
         }
@@ -101,7 +101,7 @@ public class PostService {
 
     @Transactional
     public void delete(UUID authorId, UUID postId) {
-        Post post = findOwnedPost(authorId, postId);
+        Post post = findOwnedPostForUpdate(authorId, postId);
         voteRepository.deleteByPostId(postId);
         postRepository.delete(post);
         eventPublisher.publishEvent(RankingChangedEvent.delete(postId, post.getCreatedAt()));
@@ -165,8 +165,9 @@ public class PostService {
         return PostResponse.from(post, myVote, author);
     }
 
-    private Post findOwnedPost(UUID authorId, UUID postId) {
-        Post post = findPublicPost(postId);
+    private Post findOwnedPostForUpdate(UUID authorId, UUID postId) {
+        Post post = postRepository.findVisibleByIdForUpdate(postId)
+                .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
         if (!post.getAuthorId().equals(authorId)) {
             throw new ForbiddenException("Only the author can modify this post");
         }
