@@ -10,12 +10,15 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -33,6 +36,7 @@ class AdminAuthorizationIntegrationTests {
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
     @Autowired UserRepository userRepository;
+    @Autowired AdminProbeController adminProbeController;
 
     @Test
     void adminProbeRequiresAdminRoleFromIssuedJwt() throws Exception {
@@ -55,6 +59,12 @@ class AdminAuthorizationIntegrationTests {
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ok"));
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
+    void methodGuardRejectsUserWhenControllerBeanIsInvokedDirectly() {
+        assertThrows(AccessDeniedException.class, adminProbeController::probe);
     }
 
     private String register(String email) throws Exception {
