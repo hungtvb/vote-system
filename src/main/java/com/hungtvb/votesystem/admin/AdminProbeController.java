@@ -11,7 +11,7 @@ public class AdminProbeController {
 
     @GetMapping("/probe")
     @PreAuthorize("hasRole('ADMIN')")
-    AdminProbeResponse probe() {
+    public AdminProbeResponse probe() {
         return new AdminProbeResponse("ok");
     }
 
