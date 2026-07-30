@@ -109,8 +109,7 @@ public class PostService {
 
     @Transactional(readOnly = true)
     public PostResponse get(UUID postId, UUID userId) {
-        Post post = postRepository.findById(postId)
-                .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
+        Post post = findPublicPost(postId);
         VoteType myVote = userId == null ? null : voteRepository.findByUserIdAndPostId(userId, postId)
                 .map(Vote::getType).orElse(null);
         return response(post, myVote);
@@ -167,12 +166,16 @@ public class PostService {
     }
 
     private Post findOwnedPost(UUID authorId, UUID postId) {
-        Post post = postRepository.findById(postId)
-                .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
+        Post post = findPublicPost(postId);
         if (!post.getAuthorId().equals(authorId)) {
             throw new ForbiddenException("Only the author can modify this post");
         }
         return post;
+    }
+
+    private Post findPublicPost(UUID postId) {
+        return postRepository.findByIdAndModerationStatus(postId, ModerationStatus.VISIBLE)
+                .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
     }
 
     private String normalizeCategory(String category) {
