@@ -1,6 +1,9 @@
 name: Inspect TON-198 ranking
 
 on:
+  pull_request:
+    paths:
+      - .github/workflows/inspect-ton198.yml
   push:
     branches:
       - hungtvb2020/ton-198-be-audited-ranking-status-and-atomic-rebuild-operation
