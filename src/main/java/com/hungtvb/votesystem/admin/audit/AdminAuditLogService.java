@@ -82,8 +82,11 @@ public class AdminAuditLogService {
                 filter.targetType(),
                 filter.targetId() == null ? null : filter.targetId().strip()
         );
-        Page<AdminAuditLog> result = repository.findAll(
-                AdminAuditLogSpecifications.matches(normalizedFilter),
+        Page<AdminAuditLog> result = repository.findAllFiltered(
+                normalizedFilter.action(),
+                normalizedFilter.actorId(),
+                normalizedFilter.targetType(),
+                normalizedFilter.targetId(),
                 stablePage
         );
         return AdminAuditLogPageResponse.from(result);
