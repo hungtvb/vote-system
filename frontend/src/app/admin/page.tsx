@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { AdminWorkspace } from '@/features/admin/components/AdminWorkspace';
+import { AdminPageRouter } from '@/features/admin/components/AdminPageRouter';
 
 function AdminWorkspaceFallback() {
   return (
@@ -12,7 +12,7 @@ function AdminWorkspaceFallback() {
 export default function AdminPage() {
   return (
     <Suspense fallback={<AdminWorkspaceFallback />}>
-      <AdminWorkspace />
+      <AdminPageRouter />
     </Suspense>
   );
 }
