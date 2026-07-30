@@ -77,6 +77,4 @@ Intentionally retained roadmap language:
 - TON-115 constrained direct messaging;
 - later public API, analytics, and advanced ballot-engine work managed in Linear.
 
-Known implementation gap discovered by the audit:
-
-- TON-191 tracks browser-language fallback and automatic application of authenticated `preferredLocale`. Current docs state the actual behavior instead of claiming the unfinished behavior is active.
+The audit also discovered TON-191. That follow-up implemented browser-language fallback, one-time authenticated profile locale application, manual override preservation, guest reset after authentication clears, and immediate profile-save application.

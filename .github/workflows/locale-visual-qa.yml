@@ -1,0 +1,95 @@
+name: Locale Visual QA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/src/shared/i18n/**'
+      - 'frontend/src/features/auth/components/VoterMasthead.tsx'
+      - 'frontend/scripts/ton106_qa_server.py'
+      - 'frontend/package*.json'
+      - '.github/workflows/locale-visual-qa.yml'
+  pull_request:
+    paths:
+      - 'frontend/src/shared/i18n/**'
+      - 'frontend/src/features/auth/components/VoterMasthead.tsx'
+      - 'frontend/scripts/ton106_qa_server.py'
+      - 'frontend/package*.json'
+      - '.github/workflows/locale-visual-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  locale-visual-qa:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build frontend
+        run: npm run build
+      - name: Verify Vietnamese and English mobile layouts
+        run: |
+          set -euo pipefail
+          mkdir -p locale-visual-qa
+          python3 scripts/ton106_qa_server.py > locale-visual-qa/server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          for attempt in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 40 ]; then
+              cat locale-visual-qa/server.log
+              exit 1
+            fi
+            sleep 0.25
+          done
+
+          CHROME=''
+          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              CHROME=$(command -v "$candidate")
+              break
+            fi
+          done
+          if [ -z "$CHROME" ]; then
+            echo 'No headless Chrome binary is available on the runner.'
+            exit 1
+          fi
+
+          COMMON=(--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --run-all-compositor-stages-before-draw --virtual-time-budget=7000 --window-size=390,844)
+
+          capture_locale() {
+            locale=$1
+            expected_copy=$2
+            url="http://127.0.0.1:4173/?qa=feed&qaLocale=${locale}"
+            "$CHROME" "${COMMON[@]}" --screenshot="locale-visual-qa/mobile-${locale}.png" "$url"
+            "$CHROME" "${COMMON[@]}" --dump-dom "$url" > "locale-visual-qa/mobile-${locale}.html"
+            grep -q "lang=\"${locale}\"" "locale-visual-qa/mobile-${locale}.html"
+            grep -q 'data-qa-scenario="complete"' "locale-visual-qa/mobile-${locale}.html"
+            grep -q 'data-qa-overflow="false"' "locale-visual-qa/mobile-${locale}.html"
+            test "$(grep -o '<article' "locale-visual-qa/mobile-${locale}.html" | wc -l | tr -d ' ')" -eq 3
+            grep -q "$expected_copy" "locale-visual-qa/mobile-${locale}.html"
+          }
+
+          capture_locale en 'CREATE BALLOT'
+          capture_locale vi 'TẠO PHIẾU'
+      - name: Upload locale visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: locale-visual-qa
+          path: frontend/locale-visual-qa/**
+          if-no-files-found: error
+          retention-days: 14
