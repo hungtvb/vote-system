@@ -1,0 +1,47 @@
+name: Run TON-198 core implementation
+
+on:
+  push:
+    branches:
+      - hungtvb2020/ton-198-be-audited-ranking-status-and-atomic-rebuild-operation
+    paths:
+      - .github/workflows/run-ton198-core.yml
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: hungtvb2020/ton-198-be-audited-ranking-status-and-atomic-rebuild-operation
+          fetch-depth: 0
+      - name: Execute prepared implementation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path('.github/workflows/implement-ton198-core.yml').read_text()
+          marker = '        run: |\n'
+          start = source.index(marker) + len(marker)
+          lines = source[start:].splitlines()
+          script_lines = []
+          for line in lines:
+              if line.startswith('          '):
+                  script_lines.append(line[10:])
+              elif not line.strip():
+                  script_lines.append('')
+              else:
+                  break
+          script = '\n'.join(script_lines) + '\n'
+          script = script.replace('${{ github.head_ref }}', 'hungtvb2020/ton-198-be-audited-ranking-status-and-atomic-rebuild-operation')
+          script = script.replace(
+              'rm -f .github/workflows/inspect-ton198.yml .github/workflows/implement-ton198-core.yml',
+              'rm -f .github/workflows/inspect-ton198.yml .github/workflows/implement-ton198-core.yml .github/workflows/run-ton198-core.yml'
+          )
+          Path('/tmp/implement-ton198.sh').write_text(script)
+          PY
+          bash /tmp/implement-ton198.sh
