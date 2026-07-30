@@ -53,6 +53,9 @@ public class AdminAuditLogService {
         UUID actorId = required(event.actorId(), "Audit actor is required");
         AdminAuditAction action = required(event.action(), "Audit action is required");
         AdminAuditTargetType targetType = required(event.targetType(), "Audit target type is required");
+        if (action.targetType() != targetType) {
+            throw invalid("Audit action and target type are incompatible");
+        }
         String targetId = boundedRequired(event.targetId(), MAX_TARGET_ID_LENGTH, "Audit target is invalid");
         String reason = boundedRequired(event.reason(), MAX_REASON_LENGTH, "Audit reason is invalid");
         Map<String, String> metadata = normalizeMetadata(event.metadata());
