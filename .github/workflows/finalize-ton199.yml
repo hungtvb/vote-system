@@ -1,0 +1,105 @@
+name: Finalize TON-199
+
+on:
+  push:
+    branches:
+      - hungtvb2020/ton-199-fe-protected-admin-moderation-workspace
+    paths:
+      - .github/workflows/finalize-ton199.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: hungtvb2020/ton-199-fe-protected-admin-moderation-workspace
+      - name: Apply lifecycle safeguards
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workspace = Path('frontend/src/features/admin/components/AdminWorkspace.tsx')
+          text = workspace.read_text()
+          anchor = """  useEffect(() => {
+              if (restoring || session) return;
+              router.replace('/?admin=signin');
+            }, [restoring, router, session]);
+
+          """
+          insert = anchor + """  useEffect(() => {
+              if (isAdmin) return;
+              setOverview({ unavailable: false });
+              setUsers(null);
+              setPosts(null);
+              setAudit(null);
+              setNotice('');
+              setError('');
+              setPendingAction(null);
+              setMutationError('');
+            }, [isAdmin]);
+
+          """
+          if anchor not in text:
+              raise SystemExit('AdminWorkspace lifecycle anchor not found')
+          workspace.write_text(text.replace(anchor, insert, 1))
+
+          dialog = Path('frontend/src/features/admin/components/AdminActionDialog.tsx')
+          text = dialog.read_text()
+          old = """  const dialogRef = useRef<HTMLDialogElement>(null);
+            const [reason, setReason] = useState('');
+            const [until, setUntil] = useState('');
+
+            useEffect(() => {
+              const dialog = dialogRef.current;
+              if (!dialog) return;
+              dialog.showModal();
+              const handleCancel = (event: Event) => {
+                event.preventDefault();
+                if (!busy) onClose();
+              };
+              dialog.addEventListener('cancel', handleCancel);
+              return () => {
+                dialog.removeEventListener('cancel', handleCancel);
+                if (dialog.open) dialog.close();
+              };
+            }, [busy, onClose]);
+          """
+          new = """  const dialogRef = useRef<HTMLDialogElement>(null);
+            const busyRef = useRef(busy);
+            const onCloseRef = useRef(onClose);
+            const [reason, setReason] = useState('');
+            const [until, setUntil] = useState('');
+            busyRef.current = busy;
+            onCloseRef.current = onClose;
+
+            useEffect(() => {
+              const dialog = dialogRef.current;
+              if (!dialog) return;
+              dialog.showModal();
+              const handleCancel = (event: Event) => {
+                event.preventDefault();
+                if (!busyRef.current) onCloseRef.current();
+              };
+              dialog.addEventListener('cancel', handleCancel);
+              return () => {
+                dialog.removeEventListener('cancel', handleCancel);
+                if (dialog.open) dialog.close();
+              };
+            }, []);
+          """
+          if old not in text:
+              raise SystemExit('AdminActionDialog lifecycle anchor not found')
+          dialog.write_text(text.replace(old, new, 1))
+          PY
+          rm .github/workflows/finalize-ton199.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(admin): clear protected state and stabilize dialogs"
+          git push origin HEAD:hungtvb2020/ton-199-fe-protected-admin-moderation-workspace
