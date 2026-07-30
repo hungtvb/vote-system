@@ -1,6 +1,6 @@
 # Admin foundation
 
-This document covers the authorization boundary and controlled bootstrap introduced by TON-192, plus the immutable audit-log foundation introduced by TON-194. Ballot/user moderation mutations, operational actions, and the protected admin dashboard remain later phases of TON-109.
+This document covers the authorization boundary and controlled bootstrap introduced by TON-192, the immutable audit-log foundation introduced by TON-194, and the audited ballot-moderation boundary introduced by TON-195. User moderation, operational controls, and the protected admin dashboard remain later phases of TON-109.
 
 ## Roles and authorization
 
@@ -77,7 +77,7 @@ This fail-closed behavior prevents a deployment from appearing healthy when the 
 
 ## Immutable audit log
 
-`admin_audit_logs` is the append-only source for successful future admin mutations. TON-194 provides the storage and read foundation; no moderation mutation writes records yet.
+`admin_audit_logs` is the append-only source for successful administrator mutations. TON-194 provides the storage/read foundation; TON-195 is the first mutation flow that writes audit records transactionally.
 
 Each record contains:
 
@@ -168,7 +168,8 @@ The response uses an explicit stable page DTO:
       "targetId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
       "reason": "Contains prohibited content",
       "metadata": {
-        "request_id": "req-123"
+        "previous_status": "VISIBLE",
+        "new_status": "HIDDEN"
       },
       "createdAt": "2026-07-30T07:00:00Z"
     }
@@ -194,16 +195,54 @@ Page is zero-based. Size must be from 1 through 100.
 
 TON-194 does not add automatic deletion, expiry, export, or archival. Audit records remain in PostgreSQL. A future retention policy must preserve append-only guarantees and use an explicitly reviewed migration or archival process rather than application delete methods.
 
+## Ballot moderation
+
+Ballot lifecycle and moderation are separate state machines:
+
+```text
+BallotStatus       OPEN | CLOSED
+ModerationStatus   VISIBLE | HIDDEN | DELETED
+```
+
+Protected mutations:
+
+```http
+POST /api/v1/admin/posts/{postId}/hide
+POST /api/v1/admin/posts/{postId}/restore
+POST /api/v1/admin/posts/{postId}/delete
+Authorization: Bearer <admin access token>
+Content-Type: application/json
+
+{"reason":"Violates published community rules"}
+```
+
+Transition rules:
+
+- `VISIBLE -> HIDDEN` through hide;
+- `HIDDEN -> VISIBLE` through restore;
+- `VISIBLE/HIDDEN -> DELETED` through administrator soft-delete;
+- `DELETED` is terminal in this phase;
+- repeated or incompatible transitions return `409 Conflict` without another audit record.
+
+Each transition acquires a pessimistic ballot lock. Moderation state and its matching `ADMIN_*_POST` audit row commit in one PostgreSQL transaction. Audit failure rolls back the state change. Ranking and SSE effects are transaction-bound and run only after commit.
+
+Hidden and deleted ballots are excluded from public detail, every public feed, voting, SSE subscription, and author mutations. Those paths return a generic not-found response and do not reveal moderation status or reason. Administrator soft-delete preserves the ballot and vote rows; it is distinct from the existing author-owned hard delete.
+
+Detailed state, visibility, Redis, SSE, and concurrency rules: [`MODERATION.md`](MODERATION.md).
+
 ## Verification
 
 Backend tests cover:
 
 - anonymous `401` and authenticated `USER` `403` at admin boundaries;
-- issued `ADMIN` JWT access;
+- issued `ADMIN` JWT access and direct method-security rejection;
 - registration response remains `USER`;
 - disabled, normalized, missing-target, and idempotent bootstrap behavior;
-- audit validation and metadata privacy constraints;
-- PostgreSQL JSONB persistence and exact filters;
-- deterministic newest-first ordering;
-- direct method-security rejection;
-- database-trigger rejection of audit updates and deletes.
+- audit validation, metadata privacy, JSONB persistence, filtering, and deterministic ordering;
+- database-trigger rejection of audit updates and deletes;
+- ballot hide, restore, and terminal soft-delete transitions;
+- preservation of lifecycle state across moderation;
+- public feed/detail/vote/SSE/owner-mutation visibility enforcement;
+- stale Redis-member filtering and post-commit convergence;
+- transaction rollback when audit validation fails;
+- concurrent moderation producing one state transition and one audit record.
