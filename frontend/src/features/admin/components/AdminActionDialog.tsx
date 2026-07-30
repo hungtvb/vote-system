@@ -41,6 +41,9 @@ export function AdminActionDialog({
   const onCloseRef = useRef(onClose);
   const [reason, setReason] = useState('');
   const [until, setUntil] = useState('');
+  const now = new Date();
+  const minUntil = toLocalDateTimeInput(new Date(now.getTime() + 60_000));
+  const maxUntil = toLocalDateTimeInput(new Date(now.getTime() + 365 * 24 * 60 * 60 * 1_000));
   busyRef.current = busy;
   onCloseRef.current = onClose;
 
@@ -98,7 +101,8 @@ export function AdminActionDialog({
             <span>{untilLabel}</span>
             <input
               type="datetime-local"
-              min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)}
+              min={minUntil}
+              max={maxUntil}
               value={until}
               onChange={event => setUntil(event.target.value)}
             />
@@ -118,4 +122,9 @@ export function AdminActionDialog({
       </form>
     </dialog>
   );
+}
+
+function toLocalDateTimeInput(value: Date): string {
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
 }
