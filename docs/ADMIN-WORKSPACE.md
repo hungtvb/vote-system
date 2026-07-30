@@ -21,7 +21,7 @@ restricted ADMIN       backend account enforcement rejects refresh/JWT access
 
 An ADMIN-only entry appears in the Voter ID menu. Manually entering `/admin/` does not bypass backend authorization.
 
-The access token remains in React memory and every administrator request uses the existing single-flight refresh/retry lifecycle. The workspace does not create a second session store.
+The access token remains in React memory and every administrator request uses the existing single-flight refresh/retry lifecycle. The workspace does not create a second session store. Logout, session loss, or role loss clears loaded administrator pages, notices, errors, and pending actions from component memory before leaving the protected view.
 
 ## Sections
 
@@ -81,7 +81,7 @@ Every user or ballot mutation opens a native modal dialog with:
 - cancel and close controls;
 - busy and safe error states.
 
-The reason warning reminds administrators not to enter email, tokens, or sensitive data. Successful mutation responses are not treated as the final screen state; the current section is reloaded from the backend after commit.
+The reason warning reminds administrators not to enter email, tokens, or sensitive data. Successful mutation responses are not treated as the final screen state; the current section is reloaded from the backend after commit. The native dialog remains mounted while a mutation becomes busy, preserving focus containment and avoiding a close/reopen cycle.
 
 ## Responsive behavior
 
