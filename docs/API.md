@@ -201,7 +201,66 @@ POST   /api/v1/posts/{postId}/close
 DELETE /api/v1/posts/{postId}
 ```
 
-Only the author can update, close, or delete a ballot. The backend owns lifecycle transitions and final-verdict semantics.
+Only the author can update, close, or hard-delete a visible ballot. The backend owns lifecycle transitions and final-verdict semantics.
+
+## Administrator ballot moderation
+
+Lifecycle and moderation are independent:
+
+```text
+BallotStatus       OPEN | CLOSED
+ModerationStatus   VISIBLE | HIDDEN | DELETED
+```
+
+Administrator mutations:
+
+```http
+POST /api/v1/admin/posts/{postId}/hide
+POST /api/v1/admin/posts/{postId}/restore
+POST /api/v1/admin/posts/{postId}/delete
+Authorization: Bearer <admin access token>
+Content-Type: application/json
+
+{"reason":"Violates published community rules"}
+```
+
+`reason` is required and limited to 500 characters.
+
+Response:
+
+```json
+{
+  "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "moderationStatus": "HIDDEN",
+  "moderationUpdatedAt": "2026-07-30T09:00:00Z"
+}
+```
+
+Allowed transitions:
+
+```text
+VISIBLE -> HIDDEN
+HIDDEN  -> VISIBLE
+VISIBLE -> DELETED
+HIDDEN  -> DELETED
+```
+
+`DELETED` is terminal. Invalid or repeated transitions return `409 Conflict` and do not create another successful-action audit record.
+
+Each transition and its matching immutable audit append commit in the same PostgreSQL transaction. Hide/delete remove ranking membership after commit; restore re-inserts the current authoritative ballot aggregate. Administrator soft-delete retains the ballot and vote rows.
+
+Hidden and deleted ballots return generic `404 Post not found` behavior through public detail, voting, SSE, and owner mutation endpoints. Public responses do not expose moderation state, reason, audit metadata, or administrator identity.
+
+Detailed transition, concurrency, Redis, and SSE contract: [`MODERATION.md`](MODERATION.md). Authorization and audit-log contract: [`ADMIN.md`](ADMIN.md).
+
+## Administrator audit-log read API
+
+```http
+GET /api/v1/admin/audit-logs?page=0&size=20
+Authorization: Bearer <admin access token>
+```
+
+Optional exact filters are `action`, `actorId`, `targetType`, and `targetId`. Responses use an explicit stable page DTO ordered by `createdAt DESC, id DESC`. Arbitrary audit append is not exposed as an HTTP endpoint.
 
 ## Feeds, search, and filters
 
@@ -235,7 +294,7 @@ Ordering:
 - `TOP_DAY`: current UTC-day Redis order;
 - `TOP_WEEK`: current UTC-week Redis order.
 
-Filtering applies across the complete ranked set before pagination. If Redis is unavailable, ranked feeds degrade to matching PostgreSQL results in latest-first order.
+Every feed returns only `VISIBLE` ballots. Ranked IDs are re-checked against PostgreSQL visibility before serialization, so a stale Redis member cannot expose a hidden or deleted ballot. Filtering applies across the complete ranked set before pagination. If Redis is unavailable, ranked feeds degrade to matching visible PostgreSQL results in latest-first order.
 
 ## Voting
 
@@ -252,7 +311,7 @@ DELETE /api/v1/posts/{postId}/vote
 Authorization: Bearer <access-token>
 ```
 
-The backend supports add, change, repeated-choice removal, and explicit removal. Aggregate counts and score update atomically; `(user_id, post_id)` uniqueness prevents duplicate rows.
+The backend supports add, change, repeated-choice removal, and explicit removal. Aggregate counts and score update atomically; `(user_id, post_id)` uniqueness prevents duplicate rows. Voting requires a visible ballot and the aggregate update query repeats that visibility predicate as defense in depth.
 
 Ballot responses expose authoritative:
 
@@ -264,6 +323,8 @@ Ballot responses expose authoritative:
 - threshold and projected/final verdict;
 - lifecycle and timestamps.
 
+Moderation status is intentionally excluded from public ballot responses.
+
 ## Realtime vote updates
 
 ```http
@@ -271,9 +332,9 @@ GET /api/v1/posts/{postId}/events
 Accept: text/event-stream
 ```
 
-The public stream sends an authoritative aggregate snapshot, heartbeat comments, reconnect hint, and future `vote-update` events. It excludes `myVote` and identity data.
+The public stream is available only for visible, active ballots. It sends an authoritative aggregate snapshot, heartbeat comments, reconnect hint, and future `vote-update` events. It excludes `myVote` and identity data.
 
-After commit, SSE delivery is enqueued to a bounded FIFO executor. The vote HTTP response does not normally wait for connected-client network I/O. Event history is not persisted; reconnect converges through the latest database snapshot.
+After commit, SSE delivery is enqueued to a bounded FIFO executor. The vote HTTP response does not normally wait for connected-client network I/O. Event history is not persisted; reconnect converges through the latest database snapshot. Hide/delete completes existing subscribers after the moderation transaction commits.
 
 Detailed contract: [`REALTIME-VOTES.md`](REALTIME-VOTES.md).
 
