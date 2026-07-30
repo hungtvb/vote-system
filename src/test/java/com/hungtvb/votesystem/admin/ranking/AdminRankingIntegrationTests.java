@@ -163,7 +163,7 @@ class AdminRankingIntegrationTests {
         long auditBefore = auditCount();
 
         Post extra = Post.create(author.userId(), "Unpublished extra ballot", "Ranking rollback test",
-                "GENERAL", null, 1);
+                "GENERAL", null, 70);
         postRepository.saveAndFlush(extra);
 
         assertThrows(IllegalArgumentException.class,
