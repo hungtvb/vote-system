@@ -27,6 +27,12 @@ class AdminBootstrapServiceTests {
     @Mock AdminBootstrapService bootstrapService;
 
     @Test
+    void localAndSocialOnboardingAlwaysCreateUserRole() {
+        assertEquals(Role.USER, AppUser.create("local@example.com", "hash").getRole());
+        assertEquals(Role.USER, AppUser.createSocial("social@example.com", "Social Voter").getRole());
+    }
+
+    @Test
     void promotesExistingNormalizedAccountAndIsIdempotent() {
         AdminBootstrapService service = new AdminBootstrapService(userRepository);
         AppUser user = AppUser.create("admin@example.com", "hash");
