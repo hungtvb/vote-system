@@ -45,7 +45,7 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Build frontend
         run: npm run build
-      - name: Verify protected admin workspace
+      - name: Verify table-first protected admin workspace
         run: |
           set -euo pipefail
           mkdir -p admin-workspace-qa
@@ -99,23 +99,33 @@ jobs:
             "$CHROME" "${COMMON[@]}" --window-size="$size" --dump-dom "$url" > "admin-workspace-qa/${name}-overview.html"
             grep -q 'data-qa-scenario="complete"' "admin-workspace-qa/${name}-overview.html"
             grep -q 'data-qa-admin-overflow="false"' "admin-workspace-qa/${name}-overview.html"
+            grep -q 'data-qa-admin-table-first="true"' "admin-workspace-qa/${name}-overview.html"
             grep -q 'data-qa-admin-heading="Operations overview"' "admin-workspace-qa/${name}-overview.html"
           done
 
-          "$CHROME" "${COMMON[@]}" --window-size=390,844 --screenshot=admin-workspace-qa/mobile-user-dialog.png 'http://127.0.0.1:4173/admin/?qa=admin-user-dialog&qaLocale=en'
-          "$CHROME" "${COMMON[@]}" --window-size=390,844 --dump-dom 'http://127.0.0.1:4173/admin/?qa=admin-user-dialog&qaLocale=en' > admin-workspace-qa/mobile-user-dialog.html
+          "$CHROME" "${COMMON[@]}" --window-size=1440,1000 --screenshot=admin-workspace-qa/desktop-users-table.png 'http://127.0.0.1:4173/admin/?qa=admin-users&qaLocale=en&section=users&size=25'
+          "$CHROME" "${COMMON[@]}" --window-size=1440,1000 --dump-dom 'http://127.0.0.1:4173/admin/?qa=admin-users&qaLocale=en&section=users&size=25' > admin-workspace-qa/desktop-users-table.html
+          grep -q '<table' admin-workspace-qa/desktop-users-table.html
+          grep -q '<th scope="col">User</th>' admin-workspace-qa/desktop-users-table.html
+          grep -q 'Rows per page' admin-workspace-qa/desktop-users-table.html
+          grep -q 'data-qa-admin-overflow="false"' admin-workspace-qa/desktop-users-table.html
+
+          "$CHROME" "${COMMON[@]}" --window-size=390,844 --screenshot=admin-workspace-qa/mobile-user-dialog.png 'http://127.0.0.1:4173/admin/?qa=admin-user-dialog&qaLocale=en&section=users'
+          "$CHROME" "${COMMON[@]}" --window-size=390,844 --dump-dom 'http://127.0.0.1:4173/admin/?qa=admin-user-dialog&qaLocale=en&section=users' > admin-workspace-qa/mobile-user-dialog.html
           grep -q 'data-qa-admin-dialog="true"' admin-workspace-qa/mobile-user-dialog.html
           grep -q 'data-qa-admin-dialog-focus="true"' admin-workspace-qa/mobile-user-dialog.html
           grep -q 'data-qa-admin-reason="true"' admin-workspace-qa/mobile-user-dialog.html
           grep -q 'data-qa-admin-overflow="false"' admin-workspace-qa/mobile-user-dialog.html
 
-          "$CHROME" "${COMMON[@]}" --window-size=1440,1000 --screenshot=admin-workspace-qa/desktop-audit.png 'http://127.0.0.1:4173/admin/?qa=admin-audit&qaLocale=en'
-          "$CHROME" "${COMMON[@]}" --window-size=1440,1000 --dump-dom 'http://127.0.0.1:4173/admin/?qa=admin-audit&qaLocale=en' > admin-workspace-qa/desktop-audit.html
-          grep -q 'data-qa-scenario="complete"' admin-workspace-qa/desktop-audit.html
-          grep -q 'data-qa-admin-overflow="false"' admin-workspace-qa/desktop-audit.html
+          "$CHROME" "${COMMON[@]}" --window-size=1440,1000 --screenshot=admin-workspace-qa/desktop-audit-table.png 'http://127.0.0.1:4173/admin/?qa=admin-audit&qaLocale=en&section=audit'
+          "$CHROME" "${COMMON[@]}" --window-size=1440,1000 --dump-dom 'http://127.0.0.1:4173/admin/?qa=admin-audit&qaLocale=en&section=audit' > admin-workspace-qa/desktop-audit-table.html
+          grep -q '<th scope="col">Timestamp</th>' admin-workspace-qa/desktop-audit-table.html
+          grep -q 'View metadata' admin-workspace-qa/desktop-audit-table.html
+          grep -q 'data-qa-admin-overflow="false"' admin-workspace-qa/desktop-audit-table.html
 
-          "$CHROME" "${COMMON[@]}" --window-size=768,1024 --dump-dom 'http://127.0.0.1:4173/admin/?qa=admin-ranking&qaLocale=en' > admin-workspace-qa/tablet-ranking.html
-          grep -q 'data-qa-admin-ranking-unknown="true"' admin-workspace-qa/tablet-ranking.html
+          "$CHROME" "${COMMON[@]}" --window-size=768,1024 --dump-dom 'http://127.0.0.1:4173/admin/?qa=admin-ranking&qaLocale=en&section=ranking' > admin-workspace-qa/tablet-ranking.html
+          grep -q 'data-qa-admin-ranking="true"' admin-workspace-qa/tablet-ranking.html
+          grep -q 'UNAVAILABLE' admin-workspace-qa/tablet-ranking.html
           grep -q 'data-qa-admin-overflow="false"' admin-workspace-qa/tablet-ranking.html
       - name: Upload admin workspace evidence
         if: always()
