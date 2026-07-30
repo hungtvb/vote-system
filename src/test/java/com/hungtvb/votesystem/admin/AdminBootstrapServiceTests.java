@@ -1,5 +1,6 @@
 package com.hungtvb.votesystem.admin;
 
+import com.hungtvb.votesystem.user.AccountStatus;
 import com.hungtvb.votesystem.user.AppUser;
 import com.hungtvb.votesystem.user.Role;
 import com.hungtvb.votesystem.user.UserRepository;
@@ -9,6 +10,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.DefaultApplicationArguments;
 
+import java.time.Instant;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -44,6 +46,22 @@ class AdminBootstrapServiceTests {
 
         assertFalse(service.promoteExistingUser("admin@example.com"));
         verify(userRepository).save(user);
+    }
+
+    @Test
+    void rejectsRestrictedBootstrapTargetWithoutExposingAccountDetails() {
+        AdminBootstrapService service = new AdminBootstrapService(userRepository);
+        AppUser user = AppUser.create("restricted@example.com", "hash");
+        user.restrict(AccountStatus.SUSPENDED, null, Instant.now());
+        when(userRepository.findByEmail("restricted@example.com")).thenReturn(Optional.of(user));
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> service.promoteExistingUser("restricted@example.com")
+        );
+
+        assertEquals("Configured admin bootstrap target is unavailable", error.getMessage());
+        verify(userRepository, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
     @Test

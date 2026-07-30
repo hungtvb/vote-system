@@ -18,7 +18,7 @@ PostgreSQL is the durable source of truth. Redis contains rebuildable rate-limit
 
 **Backend:** Java 21, Spring Boot 3.5, Spring Security, OAuth2/OIDC, JWT access tokens, rotating refresh cookies, Spring Data JPA/Redis, PostgreSQL 17, Flyway, Micrometer, Testcontainers.
 
-**Frontend:** Next.js 16 App Router, React 19, TypeScript 5.9, SCSS Modules, static-export-compatible production build, VI/EN catalogs, deterministic visual/accessibility QA.
+**Frontend:** Next.js 16 App Router, React 19, TypeScript 5.9, SCSS Modules, static-export-compatible build, VI/EN catalogs, deterministic visual/accessibility QA.
 
 ## Implemented capabilities
 
@@ -38,34 +38,39 @@ PostgreSQL is the durable source of truth. Redis contains rebuildable rate-limit
 - `LATEST`, `HOT`, `TOP_DAY`, `TOP_WEEK`, and authenticated `MINE` feeds.
 - Upvote/downvote, change, repeated-choice removal, and explicit removal.
 - Atomic aggregates, score, projected verdict, and final verdict.
-- Optimistic frontend updates with authoritative REST and SSE reconciliation.
+- Optimistic frontend updates with authoritative REST/SSE reconciliation.
 
 ### Admin and moderation
 
-Application roles are limited to `USER` and `ADMIN`. Every `/api/v1/admin/**` route is protected at request and method levels.
-
-Implemented foundations:
-
-- disabled-by-default promotion of an existing account to ADMIN;
-- append-only PostgreSQL audit log with bounded JSONB metadata;
-- database trigger rejecting audit updates and deletes;
-- protected paginated audit-log read API;
-- audited ballot hide, restore, and administrator soft-delete.
-
-Ballot lifecycle and moderation are separate:
+Every `/api/v1/admin/**` route is protected at request and method levels. Role and moderation state remain separate:
 
 ```text
-BallotStatus       OPEN | CLOSED
-ModerationStatus   VISIBLE | HIDDEN | DELETED
+Role                USER | ADMIN
+AccountStatus       ACTIVE | SUSPENDED | BANNED
+BallotStatus        OPEN | CLOSED
+ModerationStatus    VISIBLE | HIDDEN | DELETED
 ```
 
-Hidden/deleted ballots are excluded from public feeds, detail, voting, SSE, and author mutations. Administrator soft-delete preserves ballot and vote rows. PostgreSQL state and the matching audit record commit atomically under a ballot lock; Redis/SSE convergence runs after commit.
+Implemented:
+
+- disabled-by-default promotion of an existing active account to ADMIN;
+- append-only PostgreSQL audit log with bounded JSONB metadata;
+- database trigger rejecting audit updates/deletes;
+- protected paginated audit-log read API;
+- audited ballot hide, restore, and administrator soft-delete;
+- audited user suspend, ban, restore, and refresh-session revocation;
+- immediate local/social/refresh/JWT enforcement for restricted accounts;
+- self-lockout and last-active-administrator protection;
+- temporary restrictions without a scheduler;
+- atomic account-state, session-revocation, and audit transactions.
+
+Hidden/deleted ballots are excluded from public feeds, detail, voting, SSE, and owner mutations. Restricted accounts keep their role, profile, linked identities, ballots, votes, and public history, but authenticated access is denied immediately. Public history remains readable anonymously.
 
 ### Redis and realtime
 
 - Atomic Redis sliding-window rate limits.
 - Redis sorted-set ranking with PostgreSQL fallback.
-- Ranked IDs re-checked against PostgreSQL visibility, so stale Redis members cannot expose moderated ballots.
+- Ranked IDs re-checked against PostgreSQL visibility.
 - Public per-ballot SSE snapshots, heartbeats, reconnect hints, and cleanup.
 - Ranking and SSE side effects use separate bounded FIFO executors.
 
@@ -115,8 +120,6 @@ npm test
 npm run build
 ```
 
-Production images:
-
 ```bash
 docker build -t vote-system .
 docker build -f Dockerfile.railway -t vote-system-api .
@@ -144,6 +147,10 @@ GET    /api/v1/admin/audit-logs
 POST   /api/v1/admin/posts/{postId}/hide
 POST   /api/v1/admin/posts/{postId}/restore
 POST   /api/v1/admin/posts/{postId}/delete
+POST   /api/v1/admin/users/{userId}/suspend
+POST   /api/v1/admin/users/{userId}/ban
+POST   /api/v1/admin/users/{userId}/restore
+POST   /api/v1/admin/users/{userId}/revoke-sessions
 
 GET    /api/v1/posts
 POST   /api/v1/posts
@@ -151,7 +158,6 @@ GET    /api/v1/posts/{postId}
 PUT    /api/v1/posts/{postId}
 POST   /api/v1/posts/{postId}/close
 DELETE /api/v1/posts/{postId}
-
 PUT    /api/v1/posts/{postId}/vote
 DELETE /api/v1/posts/{postId}/vote
 GET    /api/v1/posts/{postId}/events
@@ -163,11 +169,12 @@ Start at [`docs/README.md`](docs/README.md).
 
 - [`docs/API.md`](docs/API.md) — API contracts and runtime boundaries.
 - [`docs/ADMIN.md`](docs/ADMIN.md) — authorization, bootstrap, audit, and admin mutations.
-- [`docs/MODERATION.md`](docs/MODERATION.md) — ballot moderation, visibility, Redis/SSE, and concurrency.
+- [`docs/MODERATION.md`](docs/MODERATION.md) — ballot moderation and public visibility.
+- [`docs/ACCOUNT-MODERATION.md`](docs/ACCOUNT-MODERATION.md) — user restrictions, sessions, enforcement, and safeguards.
 - [`docs/FRONTEND-AUTH.md`](docs/FRONTEND-AUTH.md) — browser session lifecycle.
 - [`docs/PROFILE.md`](docs/PROFILE.md) — profile and Ballot Mark contracts.
 - [`docs/I18N.md`](docs/I18N.md) — Vietnamese/English behavior.
-- [`docs/SOCIAL-LOGIN.md`](docs/SOCIAL-LOGIN.md) — provider setup and account linking.
+- [`docs/SOCIAL-LOGIN.md`](docs/SOCIAL-LOGIN.md) — provider setup and linking.
 - [`docs/REALTIME-VOTES.md`](docs/REALTIME-VOTES.md) — SSE and post-commit delivery.
 - [`docs/DEPLOY-VERCEL-RAILWAY.md`](docs/DEPLOY-VERCEL-RAILWAY.md) — production deployment.
 

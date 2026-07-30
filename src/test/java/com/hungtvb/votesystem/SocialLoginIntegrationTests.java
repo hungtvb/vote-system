@@ -1,5 +1,6 @@
 package com.hungtvb.votesystem;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hungtvb.votesystem.auth.social.SocialAuthContext;
 import com.hungtvb.votesystem.auth.social.SocialAuthenticationSuccessHandler;
@@ -45,7 +46,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -206,9 +206,19 @@ class SocialLoginIntegrationTests {
         mockMvc.perform(post("/api/v1/auth/social/github/link/start"))
                 .andExpect(status().isUnauthorized());
 
-        UUID userId = UUID.randomUUID();
+        MvcResult registration = mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"social-link-start@example.com","password":"runtime-password"}
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn();
+        JsonNode payload = objectMapper.readTree(registration.getResponse().getContentAsString());
+        UUID userId = UUID.fromString(payload.get("profile").get("id").asText());
+        String accessToken = payload.get("accessToken").asText();
+
         MvcResult linked = mockMvc.perform(post("/api/v1/auth/social/github/link/start")
-                        .with(jwt().jwt(builder -> builder.subject(userId.toString()))))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.authorizationUrl").value("http://localhost/oauth2/authorization/github"))
                 .andReturn();

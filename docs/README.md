@@ -20,11 +20,12 @@ Render is not an active production target. The root `Dockerfile` is retained for
 |---|---|
 | [`../README.md`](../README.md) | Project overview, stack, capabilities, local development, and active roadmap |
 | [`API.md`](API.md) | Authentication bootstrap, profiles, ballots, feeds, voting, admin APIs, rate limits, SSE, and observability |
-| [`FRONTEND-AUTH.md`](FRONTEND-AUTH.md) | In-memory access token, refresh rotation, single-request restore, retry, logout, and rollout behavior |
+| [`FRONTEND-AUTH.md`](FRONTEND-AUTH.md) | In-memory access token, refresh rotation, account enforcement, retry, logout, and rollout behavior |
 | [`PROFILE.md`](PROFILE.md) | Private/public profile contracts, Ballot Mark presets, validation, and privacy boundaries |
 | [`I18N.md`](I18N.md) | Current VI/EN locale behavior, catalogs, formatting, and verification |
-| [`ADMIN.md`](ADMIN.md) | Admin role boundary, controlled bootstrap, immutable audit log, and audited mutation rules |
-| [`MODERATION.md`](MODERATION.md) | Ballot moderation states, transitions, public visibility, Redis/SSE convergence, and concurrency boundaries |
+| [`ADMIN.md`](ADMIN.md) | Admin role boundary, bootstrap, immutable audit log, and audited mutation rules |
+| [`MODERATION.md`](MODERATION.md) | Ballot moderation states, public visibility, Redis/SSE convergence, and concurrency boundaries |
+| [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md) | User suspension, banning, session revocation, immediate access enforcement, and admin safeguards |
 | [`SOCIAL-LOGIN.md`](SOCIAL-LOGIN.md) | Google OIDC, GitHub OAuth2, callback URLs, temporary OAuth session, and explicit linking |
 | [`REALTIME-VOTES.md`](REALTIME-VOTES.md) | Public ballot SSE contract, convergence, bounded async delivery, and metrics |
 | [`DEPLOY-VERCEL-RAILWAY.md`](DEPLOY-VERCEL-RAILWAY.md) | Active production deployment, profiles, variables, and verification |
@@ -49,14 +50,14 @@ Production secrets and current platform settings remain outside the repository. 
 
 PostgreSQL owns:
 
-- local users and linked provider identities;
+- local users, roles, account status, and linked provider identities;
 - rotating refresh sessions and replay/revocation history;
 - editable profile fields and preferred-locale value;
 - ballots, lifecycle and moderation state, vote counts, score, and verdict state;
 - individual user votes;
 - append-only administrator audit records.
 
-Administrator soft-delete preserves ballot and vote rows. The existing author-owned hard-delete flow remains separate.
+Administrator soft-delete preserves ballot and vote rows. Account restriction preserves role, profile, linked identities, ballots, and votes.
 
 ### Derived infrastructure
 
@@ -74,41 +75,33 @@ SSE is a convergence channel, not a durable event log. It carries authoritative 
 
 After a vote transaction commits, ranking and SSE work are enqueued to separate bounded FIFO executors. After hide/delete commits, ranking membership is removed and existing SSE subscribers are completed asynchronously. PostgreSQL remains authoritative.
 
-### Authentication and profile bootstrap
+### Authentication and account enforcement
 
-Register, login, and refresh return session fields plus the authenticated private profile. The normal frontend restore path uses one `POST /api/v1/auth/refresh` request and does not follow it with `/users/me`. A temporary compatibility fallback remains for a rolling deployment that reaches an older backend response.
+Register, login, and refresh return session fields plus the authenticated private profile. The normal frontend restore path uses one `POST /api/v1/auth/refresh` request and does not follow it with `/users/me`.
 
 Access tokens remain in React memory. Refresh tokens remain in path-scoped `HttpOnly` cookies and are never returned in JSON or stored by frontend JavaScript.
+
+`ACTIVE`, `SUSPENDED`, and `BANNED` are independent from `USER` and `ADMIN`. PostgreSQL is checked after bearer-token authentication for every request carrying a Vote System JWT. Non-active accounts are rejected immediately at local/social login completion, refresh rotation, authenticated REST, and authenticated SSE boundaries. Restriction revokes every active refresh session atomically. See [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md).
 
 ### Internationalization
 
 System-owned UI copy is available in Vietnamese and English with Vietnamese as the default fallback. Guest resolution uses saved local preference, then supported browser language, then Vietnamese. Authenticated `preferredLocale` is applied once per resolved user without remounting the product shell. User-generated content is never auto-translated.
 
-### Administrator boundary, audit trail, and ballot moderation
+### Administrator boundary and moderation
 
-`USER` and `ADMIN` are the only application roles. Registration and social onboarding always create `USER`. `/api/v1/admin/**` requires `ROLE_ADMIN` at both the request and controller-method layers. Controlled bootstrap can promote an existing account for one deployment; it is disabled by default and never creates credentials.
+`USER` and `ADMIN` are the only application roles. Registration and social onboarding always create `USER`. `/api/v1/admin/**` requires `ROLE_ADMIN` at both request and controller-method layers. Controlled bootstrap can promote an existing account for one deployment; it is disabled by default and never creates credentials.
 
 Administrator audit records are persisted as bounded JSONB rows through an internal append service. PostgreSQL rejects every audit-row update and delete through a trigger. Administrators can read deterministic paginated records through `GET /api/v1/admin/audit-logs`.
 
-Ballot lifecycle (`OPEN/CLOSED`) is independent from moderation (`VISIBLE/HIDDEN/DELETED`). Admin hide, restore, and soft-delete acquire a ballot lock and append the matching audit record in the same transaction. Public detail/feed/vote/SSE and owner mutation paths expose only visible ballots. See [`ADMIN.md`](ADMIN.md) and [`MODERATION.md`](MODERATION.md).
+Ballot lifecycle (`OPEN/CLOSED`) is independent from ballot moderation (`VISIBLE/HIDDEN/DELETED`). Account authorization role is independent from account moderation (`ACTIVE/SUSPENDED/BANNED`). Both moderation domains use atomic state-and-audit transactions and pessimistic/concurrency safeguards. See [`ADMIN.md`](ADMIN.md), [`MODERATION.md`](MODERATION.md), and [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md).
 
 ## Production profile and observability
 
-`Dockerfile.railway` sets:
+`Dockerfile.railway` sets `SPRING_PROFILES_ACTIVE=production`.
 
-```text
-SPRING_PROFILES_ACTIVE=production
-```
+`application-production.yml` disables OpenAPI/Swagger, verbose Spring/Hibernate logging, Hibernate statistics, and session-event metrics. Actuator exposes `health`, `info`, and `metrics`; only health is public.
 
-`application-production.yml`:
-
-- disables OpenAPI JSON and Swagger UI;
-- sets Spring Web and Hibernate logging to INFO;
-- disables Hibernate statistics and session-event metrics.
-
-The base `application.yml` keeps verbose diagnostic settings for local/performance investigation, but they are overridden in Railway production.
-
-Actuator exposes `health`, `info`, and `metrics`; only health is public. Important metrics include:
+Important metrics include:
 
 ```text
 http.server.requests
@@ -138,14 +131,13 @@ TON-189  Empty public-bio cleanup
 TON-191  Locale fallback and authenticated preference sync
 TON-192  Admin authorization boundary and controlled bootstrap
 TON-194  Immutable admin audit log foundation
+TON-195  Audited ballot moderation and visibility enforcement
 ```
 
 Current sequence:
 
 ```text
 TON-109  Admin roles, audit log, moderation, and operational dashboard
-  TON-195  Audited ballot moderation and visibility enforcement
-     ↓
   TON-196  User suspension, banning, and access enforcement
      ↓
   TON-197/198  Admin search and safe ranking operations
@@ -163,14 +155,4 @@ TON-115  Constrained direct messaging
 
 ## Documentation maintenance
 
-Use [`DOCUMENTATION-MAINTENANCE.md`](DOCUMENTATION-MAINTENANCE.md) for the Definition of Done and audit process. Every PR must declare either:
-
-```text
-Docs updated: <files and reason>
-```
-
-or:
-
-```text
-Docs: N/A — <reason>
-```
+Use [`DOCUMENTATION-MAINTENANCE.md`](DOCUMENTATION-MAINTENANCE.md) for the Definition of Done and audit process. Every PR must declare either `Docs updated: <files and reason>` or `Docs: N/A — <reason>`.

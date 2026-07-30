@@ -3,6 +3,7 @@ package com.hungtvb.votesystem.auth.social;
 import com.hungtvb.votesystem.auth.AuthService;
 import com.hungtvb.votesystem.auth.IssuedAuthSession;
 import com.hungtvb.votesystem.auth.RefreshTokenCookie;
+import com.hungtvb.votesystem.common.error.UnauthorizedException;
 import com.hungtvb.votesystem.user.AppUser;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -23,9 +24,9 @@ public class SocialAuthenticationSuccessHandler implements AuthenticationSuccess
     private final SocialRedirects redirects;
 
     public SocialAuthenticationSuccessHandler(SocialLoginService socialLoginService,
-                                              AuthService authService,
-                                              RefreshTokenCookie refreshTokenCookie,
-                                              SocialRedirects redirects) {
+                                               AuthService authService,
+                                               RefreshTokenCookie refreshTokenCookie,
+                                               SocialRedirects redirects) {
         this.socialLoginService = socialLoginService;
         this.authService = authService;
         this.refreshTokenCookie = refreshTokenCookie;
@@ -53,6 +54,9 @@ public class SocialAuthenticationSuccessHandler implements AuthenticationSuccess
             refreshTokenCookie.write(response, session.refreshToken());
             clearOAuthSession(request);
             response.sendRedirect(redirects.success(provider, context.intent()));
+        } catch (UnauthorizedException exception) {
+            clearOAuthSession(request);
+            response.sendRedirect(redirects.failure("account_unavailable", context.intent()));
         } catch (SocialLoginException exception) {
             clearOAuthSession(request);
             response.sendRedirect(redirects.failure(exception.code(), context.intent()));

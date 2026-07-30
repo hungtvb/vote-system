@@ -36,6 +36,14 @@ test('account-link-required callback has actionable copy', () => {
   assert.match(socialCallbackMessage(callback), /link the provider from Voter ID/i);
 });
 
+test('unavailable account callback stays generic and actionable', () => {
+  const callback = parseSocialCallback('?social=error&code=account_unavailable');
+  assert.ok(callback);
+  const message = socialCallbackMessage(callback);
+  assert.match(message, /account is currently unavailable/i);
+  assert.doesNotMatch(message, /suspend|ban|reason/i);
+});
+
 test('callback cleanup removes only social parameters', () => {
   const url = new URL('https://vote.test/?feed=HOT&social=success&provider=google&intent=create-ballot#top');
   assert.equal(stripSocialCallback(url), '/?feed=HOT#top');

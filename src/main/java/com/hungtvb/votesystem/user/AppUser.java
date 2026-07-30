@@ -50,6 +50,16 @@ public class AppUser {
     @Column(nullable = false, length = 32)
     private Role role;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "account_status", nullable = false, length = 16)
+    private AccountStatus accountStatus;
+
+    @Column(name = "status_until")
+    private Instant statusUntil;
+
+    @Column(name = "status_updated_at")
+    private Instant statusUpdatedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -68,6 +78,7 @@ public class AppUser {
         this.preferredLocale = PreferredLocale.VI;
         this.passwordHash = passwordHash;
         this.role = role;
+        this.accountStatus = AccountStatus.ACTIVE;
     }
 
     public static AppUser create(String email, String passwordHash) {
@@ -102,9 +113,60 @@ public class AppUser {
         return true;
     }
 
+    public AccountStatus effectiveAccountStatus(Instant now) {
+        if (accountStatus != AccountStatus.ACTIVE
+                && statusUntil != null
+                && !statusUntil.isAfter(now)) {
+            return AccountStatus.ACTIVE;
+        }
+        return accountStatus;
+    }
+
+    public boolean hasActiveAccess(Instant now) {
+        return effectiveAccountStatus(now) == AccountStatus.ACTIVE;
+    }
+
+    public void restrict(AccountStatus requestedStatus, Instant until, Instant now) {
+        if (requestedStatus == null || requestedStatus == AccountStatus.ACTIVE) {
+            throw new IllegalArgumentException("Restriction status must be SUSPENDED or BANNED");
+        }
+        normalizeExpiredRestriction(now);
+        if (accountStatus != AccountStatus.ACTIVE) {
+            throw new IllegalStateException("Only active accounts can be restricted");
+        }
+        accountStatus = requestedStatus;
+        statusUntil = until;
+        statusUpdatedAt = now;
+    }
+
+    public void restore(Instant now) {
+        normalizeExpiredRestriction(now);
+        if (accountStatus == AccountStatus.ACTIVE) {
+            throw new IllegalStateException("Only restricted accounts can be restored");
+        }
+        accountStatus = AccountStatus.ACTIVE;
+        statusUntil = null;
+        statusUpdatedAt = now;
+    }
+
+    public boolean normalizeExpiredRestriction(Instant now) {
+        if (accountStatus != AccountStatus.ACTIVE
+                && statusUntil != null
+                && !statusUntil.isAfter(now)) {
+            accountStatus = AccountStatus.ACTIVE;
+            statusUntil = null;
+            statusUpdatedAt = now;
+            return true;
+        }
+        return false;
+    }
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();
+        if (accountStatus == null) {
+            accountStatus = AccountStatus.ACTIVE;
+        }
         this.createdAt = now;
         this.updatedAt = now;
     }
@@ -123,6 +185,9 @@ public class AppUser {
     public PreferredLocale getPreferredLocale() { return preferredLocale; }
     public String getPasswordHash() { return passwordHash; }
     public Role getRole() { return role; }
+    public AccountStatus getAccountStatus() { return accountStatus; }
+    public Instant getStatusUntil() { return statusUntil; }
+    public Instant getStatusUpdatedAt() { return statusUpdatedAt; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

@@ -12,6 +12,7 @@ import com.hungtvb.votesystem.common.error.ConflictException;
 import com.hungtvb.votesystem.common.error.UnauthorizedException;
 import com.hungtvb.votesystem.security.AuthenticatedUser;
 import com.hungtvb.votesystem.security.TokenService;
+import com.hungtvb.votesystem.user.AccountAccessPolicy;
 import com.hungtvb.votesystem.user.AppUser;
 import com.hungtvb.votesystem.user.UserRepository;
 import com.hungtvb.votesystem.user.dto.UserProfileResponse;
@@ -33,6 +34,7 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final TokenService tokenService;
     private final RefreshSessionService refreshSessionService;
+    private final AccountAccessPolicy accountAccessPolicy;
     private final AuthRestoreMetrics metrics;
 
     public AuthService(UserRepository userRepository,
@@ -41,6 +43,7 @@ public class AuthService {
                        AuthenticationManager authenticationManager,
                        TokenService tokenService,
                        RefreshSessionService refreshSessionService,
+                       AccountAccessPolicy accountAccessPolicy,
                        AuthRestoreMetrics metrics) {
         this.userRepository = userRepository;
         this.identityRepository = identityRepository;
@@ -48,6 +51,7 @@ public class AuthService {
         this.authenticationManager = authenticationManager;
         this.tokenService = tokenService;
         this.refreshSessionService = refreshSessionService;
+        this.accountAccessPolicy = accountAccessPolicy;
         this.metrics = metrics;
     }
 
@@ -70,7 +74,7 @@ public class AuthService {
                 new UsernamePasswordAuthenticationToken(normalizeEmail(request.email()), request.password())
         );
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
-        AppUser user = userRepository.findById(principal.id())
+        AppUser user = userRepository.findByIdForUpdate(principal.id())
                 .orElseThrow(() -> new UnauthorizedException("User account is unavailable"));
         return issueSessionWithinTransaction(user, false);
     }
@@ -90,15 +94,19 @@ public class AuthService {
 
     @Transactional
     public IssuedAuthSession issueSession(AppUser user) {
-        return issueSessionWithinTransaction(user, false);
+        AppUser lockedUser = userRepository.findByIdForUpdate(user.getId())
+                .orElseThrow(() -> new UnauthorizedException("User account is unavailable"));
+        return issueSessionWithinTransaction(lockedUser, false);
     }
 
     private IssuedAuthSession issueSessionWithinTransaction(AppUser user, boolean measureRefresh) {
+        accountAccessPolicy.requireActive(user);
         return response(refreshSessionService.issue(user), measureRefresh);
     }
 
     private IssuedAuthSession response(RefreshGrant grant, boolean measureRefresh) {
         AppUser user = grant.user();
+        accountAccessPolicy.requireActive(user);
         List<UserIdentity> identities = measureRefresh
                 ? metrics.timeStage(
                         AuthRestoreMetrics.OPERATION_REFRESH,
