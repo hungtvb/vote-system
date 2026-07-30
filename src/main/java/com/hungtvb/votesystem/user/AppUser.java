@@ -94,6 +94,14 @@ public class AppUser {
         this.preferredLocale = preferredLocale;
     }
 
+    public boolean promoteToAdmin() {
+        if (role == Role.ADMIN) {
+            return false;
+        }
+        role = Role.ADMIN;
+        return true;
+    }
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();
