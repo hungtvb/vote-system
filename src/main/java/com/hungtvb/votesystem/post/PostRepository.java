@@ -17,9 +17,20 @@ import java.util.UUID;
 public interface PostRepository extends JpaRepository<Post, UUID>, JpaSpecificationExecutor<Post> {
     Page<Post> findAllByOrderByCreatedAtDesc(Pageable pageable);
 
+    Optional<Post> findByIdAndModerationStatus(UUID postId, ModerationStatus moderationStatus);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select post from Post post where post.id = :postId")
     Optional<Post> findByIdForUpdate(@Param("postId") UUID postId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select post
+              from Post post
+             where post.id = :postId
+               and post.moderationStatus = com.hungtvb.votesystem.post.ModerationStatus.VISIBLE
+            """)
+    Optional<Post> findVisibleByIdForUpdate(@Param("postId") UUID postId);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
@@ -29,6 +40,7 @@ public interface PostRepository extends JpaRepository<Post, UUID>, JpaSpecificat
                    post.downVotes = post.downVotes + :downDelta,
                    post.updatedAt = :updatedAt
              where post.id = :postId
+               and post.moderationStatus = com.hungtvb.votesystem.post.ModerationStatus.VISIBLE
                and post.upVotes + :upDelta >= 0
                and post.downVotes + :downDelta >= 0
             """)

@@ -1,6 +1,6 @@
 # Vote System documentation
 
-This directory documents the current `main` branch. Controller mappings, DTOs, Flyway migrations, security configuration, runtime source, and active Spring profiles remain the implementation source of truth.
+This directory documents the current branch. Controller mappings, DTOs, Flyway migrations, security configuration, runtime source, and active Spring profiles remain the implementation source of truth.
 
 ## Current production topology
 
@@ -19,11 +19,12 @@ Render is not an active production target. The root `Dockerfile` is retained for
 | Document | Purpose |
 |---|---|
 | [`../README.md`](../README.md) | Project overview, stack, capabilities, local development, and active roadmap |
-| [`API.md`](API.md) | Authentication bootstrap, profiles, ballots, feeds, voting, rate limits, SSE, and observability |
+| [`API.md`](API.md) | Authentication bootstrap, profiles, ballots, feeds, voting, admin APIs, rate limits, SSE, and observability |
 | [`FRONTEND-AUTH.md`](FRONTEND-AUTH.md) | In-memory access token, refresh rotation, single-request restore, retry, logout, and rollout behavior |
 | [`PROFILE.md`](PROFILE.md) | Private/public profile contracts, Ballot Mark presets, validation, and privacy boundaries |
 | [`I18N.md`](I18N.md) | Current VI/EN locale behavior, catalogs, formatting, and verification |
-| [`ADMIN.md`](ADMIN.md) | Admin role boundary, controlled bootstrap, immutable audit log, protected read API, privacy, and retention boundaries |
+| [`ADMIN.md`](ADMIN.md) | Admin role boundary, controlled bootstrap, immutable audit log, and audited mutation rules |
+| [`MODERATION.md`](MODERATION.md) | Ballot moderation states, transitions, public visibility, Redis/SSE convergence, and concurrency boundaries |
 | [`SOCIAL-LOGIN.md`](SOCIAL-LOGIN.md) | Google OIDC, GitHub OAuth2, callback URLs, temporary OAuth session, and explicit linking |
 | [`REALTIME-VOTES.md`](REALTIME-VOTES.md) | Public ballot SSE contract, convergence, bounded async delivery, and metrics |
 | [`DEPLOY-VERCEL-RAILWAY.md`](DEPLOY-VERCEL-RAILWAY.md) | Active production deployment, profiles, variables, and verification |
@@ -51,9 +52,11 @@ PostgreSQL owns:
 - local users and linked provider identities;
 - rotating refresh sessions and replay/revocation history;
 - editable profile fields and preferred-locale value;
-- ballots, lifecycle metadata, vote counts, score, and verdict state;
+- ballots, lifecycle and moderation state, vote counts, score, and verdict state;
 - individual user votes;
 - append-only administrator audit records.
+
+Administrator soft-delete preserves ballot and vote rows. The existing author-owned hard-delete flow remains separate.
 
 ### Derived infrastructure
 
@@ -63,13 +66,13 @@ Redis owns rebuildable or short-lived state:
 - HOT, TOP_DAY, and TOP_WEEK sorted sets;
 - shared application cache entries.
 
-Ranked feeds fall back to latest-first PostgreSQL results when Redis is unavailable. Ranking state can be rebuilt from PostgreSQL.
+Ranked feeds fall back to latest-first PostgreSQL results when Redis is unavailable. Every ranked result is re-checked against PostgreSQL visibility, so a stale Redis member cannot expose a hidden or deleted ballot.
 
 ### Realtime delivery
 
 SSE is a convergence channel, not a durable event log. It carries authoritative ballot aggregate snapshots and excludes `myVote`, identity data, and activity-history semantics.
 
-After a vote transaction commits, ranking and SSE work are enqueued to separate bounded FIFO executors. The HTTP response does not wait for ordinary Redis or connected-client network I/O. PostgreSQL remains authoritative.
+After a vote transaction commits, ranking and SSE work are enqueued to separate bounded FIFO executors. After hide/delete commits, ranking membership is removed and existing SSE subscribers are completed asynchronously. PostgreSQL remains authoritative.
 
 ### Authentication and profile bootstrap
 
@@ -81,11 +84,13 @@ Access tokens remain in React memory. Refresh tokens remain in path-scoped `Http
 
 System-owned UI copy is available in Vietnamese and English with Vietnamese as the default fallback. Guest resolution uses saved local preference, then supported browser language, then Vietnamese. Authenticated `preferredLocale` is applied once per resolved user without remounting the product shell. User-generated content is never auto-translated.
 
-### Administrator boundary and audit trail
+### Administrator boundary, audit trail, and ballot moderation
 
 `USER` and `ADMIN` are the only application roles. Registration and social onboarding always create `USER`. `/api/v1/admin/**` requires `ROLE_ADMIN` at both the request and controller-method layers. Controlled bootstrap can promote an existing account for one deployment; it is disabled by default and never creates credentials.
 
-Administrator audit records are persisted as bounded JSONB rows through an internal append service. The application exposes no update/delete repository methods, and PostgreSQL rejects every audit-row update or delete through a trigger. Administrators can read deterministic paginated records through `GET /api/v1/admin/audit-logs`. See [`ADMIN.md`](ADMIN.md).
+Administrator audit records are persisted as bounded JSONB rows through an internal append service. PostgreSQL rejects every audit-row update and delete through a trigger. Administrators can read deterministic paginated records through `GET /api/v1/admin/audit-logs`.
+
+Ballot lifecycle (`OPEN/CLOSED`) is independent from moderation (`VISIBLE/HIDDEN/DELETED`). Admin hide, restore, and soft-delete acquire a ballot lock and append the matching audit record in the same transaction. Public detail/feed/vote/SSE and owner mutation paths expose only visible ballots. See [`ADMIN.md`](ADMIN.md) and [`MODERATION.md`](MODERATION.md).
 
 ## Production profile and observability
 
@@ -132,17 +137,20 @@ TON-187  Custom Ballot Mark SVG set
 TON-189  Empty public-bio cleanup
 TON-191  Locale fallback and authenticated preference sync
 TON-192  Admin authorization boundary and controlled bootstrap
+TON-194  Immutable admin audit log foundation
 ```
 
 Current sequence:
 
 ```text
 TON-109  Admin roles, audit log, moderation, and operational dashboard
-  TON-194  Immutable admin audit log foundation
+  TON-195  Audited ballot moderation and visibility enforcement
      ↓
-  moderation and operational admin mutations
+  TON-196  User suspension, banning, and access enforcement
      ↓
-  protected admin dashboard
+  TON-197/198  Admin search and safe ranking operations
+     ↓
+  TON-199  Protected admin moderation workspace
      ↓
 TON-140  Unified reports and moderation cases
      ↓

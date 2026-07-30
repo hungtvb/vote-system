@@ -2,6 +2,7 @@ package com.hungtvb.votesystem.vote.stream;
 
 import com.hungtvb.votesystem.common.error.ConflictException;
 import com.hungtvb.votesystem.common.error.ResourceNotFoundException;
+import com.hungtvb.votesystem.post.ModerationStatus;
 import com.hungtvb.votesystem.post.Post;
 import com.hungtvb.votesystem.post.PostRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,7 +31,7 @@ public class BallotVoteStreamService {
     }
 
     public SseEmitter subscribe(UUID postId, String lastEventId) {
-        Post post = postRepository.findById(postId)
+        Post post = postRepository.findByIdAndModerationStatus(postId, ModerationStatus.VISIBLE)
                 .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
         if (!post.acceptsVotes(Instant.now())) {
             throw new ConflictException("Only active ballots expose a vote stream");
@@ -77,6 +78,13 @@ public class BallotVoteStreamService {
                 client.completeWithError(exception);
             }
         });
+    }
+
+    public void closeSubscribers(UUID postId) {
+        Map<UUID, StreamClient> clients = clientsByPost.remove(postId);
+        if (clients != null) {
+            clients.values().forEach(StreamClient::complete);
+        }
     }
 
     @Scheduled(fixedDelayString = "${app.vote-stream.heartbeat-ms:15000}")
@@ -135,6 +143,14 @@ public class BallotVoteStreamService {
 
         private synchronized void send(SseEmitter.SseEventBuilder event) throws IOException {
             emitter.send(event);
+        }
+
+        private void complete() {
+            try {
+                emitter.complete();
+            } catch (IllegalStateException ignored) {
+                // The response can already be completed by the servlet container.
+            }
         }
 
         private void completeWithError(Throwable error) {

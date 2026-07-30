@@ -1,7 +1,16 @@
 package com.hungtvb.votesystem.post;
 
 import com.hungtvb.votesystem.vote.VoteVerdict;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
 
 import java.time.Instant;
 import java.util.Locale;
@@ -32,6 +41,13 @@ public class Post {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private BallotStatus status;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "moderation_status", nullable = false, length = 16)
+    private ModerationStatus moderationStatus;
+
+    @Column(name = "moderation_updated_at")
+    private Instant moderationUpdatedAt;
 
     @Column(name = "closes_at")
     private Instant closesAt;
@@ -73,6 +89,7 @@ public class Post {
         this.content = content;
         this.category = category;
         this.status = BallotStatus.OPEN;
+        this.moderationStatus = ModerationStatus.VISIBLE;
         this.closesAt = closesAt;
         this.verdictThreshold = verdictThreshold;
         this.voteScore = 0;
@@ -105,17 +122,48 @@ public class Post {
         this.finalVerdict = VoteVerdict.from(upVotes, downVotes, verdictThreshold);
     }
 
+    public void hide(Instant now) {
+        if (moderationStatus != ModerationStatus.VISIBLE) {
+            throw new IllegalStateException("Only visible ballots can be hidden");
+        }
+        moderationStatus = ModerationStatus.HIDDEN;
+        moderationUpdatedAt = now;
+    }
+
+    public void restore(Instant now) {
+        if (moderationStatus != ModerationStatus.HIDDEN) {
+            throw new IllegalStateException("Only hidden ballots can be restored");
+        }
+        moderationStatus = ModerationStatus.VISIBLE;
+        moderationUpdatedAt = now;
+    }
+
+    public void softDelete(Instant now) {
+        if (moderationStatus == ModerationStatus.DELETED) {
+            throw new IllegalStateException("Deleted ballots cannot be deleted again");
+        }
+        moderationStatus = ModerationStatus.DELETED;
+        moderationUpdatedAt = now;
+    }
+
     public boolean isOpen() {
         return status == BallotStatus.OPEN;
     }
 
+    public boolean isPubliclyVisible() {
+        return moderationStatus == ModerationStatus.VISIBLE;
+    }
+
     public boolean acceptsVotes(Instant now) {
-        return isOpen() && (closesAt == null || now.isBefore(closesAt));
+        return isPubliclyVisible() && isOpen() && (closesAt == null || now.isBefore(closesAt));
     }
 
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();
+        if (moderationStatus == null) {
+            moderationStatus = ModerationStatus.VISIBLE;
+        }
         this.createdAt = now;
         this.updatedAt = now;
     }
@@ -132,6 +180,8 @@ public class Post {
     public String getContent() { return content; }
     public String getCategory() { return category; }
     public BallotStatus getStatus() { return status; }
+    public ModerationStatus getModerationStatus() { return moderationStatus; }
+    public Instant getModerationUpdatedAt() { return moderationUpdatedAt; }
     public Instant getClosesAt() { return closesAt; }
     public int getVerdictThreshold() { return verdictThreshold; }
     public VoteVerdict getFinalVerdict() { return finalVerdict; }

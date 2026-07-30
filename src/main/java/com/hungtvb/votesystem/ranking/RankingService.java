@@ -16,7 +16,11 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -59,7 +63,7 @@ public class RankingService {
 
     public void applyLatest(UUID postId) {
         Instant now = clock.instant();
-        postRepository.findById(postId).ifPresentOrElse(
+        postRepository.findById(postId).filter(Post::isPubliclyVisible).ifPresentOrElse(
                 post -> rankingRepository.upsert(
                         post.getId(),
                         post.getVoteScore(),
@@ -103,11 +107,47 @@ public class RankingService {
     }
 
     private Page<Post> rankedPage(FeedType feed, Pageable pageable, Instant now) {
-        List<UUID> ids = rankingRepository.range(feed, pageable.getOffset(), pageable.getPageSize(), now);
-        Map<UUID, Post> byId = postRepository.findAllById(ids).stream()
-                .collect(Collectors.toMap(Post::getId, Function.identity()));
-        List<Post> ordered = ids.stream().map(byId::get).filter(java.util.Objects::nonNull).toList();
-        return new PageImpl<>(ordered, pageable, rankingRepository.count(feed, now));
+        Specification<Post> visibleForFeed = PostSpecifications.publiclyVisible().and(rankedWindow(feed, now));
+        long visibleTotal = postRepository.count(visibleForFeed);
+        if (visibleTotal == 0 || pageable.getOffset() >= visibleTotal) {
+            return new PageImpl<>(List.of(), pageable, visibleTotal);
+        }
+
+        long rawTotal = rankingRepository.count(feed, now);
+        long requestedStart = pageable.getOffset();
+        long requestedEnd = requestedStart + pageable.getPageSize();
+        long visibleIndex = 0;
+        List<Post> content = new ArrayList<>(pageable.getPageSize());
+
+        outer:
+        for (long rawOffset = 0; rawOffset < rawTotal; rawOffset += FILTER_SCAN_CHUNK_SIZE) {
+            int chunkSize = (int) Math.min(FILTER_SCAN_CHUNK_SIZE, rawTotal - rawOffset);
+            List<UUID> ids = rankingRepository.range(feed, rawOffset, chunkSize, now);
+            if (ids.isEmpty()) {
+                break;
+            }
+
+            Map<UUID, Post> visibleById = postRepository.findAll(
+                            visibleForFeed.and(PostSpecifications.idIn(ids)))
+                    .stream()
+                    .collect(Collectors.toMap(Post::getId, Function.identity()));
+
+            for (UUID id : ids) {
+                Post post = visibleById.get(id);
+                if (post == null) {
+                    continue;
+                }
+                if (visibleIndex >= requestedStart && visibleIndex < requestedEnd) {
+                    content.add(post);
+                }
+                visibleIndex += 1;
+                if (visibleIndex >= requestedEnd) {
+                    break outer;
+                }
+            }
+        }
+
+        return new PageImpl<>(content, pageable, visibleTotal);
     }
 
     private Page<Post> filteredRankedPage(FeedType feed, Pageable pageable, PostFilter filter, Instant now) {
@@ -116,7 +156,7 @@ public class RankingService {
         long requestedEnd = requestedStart + pageable.getPageSize();
         long matchedTotal = 0;
         List<Post> content = new ArrayList<>(pageable.getPageSize());
-        Specification<Post> baseSpecification = PostSpecifications.matches(filter);
+        Specification<Post> baseSpecification = PostSpecifications.matches(filter).and(rankedWindow(feed, now));
 
         for (long rawOffset = 0; rawOffset < rawTotal; rawOffset += FILTER_SCAN_CHUNK_SIZE) {
             int chunkSize = (int) Math.min(FILTER_SCAN_CHUNK_SIZE, rawTotal - rawOffset);
@@ -146,15 +186,32 @@ public class RankingService {
     }
 
     private void ensureRankings(FeedType feed, Instant now) {
-        if (rankingRepository.isEmpty(feed, now) && postRepository.count() > 0) {
+        if (rankingRepository.isEmpty(feed, now)
+                && postRepository.count(PostSpecifications.publiclyVisible().and(rankedWindow(feed, now))) > 0) {
             rebuild();
         }
+    }
+
+    private Specification<Post> rankedWindow(FeedType feed, Instant now) {
+        return switch (feed) {
+            case HOT -> (root, query, criteriaBuilder) -> criteriaBuilder.conjunction();
+            case TOP_DAY -> PostSpecifications.createdAtOnOrAfter(
+                    LocalDate.ofInstant(now, ZoneOffset.UTC)
+                            .atStartOfDay(ZoneOffset.UTC)
+                            .toInstant());
+            case TOP_WEEK -> PostSpecifications.createdAtOnOrAfter(
+                    LocalDate.ofInstant(now, ZoneOffset.UTC)
+                            .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+                            .atStartOfDay(ZoneOffset.UTC)
+                            .toInstant());
+            case LATEST, MINE -> throw new IllegalArgumentException(feed + " is database-backed");
+        };
     }
 
     public void rebuild() {
         Instant now = clock.instant();
         rankingRepository.clearCurrent(now);
-        for (Post post : postRepository.findAll()) {
+        for (Post post : postRepository.findAll(PostSpecifications.publiclyVisible())) {
             rankingRepository.upsert(post.getId(), post.getVoteScore(),
                     formula.score(post.getVoteScore(), post.getCreatedAt(), now), post.getCreatedAt(), now);
         }
