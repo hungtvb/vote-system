@@ -97,6 +97,11 @@ export function VoterMasthead({
     });
   }
 
+  function openAdminWorkspace(button: HTMLButtonElement) {
+    closeMenu(button);
+    window.location.assign('/admin');
+  }
+
   return (
     <>
       <header className={styles.header}>
@@ -173,6 +178,11 @@ export function VoterMasthead({
                   <button type="button" onClick={event => showMyBallots(event.currentTarget)}>
                     {t('ballots', 'feedMine')}
                   </button>
+                  {visibleProfile.role === 'ADMIN' && (
+                    <button type="button" onClick={event => openAdminWorkspace(event.currentTarget)}>
+                      {t('admin', 'workspace')}
+                    </button>
+                  )}
                   {linkedProviders.has('GOOGLE')
                     ? <span>{t('auth', 'googleLinked')}</span>
                     : googleEnabled && <button type="button" disabled={linkingProvider !== null} onClick={() => onLinkProvider('google')}>{linkingProvider === 'google' ? t('auth', 'connectingGoogle') : t('auth', 'linkGoogle')}</button>}

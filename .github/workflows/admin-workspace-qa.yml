@@ -1,0 +1,127 @@
+name: Admin Workspace QA
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/src/app/admin/**'
+      - 'frontend/src/features/admin/**'
+      - 'frontend/src/features/auth/components/VoterMasthead.tsx'
+      - 'frontend/src/shared/api/admin-api.ts'
+      - 'frontend/src/shared/api/tests/admin-api.test.ts'
+      - 'frontend/src/shared/i18n/messages/*.json'
+      - 'frontend/scripts/admin_qa_server.py'
+      - 'frontend/package*.json'
+      - '.github/workflows/admin-workspace-qa.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/src/app/admin/**'
+      - 'frontend/src/features/admin/**'
+      - 'frontend/src/features/auth/components/VoterMasthead.tsx'
+      - 'frontend/src/shared/api/admin-api.ts'
+      - 'frontend/src/shared/api/tests/admin-api.test.ts'
+      - 'frontend/src/shared/i18n/messages/*.json'
+      - 'frontend/scripts/admin_qa_server.py'
+      - 'frontend/package*.json'
+      - '.github/workflows/admin-workspace-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  protected-admin-workspace:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build frontend
+        run: npm run build
+      - name: Verify protected admin workspace
+        run: |
+          set -euo pipefail
+          mkdir -p admin-workspace-qa
+          PYTHONPATH=scripts python3 - <<'PY' > admin-workspace-qa/server.log 2>&1 &
+          import mimetypes
+          from http.server import ThreadingHTTPServer
+          import ton106_qa_server as ton
+          ton.OUT = ton.base.OUT
+          ton.PORT = ton.base.PORT
+          import admin_qa_server as admin
+          admin.USERS[:] = [admin.USERS[1], admin.USERS[0], *admin.USERS[2:]]
+          mimetypes.add_type('application/javascript', '.js')
+          server = ThreadingHTTPServer(('127.0.0.1', ton.PORT), admin.Handler)
+          print(f'admin QA server listening on http://127.0.0.1:{ton.PORT}', flush=True)
+          server.serve_forever()
+          PY
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          for attempt in {1..40}; do
+            if curl --fail --silent 'http://127.0.0.1:4173/admin/?qa=admin-overview&qaLocale=en' >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 40 ]; then
+              cat admin-workspace-qa/server.log
+              exit 1
+            fi
+            sleep 0.25
+          done
+
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)
+          COMMON=(--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --run-all-compositor-stages-before-draw --virtual-time-budget=8000)
+
+          "$CHROME" "${COMMON[@]}" --window-size=390,844 --dump-dom 'http://127.0.0.1:4173/admin/?qa=admin-guest&qaLocale=en' > admin-workspace-qa/guest.html
+          grep -q 'data-qa-guest-actions="true"' admin-workspace-qa/guest.html
+          grep -q 'Official public record' admin-workspace-qa/guest.html
+          ! grep -q '/api/v1/admin/' admin-workspace-qa/server.log
+
+          "$CHROME" "${COMMON[@]}" --window-size=390,844 --screenshot=admin-workspace-qa/user-denied-mobile.png 'http://127.0.0.1:4173/admin/?qa=admin-denied&qaLocale=en'
+          "$CHROME" "${COMMON[@]}" --window-size=390,844 --dump-dom 'http://127.0.0.1:4173/admin/?qa=admin-denied&qaLocale=en' > admin-workspace-qa/user-denied-mobile.html
+          grep -q 'data-qa-scenario="complete"' admin-workspace-qa/user-denied-mobile.html
+          grep -q 'data-qa-admin-denied="true"' admin-workspace-qa/user-denied-mobile.html
+          grep -q 'data-qa-admin-overflow="false"' admin-workspace-qa/user-denied-mobile.html
+          ! grep -q '/api/v1/admin/' admin-workspace-qa/server.log
+
+          for spec in '390,844:mobile' '768,1024:tablet' '1440,1000:desktop'; do
+            size=${spec%%:*}
+            name=${spec##*:}
+            url='http://127.0.0.1:4173/admin/?qa=admin-overview&qaLocale=en'
+            "$CHROME" "${COMMON[@]}" --window-size="$size" --screenshot="admin-workspace-qa/${name}-overview.png" "$url"
+            "$CHROME" "${COMMON[@]}" --window-size="$size" --dump-dom "$url" > "admin-workspace-qa/${name}-overview.html"
+            grep -q 'data-qa-scenario="complete"' "admin-workspace-qa/${name}-overview.html"
+            grep -q 'data-qa-admin-overflow="false"' "admin-workspace-qa/${name}-overview.html"
+            grep -q 'data-qa-admin-heading="Operations overview"' "admin-workspace-qa/${name}-overview.html"
+          done
+
+          "$CHROME" "${COMMON[@]}" --window-size=390,844 --screenshot=admin-workspace-qa/mobile-user-dialog.png 'http://127.0.0.1:4173/admin/?qa=admin-user-dialog&qaLocale=en'
+          "$CHROME" "${COMMON[@]}" --window-size=390,844 --dump-dom 'http://127.0.0.1:4173/admin/?qa=admin-user-dialog&qaLocale=en' > admin-workspace-qa/mobile-user-dialog.html
+          grep -q 'data-qa-admin-dialog="true"' admin-workspace-qa/mobile-user-dialog.html
+          grep -q 'data-qa-admin-dialog-focus="true"' admin-workspace-qa/mobile-user-dialog.html
+          grep -q 'data-qa-admin-reason="true"' admin-workspace-qa/mobile-user-dialog.html
+          grep -q 'data-qa-admin-overflow="false"' admin-workspace-qa/mobile-user-dialog.html
+
+          "$CHROME" "${COMMON[@]}" --window-size=1440,1000 --screenshot=admin-workspace-qa/desktop-audit.png 'http://127.0.0.1:4173/admin/?qa=admin-audit&qaLocale=en'
+          "$CHROME" "${COMMON[@]}" --window-size=1440,1000 --dump-dom 'http://127.0.0.1:4173/admin/?qa=admin-audit&qaLocale=en' > admin-workspace-qa/desktop-audit.html
+          grep -q 'data-qa-scenario="complete"' admin-workspace-qa/desktop-audit.html
+          grep -q 'data-qa-admin-overflow="false"' admin-workspace-qa/desktop-audit.html
+
+          "$CHROME" "${COMMON[@]}" --window-size=768,1024 --dump-dom 'http://127.0.0.1:4173/admin/?qa=admin-ranking&qaLocale=en' > admin-workspace-qa/tablet-ranking.html
+          grep -q 'data-qa-admin-ranking-unknown="true"' admin-workspace-qa/tablet-ranking.html
+          grep -q 'data-qa-admin-overflow="false"' admin-workspace-qa/tablet-ranking.html
+      - name: Upload admin workspace evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-workspace-qa
+          path: frontend/admin-workspace-qa/**
+          if-no-files-found: error
+          retention-days: 14
