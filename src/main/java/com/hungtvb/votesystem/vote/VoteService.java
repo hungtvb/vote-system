@@ -99,7 +99,7 @@ public class VoteService {
     }
 
     private Post findPostForUpdate(String operation, UUID postId) {
-        return metrics.timeStage(operation, "post_lock", () -> postRepository.findByIdForUpdate(postId)
+        return metrics.timeStage(operation, "post_lock", () -> postRepository.findVisibleByIdForUpdate(postId)
                 .orElseThrow(() -> new ResourceNotFoundException("Post not found")));
     }
 
