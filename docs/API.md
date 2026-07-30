@@ -220,6 +220,24 @@ Safeguards:
 
 Explicit `revoke-sessions` leaves account status/role unchanged. Existing access JWTs remain valid until expiry, but refresh cookies become unusable. See [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md).
 
+## Administrator search APIs
+
+Protected read APIs for the moderation workspace:
+
+```http
+GET /api/v1/admin/users
+GET /api/v1/admin/users/{userId}
+GET /api/v1/admin/posts
+GET /api/v1/admin/posts/{postId}
+Authorization: Bearer <admin access token>
+```
+
+User filters are exact ID, case-insensitive email/display-name query, role, effective account status, and inclusive created-at range. Ballot filters are exact ID, ballot number, case-insensitive title/content query, author, category, lifecycle status, moderation status, and inclusive created-at range.
+
+List responses use an explicit page DTO, zero-based pages, default size 20, maximum size 100, and fixed `createdAt DESC, id DESC` ordering. Text filters escape SQL LIKE wildcards. Hidden and deleted ballots are available only through the protected administrator path.
+
+User responses exclude credential, provider-subject, session/token, IP, and raw user-agent fields. Ballot responses exclude individual voter identities and vote rows. Provider and author context is batch-loaded to avoid N+1 queries. See [`ADMIN-SEARCH.md`](ADMIN-SEARCH.md).
+
 ## Rate limiting
 
 | Rule | Default | Identity |

@@ -24,6 +24,7 @@ Render is not an active production target. The root `Dockerfile` is retained for
 | [`PROFILE.md`](PROFILE.md) | Private/public profile contracts, Ballot Mark presets, validation, and privacy boundaries |
 | [`I18N.md`](I18N.md) | Current VI/EN locale behavior, catalogs, formatting, and verification |
 | [`ADMIN.md`](ADMIN.md) | Admin role boundary, bootstrap, immutable audit log, and audited mutation rules |
+| [`ADMIN-SEARCH.md`](ADMIN-SEARCH.md) | Protected user/ballot read APIs, filters, privacy fields, pagination, and query-count boundary |
 | [`MODERATION.md`](MODERATION.md) | Ballot moderation states, public visibility, Redis/SSE convergence, and concurrency boundaries |
 | [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md) | User suspension, banning, session revocation, immediate access enforcement, and admin safeguards |
 | [`SOCIAL-LOGIN.md`](SOCIAL-LOGIN.md) | Google OIDC, GitHub OAuth2, callback URLs, temporary OAuth session, and explicit linking |
@@ -87,13 +88,15 @@ Access tokens remain in React memory. Refresh tokens remain in path-scoped `Http
 
 System-owned UI copy is available in Vietnamese and English with Vietnamese as the default fallback. Guest resolution uses saved local preference, then supported browser language, then Vietnamese. Authenticated `preferredLocale` is applied once per resolved user without remounting the product shell. User-generated content is never auto-translated.
 
-### Administrator boundary and moderation
+### Administrator boundary, moderation, and search
 
 `USER` and `ADMIN` are the only application roles. Registration and social onboarding always create `USER`. `/api/v1/admin/**` requires `ROLE_ADMIN` at both request and controller-method layers. Controlled bootstrap can promote an existing account for one deployment; it is disabled by default and never creates credentials.
 
 Administrator audit records are persisted as bounded JSONB rows through an internal append service. PostgreSQL rejects every audit-row update and delete through a trigger. Administrators can read deterministic paginated records through `GET /api/v1/admin/audit-logs`.
 
-Ballot lifecycle (`OPEN/CLOSED`) is independent from ballot moderation (`VISIBLE/HIDDEN/DELETED`). Account authorization role is independent from account moderation (`ACTIVE/SUSPENDED/BANNED`). Both moderation domains use atomic state-and-audit transactions and pessimistic/concurrency safeguards. See [`ADMIN.md`](ADMIN.md), [`MODERATION.md`](MODERATION.md), and [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md).
+Ballot lifecycle (`OPEN/CLOSED`) is independent from ballot moderation (`VISIBLE/HIDDEN/DELETED`). Account authorization role is independent from account moderation (`ACTIVE/SUSPENDED/BANNED`). Both moderation domains use atomic state-and-audit transactions and pessimistic/concurrency safeguards.
+
+Admin user/ballot search uses dedicated unrestricted read repositories that are never reused by public profile/feed code. Responses use explicit page DTOs, fixed `createdAt DESC, id DESC` ordering, escaped text matching, and batch provider/author hydration. Hidden/deleted ballots are visible only through protected admin routes. See [`ADMIN.md`](ADMIN.md), [`ADMIN-SEARCH.md`](ADMIN-SEARCH.md), [`MODERATION.md`](MODERATION.md), and [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md).
 
 ## Production profile and observability
 
@@ -132,15 +135,16 @@ TON-191  Locale fallback and authenticated preference sync
 TON-192  Admin authorization boundary and controlled bootstrap
 TON-194  Immutable admin audit log foundation
 TON-195  Audited ballot moderation and visibility enforcement
+TON-196  User suspension, banning, and access enforcement
 ```
 
 Current sequence:
 
 ```text
 TON-109  Admin roles, audit log, moderation, and operational dashboard
-  TON-196  User suspension, banning, and access enforcement
+  TON-197  Admin user and ballot search APIs
      ↓
-  TON-197/198  Admin search and safe ranking operations
+  TON-198  Audited atomic ranking rebuild
      ↓
   TON-199  Protected admin moderation workspace
      ↓

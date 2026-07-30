@@ -62,7 +62,8 @@ Implemented:
 - immediate local/social/refresh/JWT enforcement for restricted accounts;
 - self-lockout and last-active-administrator protection;
 - temporary restrictions without a scheduler;
-- atomic account-state, session-revocation, and audit transactions.
+- atomic account-state, session-revocation, and audit transactions;
+- protected paginated administrator search for users and ballots with privacy-safe DTOs and fixed deterministic ordering.
 
 Hidden/deleted ballots are excluded from public feeds, detail, voting, SSE, and owner mutations. Restricted accounts keep their role, profile, linked identities, ballots, votes, and public history, but authenticated access is denied immediately. Public history remains readable anonymously.
 
@@ -144,6 +145,10 @@ GET    /api/v1/users/{userId}
 
 GET    /api/v1/admin/probe
 GET    /api/v1/admin/audit-logs
+GET    /api/v1/admin/users
+GET    /api/v1/admin/users/{userId}
+GET    /api/v1/admin/posts
+GET    /api/v1/admin/posts/{postId}
 POST   /api/v1/admin/posts/{postId}/hide
 POST   /api/v1/admin/posts/{postId}/restore
 POST   /api/v1/admin/posts/{postId}/delete
@@ -169,6 +174,7 @@ Start at [`docs/README.md`](docs/README.md).
 
 - [`docs/API.md`](docs/API.md) — API contracts and runtime boundaries.
 - [`docs/ADMIN.md`](docs/ADMIN.md) — authorization, bootstrap, audit, and admin mutations.
+- [`docs/ADMIN-SEARCH.md`](docs/ADMIN-SEARCH.md) — protected user/ballot search, privacy, pagination, and query boundaries.
 - [`docs/MODERATION.md`](docs/MODERATION.md) — ballot moderation and public visibility.
 - [`docs/ACCOUNT-MODERATION.md`](docs/ACCOUNT-MODERATION.md) — user restrictions, sessions, enforcement, and safeguards.
 - [`docs/FRONTEND-AUTH.md`](docs/FRONTEND-AUTH.md) — browser session lifecycle.
@@ -181,10 +187,9 @@ Start at [`docs/README.md`](docs/README.md).
 ## Active roadmap
 
 ```text
-TON-195  Audited ballot moderation and visibility enforcement
-   ↓
-TON-196  User suspension, banning, and access enforcement
-   ↓
+Completed  TON-195  Audited ballot moderation and visibility enforcement
+Completed  TON-196  User suspension, banning, and access enforcement
+           ↓
 TON-197  Admin user and ballot search APIs
 TON-198  Audited atomic ranking rebuild
    ↓

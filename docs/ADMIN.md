@@ -1,6 +1,6 @@
 # Admin foundation
 
-This document covers the implemented administrator authorization, controlled bootstrap, immutable audit log, ballot moderation, and account moderation boundaries.
+This document covers the implemented administrator authorization, controlled bootstrap, immutable audit log, ballot moderation, account moderation, and protected search boundaries.
 
 ## Roles and authorization
 
@@ -188,6 +188,21 @@ Safeguards:
 
 Public profile and historical content remain available anonymously. Detailed contract: [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md).
 
+## Administrator read workspace APIs
+
+TON-197 adds privacy-bounded user and ballot search/detail endpoints under `/api/v1/admin/**`. Dedicated administrator repositories are not reused by public profile/feed paths, so hidden/deleted moderation visibility remains isolated.
+
+```http
+GET /api/v1/admin/users
+GET /api/v1/admin/users/{userId}
+GET /api/v1/admin/posts
+GET /api/v1/admin/posts/{postId}
+```
+
+Responses use explicit deterministic page DTOs. User results may include operational email, role, effective account status, provider names, and safe timestamps, but never credentials, provider subjects, session/token material, IP addresses, or raw user agents. Ballot results may include moderation state and aggregate vote data, but never individual voter identities.
+
+Text filters are bounded and escape SQL LIKE wildcards. Provider and author context is batch-loaded, and integration tests enforce a constant statement-count ceiling. Full contract: [`ADMIN-SEARCH.md`](ADMIN-SEARCH.md).
+
 ## Verification
 
 Backend coverage includes:
@@ -201,4 +216,5 @@ Backend coverage includes:
 - social callback rejection without refresh-cookie issuance;
 - self-lockout and last-active-admin protection;
 - concurrent cross-restriction and refresh-vs-suspension convergence;
-- rollback of account state and session revocation when audit validation fails.
+- rollback of account state and session revocation when audit validation fails;
+- administrator user/ballot filters, privacy-field absence, deterministic pagination, hidden/deleted visibility, and constant query counts.

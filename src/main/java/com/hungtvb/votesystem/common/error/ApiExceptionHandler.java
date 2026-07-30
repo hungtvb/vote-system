@@ -34,6 +34,12 @@ public class ApiExceptionHandler {
         return problem(HttpStatus.UNAUTHORIZED, exception.getMessage(), request);
     }
 
+    @ExceptionHandler(InvalidRequestException.class)
+    ResponseEntity<ProblemDetail> handleInvalidRequest(InvalidRequestException exception,
+                                                       HttpServletRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, exception.getMessage(), request);
+    }
+
     @ExceptionHandler({ConflictException.class, DataIntegrityViolationException.class})
     ResponseEntity<ProblemDetail> handleConflict(Exception exception, HttpServletRequest request) {
         String detail = exception instanceof ConflictException
@@ -59,7 +65,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(ConstraintViolationException.class)
     ResponseEntity<ProblemDetail> handleConstraintViolation(ConstraintViolationException exception,
-                                                            HttpServletRequest request) {
+                                                             HttpServletRequest request) {
         ProblemDetail detail = baseProblem(HttpStatus.BAD_REQUEST, "Request validation failed", request);
         Map<String, String> errors = new LinkedHashMap<>();
         exception.getConstraintViolations().forEach(violation ->
