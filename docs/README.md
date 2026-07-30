@@ -23,7 +23,7 @@ Render is not an active production target. The root `Dockerfile` is retained for
 | [`FRONTEND-AUTH.md`](FRONTEND-AUTH.md) | In-memory access token, refresh rotation, single-request restore, retry, logout, and rollout behavior |
 | [`PROFILE.md`](PROFILE.md) | Private/public profile contracts, Ballot Mark presets, validation, and privacy boundaries |
 | [`I18N.md`](I18N.md) | Current VI/EN locale behavior, catalogs, formatting, and verification |
-| [`ADMIN.md`](ADMIN.md) | Admin role boundary, JWT authorities, protected probe, and controlled bootstrap runbook |
+| [`ADMIN.md`](ADMIN.md) | Admin role boundary, controlled bootstrap, immutable audit log, protected read API, privacy, and retention boundaries |
 | [`SOCIAL-LOGIN.md`](SOCIAL-LOGIN.md) | Google OIDC, GitHub OAuth2, callback URLs, temporary OAuth session, and explicit linking |
 | [`REALTIME-VOTES.md`](REALTIME-VOTES.md) | Public ballot SSE contract, convergence, bounded async delivery, and metrics |
 | [`DEPLOY-VERCEL-RAILWAY.md`](DEPLOY-VERCEL-RAILWAY.md) | Active production deployment, profiles, variables, and verification |
@@ -52,7 +52,8 @@ PostgreSQL owns:
 - rotating refresh sessions and replay/revocation history;
 - editable profile fields and preferred-locale value;
 - ballots, lifecycle metadata, vote counts, score, and verdict state;
-- individual user votes.
+- individual user votes;
+- append-only administrator audit records.
 
 ### Derived infrastructure
 
@@ -80,9 +81,11 @@ Access tokens remain in React memory. Refresh tokens remain in path-scoped `Http
 
 System-owned UI copy is available in Vietnamese and English with Vietnamese as the default fallback. Guest resolution uses saved local preference, then supported browser language, then Vietnamese. Authenticated `preferredLocale` is applied once per resolved user without remounting the product shell. User-generated content is never auto-translated.
 
-### Administrator boundary
+### Administrator boundary and audit trail
 
-`USER` and `ADMIN` are the only application roles. Registration and social onboarding always create `USER`. `/api/v1/admin/**` requires `ROLE_ADMIN` at both the request and controller-method layers. Controlled bootstrap can promote an existing account for one deployment; it is disabled by default and never creates credentials. See [`ADMIN.md`](ADMIN.md).
+`USER` and `ADMIN` are the only application roles. Registration and social onboarding always create `USER`. `/api/v1/admin/**` requires `ROLE_ADMIN` at both the request and controller-method layers. Controlled bootstrap can promote an existing account for one deployment; it is disabled by default and never creates credentials.
+
+Administrator audit records are persisted as bounded JSONB rows through an internal append service. The application exposes no update/delete repository methods, and PostgreSQL rejects every audit-row update or delete through a trigger. Administrators can read deterministic paginated records through `GET /api/v1/admin/audit-logs`. See [`ADMIN.md`](ADMIN.md).
 
 ## Production profile and observability
 
@@ -128,15 +131,16 @@ TON-108  Editable profile and Ballot Mark identity
 TON-187  Custom Ballot Mark SVG set
 TON-189  Empty public-bio cleanup
 TON-191  Locale fallback and authenticated preference sync
+TON-192  Admin authorization boundary and controlled bootstrap
 ```
 
 Current sequence:
 
 ```text
 TON-109  Admin roles, audit log, moderation, and operational dashboard
-  TON-192  Authorization boundary and controlled bootstrap
+  TON-194  Immutable admin audit log foundation
      ↓
-  audit log and admin operations
+  moderation and operational admin mutations
      ↓
   protected admin dashboard
      ↓
