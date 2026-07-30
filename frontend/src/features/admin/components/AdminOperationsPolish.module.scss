@@ -34,6 +34,16 @@
   color: #ffffff;
 }
 
+.root table {
+  min-width: 64rem;
+}
+
+.root td details > div {
+  position: static;
+  margin-top: 0.35rem;
+  box-shadow: none;
+}
+
 .root dialog {
   width: min(560px, calc(100% - 28px));
   border: 1px solid #aeb8c4;
@@ -73,5 +83,11 @@
   .root aside nav {
     scrollbar-width: thin;
     scrollbar-color: rgba(240, 233, 216, 0.42) transparent;
+  }
+}
+
+@media (max-width: 700px) {
+  .root table {
+    min-width: 0;
   }
 }
