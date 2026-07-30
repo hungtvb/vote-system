@@ -2,6 +2,7 @@ package com.hungtvb.votesystem.post;
 
 import org.springframework.data.jpa.domain.Specification;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.Locale;
 import java.util.UUID;
@@ -39,6 +40,11 @@ public final class PostSpecifications {
     public static Specification<Post> publiclyVisible() {
         return (root, query, criteriaBuilder) ->
                 criteriaBuilder.equal(root.get("moderationStatus"), ModerationStatus.VISIBLE);
+    }
+
+    public static Specification<Post> createdAtOnOrAfter(Instant start) {
+        return (root, query, criteriaBuilder) ->
+                criteriaBuilder.greaterThanOrEqualTo(root.get("createdAt"), start);
     }
 
     public static Specification<Post> idIn(Collection<UUID> ids) {
