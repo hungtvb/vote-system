@@ -71,6 +71,25 @@ class AdminAuditLogServiceTests {
     }
 
     @Test
+    void rejectsIncompatibleActionAndTargetType() {
+        AdminAuditLogService service = service();
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.append(
+                new AdminAuditEvent(
+                        UUID.randomUUID(),
+                        AdminAuditAction.ADMIN_BAN_USER,
+                        AdminAuditTargetType.POST,
+                        UUID.randomUUID().toString(),
+                        "Invalid target combination",
+                        Map.of()
+                )
+        ));
+
+        assertEquals("Audit action and target type are incompatible", error.getMessage());
+        verifyNoInteractions(store);
+    }
+
+    @Test
     void rejectsSensitiveOrUnsafeMetadata() {
         AdminAuditLogService service = service();
         AdminAuditEvent base = event(Map.of());
