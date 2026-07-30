@@ -23,3 +23,4 @@ jobs:
           find src/main/java src/test/java src/main/resources -type f | sort | grep -Ei 'rank|redis|feed|audit|post' || true
           echo '=== SYMBOLS ==='
           grep -RInE 'TOP_WEEK|TOP_DAY|HOT|Ranking|ranking|ZSetOperations|StringRedisTemplate|RedisTemplate|rebuild' src/main/java src/test/java src/main/resources | head -n 1200 || true
+          echo '=== END TON-198 INSPECTION ==='
