@@ -131,14 +131,13 @@ TON-189  Empty public-bio cleanup
 TON-191  Locale fallback and authenticated preference sync
 TON-192  Admin authorization boundary and controlled bootstrap
 TON-194  Immutable admin audit log foundation
+TON-195  Audited ballot moderation and visibility enforcement
 ```
 
 Current sequence:
 
 ```text
 TON-109  Admin roles, audit log, moderation, and operational dashboard
-  TON-195  Audited ballot moderation and visibility enforcement
-     ↓
   TON-196  User suspension, banning, and access enforcement
      ↓
   TON-197/198  Admin search and safe ranking operations
