@@ -1,6 +1,6 @@
 # Admin foundation
 
-This document covers the authorization boundary and controlled bootstrap introduced by TON-192. It does not describe the later moderation dashboard, audit log or operational actions from the parent TON-109 roadmap.
+This document covers the authorization boundary and controlled bootstrap introduced by TON-192, plus the immutable audit-log foundation introduced by TON-194. Ballot/user moderation mutations, operational actions, and the protected admin dashboard remain later phases of TON-109.
 
 ## Roles and authorization
 
@@ -40,7 +40,7 @@ Successful response:
 }
 ```
 
-The probe verifies the request-level matcher, JWT role conversion and method-level guard. It is not a general health endpoint and does not expose infrastructure details.
+The probe verifies the request-level matcher, JWT role conversion, and method-level guard. It is not a general health endpoint and does not expose infrastructure details.
 
 ## Controlled administrator bootstrap
 
@@ -51,7 +51,7 @@ ADMIN_BOOTSTRAP_ENABLED=false
 ADMIN_BOOTSTRAP_EMAIL=
 ```
 
-It only promotes an existing account selected by normalized email. It never creates an account, password, refresh token or OAuth identity.
+It only promotes an existing account selected by normalized email. It never creates an account, password, refresh token, or OAuth identity.
 
 ### Promotion procedure
 
@@ -71,19 +71,139 @@ When bootstrap is enabled:
 
 - a blank or invalid email causes startup to fail;
 - a target account that does not exist causes startup to fail;
-- logs describe the bootstrap result without printing the configured email, passwords or tokens.
+- logs describe the bootstrap result without printing the configured email, passwords, or tokens.
 
 This fail-closed behavior prevents a deployment from appearing healthy when the requested administrator promotion did not happen.
+
+## Immutable audit log
+
+`admin_audit_logs` is the append-only source for successful future admin mutations. TON-194 provides the storage and read foundation; no moderation mutation writes records yet.
+
+Each record contains:
+
+```text
+id          UUID audit record ID
+actorId     authenticated administrator user ID
+action      controlled AdminAuditAction value
+targetType  POST, USER, or RANKING
+targetId    bounded string identifying the affected target
+reason      required administrator reason
+metadata    bounded flat JSON object
+createdAt   UTC instant
+```
+
+Initial action vocabulary:
+
+```text
+ADMIN_HIDE_POST
+ADMIN_RESTORE_POST
+ADMIN_DELETE_POST
+ADMIN_SUSPEND_USER
+ADMIN_BAN_USER
+ADMIN_REVOKE_SESSIONS
+ADMIN_REBUILD_RANKING
+```
+
+### Append contract
+
+Audit records are created only through the internal transactional `AdminAuditLogService.append(...)` API. There is no public HTTP endpoint that accepts arbitrary audit events.
+
+The append service:
+
+- requires actor, action, target type, target ID, and reason;
+- trims target ID, reason, keys, and values;
+- limits reason to 500 characters and target ID to 128 characters;
+- limits metadata to 20 flat string entries;
+- allows lowercase machine keys up to 50 characters;
+- limits each metadata value to 200 characters and the serialized payload to 3 KiB;
+- rejects metadata keys containing password, secret, token, authorization, cookie, credential, or email terms;
+- rejects metadata values containing email-like `@` content, bearer-token text, or control characters;
+- never includes rejected raw metadata values in validation exceptions.
+
+Metadata is intended for non-sensitive operational context such as request IDs, previous status values, feed names, and bounded counts. Do not store email addresses, display names, request bodies, cookies, provider payloads, access tokens, refresh tokens, password material, or secrets.
+
+### Append-only enforcement
+
+The application model uses:
+
+- a Hibernate `@Immutable` entity;
+- a read-only Spring Data repository surface with no save/update/delete methods;
+- a dedicated insert-only store based on `EntityManager.persist`.
+
+PostgreSQL also installs a trigger that rejects every `UPDATE` or `DELETE` against `admin_audit_logs`. This protects against accidental application or SQL mutation. It is not a claim of cryptographic tamper evidence against a database owner who can alter schema, triggers, or backups.
+
+### Read API
+
+```http
+GET /api/v1/admin/audit-logs?page=0&size=20
+Authorization: Bearer <admin access token>
+```
+
+Optional exact-match filters:
+
+```text
+action
+actorId
+targetType
+targetId
+```
+
+Example:
+
+```http
+GET /api/v1/admin/audit-logs?action=ADMIN_HIDE_POST&targetType=POST&targetId=aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa&page=0&size=20
+Authorization: Bearer <admin access token>
+```
+
+The response uses an explicit stable page DTO:
+
+```json
+{
+  "content": [
+    {
+      "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "actorId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      "action": "ADMIN_HIDE_POST",
+      "targetType": "POST",
+      "targetId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "reason": "Contains prohibited content",
+      "metadata": {
+        "request_id": "req-123"
+      },
+      "createdAt": "2026-07-30T07:00:00Z"
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 1,
+  "totalPages": 1,
+  "first": true,
+  "last": true
+}
+```
+
+Ordering is always deterministic:
+
+```text
+createdAt DESC, id DESC
+```
+
+Page is zero-based. Size must be from 1 through 100.
+
+### Retention and archival
+
+TON-194 does not add automatic deletion, expiry, export, or archival. Audit records remain in PostgreSQL. A future retention policy must preserve append-only guarantees and use an explicitly reviewed migration or archival process rather than application delete methods.
 
 ## Verification
 
 Backend tests cover:
 
-- anonymous `401`;
-- authenticated `USER` `403`;
-- issued `ADMIN` JWT accepted by both guards;
+- anonymous `401` and authenticated `USER` `403` at admin boundaries;
+- issued `ADMIN` JWT access;
 - registration response remains `USER`;
-- disabled bootstrap performs no repository work;
-- normalized-email promotion;
-- missing and invalid target handling;
-- repeated bootstrap is idempotent.
+- disabled, normalized, missing-target, and idempotent bootstrap behavior;
+- audit validation and metadata privacy constraints;
+- PostgreSQL JSONB persistence and exact filters;
+- deterministic newest-first ordering;
+- direct method-security rejection;
+- database-trigger rejection of audit updates and deletes.
