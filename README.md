@@ -30,6 +30,7 @@ Browser
 └── Spring Boot 3.5 modular monolith
     ├── auth + social identity
     ├── editable/private/public profiles
+    ├── admin authorization boundary
     ├── ballots/posts
     ├── votes + verdict aggregation
     ├── Redis ranking
@@ -91,14 +92,24 @@ PostgreSQL owns account, identity, session, profile, ballot, and vote state. Red
 
 ### Internationalization
 
-- Vietnamese and English system UI with Vietnamese as the current default
+- Vietnamese and English system UI with Vietnamese as the fallback default
+- Saved guest preference, supported browser-language fallback, and authenticated profile preference sync
 - Domain-separated catalogs and build-time key-parity verification
 - `Intl` date, number, and relative-time formatting with `vi-VN` and `en-VN`
-- Persisted local language switcher selection
+- Manual language switching remains immediate and persisted
 - Stable language-neutral backend/domain values
 - User-generated ballots and bios remain in the language entered by the author
 
-Authenticated `preferredLocale` automatic application and browser-language fallback are tracked by TON-191. The current behavior is documented in [`docs/I18N.md`](docs/I18N.md).
+### Administrator foundation
+
+- Application roles are restricted to `USER` and `ADMIN`
+- Registration and social onboarding always create `USER`
+- JWT `roles` claims map to Spring Security `ROLE_*` authorities
+- `/api/v1/admin/**` is protected at request and method levels
+- Controlled, disabled-by-default promotion of an existing account through environment configuration
+- No bootstrap-created password, token, account, or provider identity
+
+The audit log, moderation actions, operational APIs, and protected dashboard remain later phases of TON-109. Current boundary and bootstrap procedure: [`docs/ADMIN.md`](docs/ADMIN.md).
 
 ### Ballots and voting
 
@@ -234,6 +245,8 @@ GET    /api/v1/users/me
 PATCH  /api/v1/users/me
 GET    /api/v1/users/{userId}
 
+GET    /api/v1/admin/probe
+
 GET    /api/v1/posts
 POST   /api/v1/posts
 GET    /api/v1/posts/{postId}
@@ -246,7 +259,7 @@ DELETE /api/v1/posts/{postId}/vote
 GET    /api/v1/posts/{postId}/events
 ```
 
-Detailed contracts: [`docs/API.md`](docs/API.md).
+Detailed contracts: [`docs/API.md`](docs/API.md). Admin authorization and bootstrap: [`docs/ADMIN.md`](docs/ADMIN.md).
 
 ## Authentication lifecycle
 
@@ -279,7 +292,8 @@ Start at [`docs/README.md`](docs/README.md). Key documents:
 - [`docs/API.md`](docs/API.md) — API, auth bootstrap, profiles, feeds, rate limits, SSE, and operations
 - [`docs/FRONTEND-AUTH.md`](docs/FRONTEND-AUTH.md) — browser token/session lifecycle and rollout compatibility
 - [`docs/PROFILE.md`](docs/PROFILE.md) — private/public profile and Ballot Mark contracts
-- [`docs/I18N.md`](docs/I18N.md) — implemented VI/EN behavior and known locale gap
+- [`docs/I18N.md`](docs/I18N.md) — implemented VI/EN behavior and locale policy
+- [`docs/ADMIN.md`](docs/ADMIN.md) — admin role boundary and controlled bootstrap
 - [`docs/SOCIAL-LOGIN.md`](docs/SOCIAL-LOGIN.md) — Google/GitHub configuration and linking
 - [`docs/REALTIME-VOTES.md`](docs/REALTIME-VOTES.md) — SSE contract and async delivery
 - [`docs/DEPLOY-VERCEL-RAILWAY.md`](docs/DEPLOY-VERCEL-RAILWAY.md) — production deployment
@@ -288,14 +302,15 @@ Start at [`docs/README.md`](docs/README.md). Key documents:
 
 ## Roadmap
 
-Completed foundations include Next.js migration, Ballot Edition, server-owned feeds, Redis rate limiting/ranking, realtime vote updates, social login, VI/EN i18n, editable profiles, custom Ballot Marks, split deployment, runtime QA, and performance instrumentation.
+Completed foundations include Next.js migration, Ballot Edition, server-owned feeds, Redis rate limiting/ranking, realtime vote updates, social login, VI/EN i18n, editable profiles, custom Ballot Marks, split deployment, runtime QA, performance instrumentation, and locale preference synchronization.
 
 The active sequence is:
 
-1. `TON-109` — admin roles, audit log, moderation controls, and operational dashboard
+1. `TON-109` — admin foundation
+   - `TON-192` — authorization boundary and controlled bootstrap
+   - audit log and admin operations
+   - protected admin dashboard
 2. `TON-140` — unified reporting and moderation-case workflow
 3. `TON-110` / `TON-111` — comments, replies, voting, and moderation
 4. `TON-112` / `TON-113` / `TON-114` — notifications, transactional outbox, and realtime delivery
 5. `TON-115` — constrained one-to-one text messaging after moderation/event reliability are stable
-
-`TON-191` is a focused locale-correctness follow-up discovered during the documentation freshness audit.

@@ -22,7 +22,8 @@ Render is not an active production target. The root `Dockerfile` is retained for
 | [`API.md`](API.md) | Authentication bootstrap, profiles, ballots, feeds, voting, rate limits, SSE, and observability |
 | [`FRONTEND-AUTH.md`](FRONTEND-AUTH.md) | In-memory access token, refresh rotation, single-request restore, retry, logout, and rollout behavior |
 | [`PROFILE.md`](PROFILE.md) | Private/public profile contracts, Ballot Mark presets, validation, and privacy boundaries |
-| [`I18N.md`](I18N.md) | Current VI/EN locale behavior, catalogs, formatting, verification, and known gap TON-191 |
+| [`I18N.md`](I18N.md) | Current VI/EN locale behavior, catalogs, formatting, and verification |
+| [`ADMIN.md`](ADMIN.md) | Admin role boundary, JWT authorities, protected probe, and controlled bootstrap runbook |
 | [`SOCIAL-LOGIN.md`](SOCIAL-LOGIN.md) | Google OIDC, GitHub OAuth2, callback URLs, temporary OAuth session, and explicit linking |
 | [`REALTIME-VOTES.md`](REALTIME-VOTES.md) | Public ballot SSE contract, convergence, bounded async delivery, and metrics |
 | [`DEPLOY-VERCEL-RAILWAY.md`](DEPLOY-VERCEL-RAILWAY.md) | Active production deployment, profiles, variables, and verification |
@@ -77,9 +78,11 @@ Access tokens remain in React memory. Refresh tokens remain in path-scoped `Http
 
 ### Internationalization
 
-System-owned UI copy is available in Vietnamese and English with Vietnamese as the current default. Catalog key parity is verified during frontend test/build. User-generated content is never auto-translated.
+System-owned UI copy is available in Vietnamese and English with Vietnamese as the default fallback. Guest resolution uses saved local preference, then supported browser language, then Vietnamese. Authenticated `preferredLocale` is applied once per resolved user without remounting the product shell. User-generated content is never auto-translated.
 
-The persisted profile `preferredLocale` is not yet automatically applied during session bootstrap; TON-191 tracks that known gap.
+### Administrator boundary
+
+`USER` and `ADMIN` are the only application roles. Registration and social onboarding always create `USER`. `/api/v1/admin/**` requires `ROLE_ADMIN` at both the request and controller-method layers. Controlled bootstrap can promote an existing account for one deployment; it is disabled by default and never creates credentials. See [`ADMIN.md`](ADMIN.md).
 
 ## Production profile and observability
 
@@ -124,23 +127,27 @@ TON-116  Vietnamese/English i18n foundation
 TON-108  Editable profile and Ballot Mark identity
 TON-187  Custom Ballot Mark SVG set
 TON-189  Empty public-bio cleanup
+TON-191  Locale fallback and authenticated preference sync
 ```
 
-Next sequence:
+Current sequence:
 
 ```text
 TON-109  Admin roles, audit log, moderation, and operational dashboard
-    ↓
+  TON-192  Authorization boundary and controlled bootstrap
+     ↓
+  audit log and admin operations
+     ↓
+  protected admin dashboard
+     ↓
 TON-140  Unified reports and moderation cases
-    ↓
+     ↓
 TON-110/111  Comments, replies, voting, and moderation
-    ↓
+     ↓
 TON-112/113/114  Notifications, transactional outbox, and realtime delivery
-    ↓
+     ↓
 TON-115  Constrained direct messaging
 ```
-
-TON-191 is a focused i18n correctness follow-up and does not change the order of the admin foundation.
 
 ## Documentation maintenance
 
