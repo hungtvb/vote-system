@@ -12,6 +12,7 @@ import com.hungtvb.votesystem.post.Post;
 import com.hungtvb.votesystem.post.PostModerationChangedEvent;
 import com.hungtvb.votesystem.post.PostRepository;
 import com.hungtvb.votesystem.ranking.RankingChangedEvent;
+import com.hungtvb.votesystem.ranking.RankingRevisionStore;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,13 +26,16 @@ import java.util.function.BiConsumer;
 public class AdminPostModerationService {
     private final PostRepository postRepository;
     private final AdminAuditLogService auditLogService;
+    private final RankingRevisionStore rankingRevisionStore;
     private final ApplicationEventPublisher eventPublisher;
 
     public AdminPostModerationService(PostRepository postRepository,
                                       AdminAuditLogService auditLogService,
+                                      RankingRevisionStore rankingRevisionStore,
                                       ApplicationEventPublisher eventPublisher) {
         this.postRepository = postRepository;
         this.auditLogService = auditLogService;
+        this.rankingRevisionStore = rankingRevisionStore;
         this.eventPublisher = eventPublisher;
     }
 
@@ -76,6 +80,7 @@ public class AdminPostModerationService {
                         "new_status", post.getModerationStatus().name()
                 )
         ));
+        rankingRevisionStore.bump();
 
         if (post.isPubliclyVisible()) {
             eventPublisher.publishEvent(RankingChangedEvent.upsert(

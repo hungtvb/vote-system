@@ -10,6 +10,7 @@ import com.hungtvb.votesystem.post.dto.PostResponse;
 import com.hungtvb.votesystem.post.dto.UpdatePostRequest;
 import com.hungtvb.votesystem.ranking.FeedType;
 import com.hungtvb.votesystem.ranking.RankingChangedEvent;
+import com.hungtvb.votesystem.ranking.RankingRevisionStore;
 import com.hungtvb.votesystem.ranking.RankingService;
 import com.hungtvb.votesystem.user.UserRepository;
 import com.hungtvb.votesystem.vote.Vote;
@@ -34,6 +35,7 @@ public class PostService {
     private final VoteRepository voteRepository;
     private final UserRepository userRepository;
     private final RankingService rankingService;
+    private final RankingRevisionStore rankingRevisionStore;
     private final ApplicationEventPublisher eventPublisher;
     private final VotePolicy votePolicy;
 
@@ -41,12 +43,14 @@ public class PostService {
                        VoteRepository voteRepository,
                        UserRepository userRepository,
                        RankingService rankingService,
+                       RankingRevisionStore rankingRevisionStore,
                        ApplicationEventPublisher eventPublisher,
                        VotePolicy votePolicy) {
         this.postRepository = postRepository;
         this.voteRepository = voteRepository;
         this.userRepository = userRepository;
         this.rankingService = rankingService;
+        this.rankingRevisionStore = rankingRevisionStore;
         this.eventPublisher = eventPublisher;
         this.votePolicy = votePolicy;
     }
@@ -63,6 +67,7 @@ public class PostService {
                 request.closesAt(),
                 request.verdictThreshold() == null ? votePolicy.verdictThreshold() : request.verdictThreshold()
         ));
+        rankingRevisionStore.bump();
         eventPublisher.publishEvent(RankingChangedEvent.upsert(post.getId(), post.getVoteScore(), post.getCreatedAt()));
         return response(post, null);
     }
@@ -104,6 +109,7 @@ public class PostService {
         Post post = findOwnedPostForUpdate(authorId, postId);
         voteRepository.deleteByPostId(postId);
         postRepository.delete(post);
+        rankingRevisionStore.bump();
         eventPublisher.publishEvent(RankingChangedEvent.delete(postId, post.getCreatedAt()));
     }
 

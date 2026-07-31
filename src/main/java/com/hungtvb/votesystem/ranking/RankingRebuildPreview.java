@@ -2,14 +2,13 @@ package com.hungtvb.votesystem.ranking;
 
 import java.time.Instant;
 
-public record RankingRebuildResult(
-        String lockToken,
+public record RankingRebuildPreview(
         RedisRankingRepository.RankingGeneration generation,
-        RedisRankingRepository.PublishState publishState,
+        RedisRankingRepository.RankingMetadata previousMetadata,
         RedisRankingRepository.RankingCounts previousCounts,
-        RedisRankingRepository.RankingCounts publishedCounts,
+        RedisRankingRepository.RankingCounts stagedCounts,
         int visiblePostCount,
         long sourceRevision,
-        Instant publishedAt
+        Instant preparedAt
 ) {
 }

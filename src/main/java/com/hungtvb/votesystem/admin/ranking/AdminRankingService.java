@@ -5,7 +5,7 @@ import com.hungtvb.votesystem.admin.audit.AdminAuditEvent;
 import com.hungtvb.votesystem.admin.audit.AdminAuditLogService;
 import com.hungtvb.votesystem.admin.audit.AdminAuditTargetType;
 import com.hungtvb.votesystem.admin.ranking.dto.AdminRankingStatusResponse;
-import com.hungtvb.votesystem.ranking.RankingRebuildResult;
+import com.hungtvb.votesystem.ranking.RankingRebuildPreview;
 import com.hungtvb.votesystem.ranking.RankingService;
 import org.springframework.stereotype.Service;
 
@@ -28,32 +28,26 @@ public class AdminRankingService {
     }
 
     public AdminRankingStatusResponse rebuild(UUID actorId, String reason) {
-        RankingRebuildResult result = rankingService.rebuild();
-        try {
-            Map<String, String> metadata = new LinkedHashMap<>();
-            metadata.put("previous_generation", previousGeneration(result));
-            metadata.put("generation", result.generation().id());
-            metadata.put("previous_hot_count", Long.toString(result.previousCounts().hot()));
-            metadata.put("new_hot_count", Long.toString(result.publishedCounts().hot()));
-            metadata.put("new_day_count", Long.toString(result.publishedCounts().day()));
-            metadata.put("new_week_count", Long.toString(result.publishedCounts().week()));
-            metadata.put("visible_posts", Integer.toString(result.visiblePostCount()));
-            auditLogService.append(new AdminAuditEvent(actorId, AdminAuditAction.ADMIN_REBUILD_RANKING,
-                    AdminAuditTargetType.RANKING, "ALL", reason, metadata));
-            rankingService.completeRebuild(result);
-            return status();
-        } catch (RuntimeException exception) {
-            try {
-                rankingService.rollbackRebuild(result);
-            } catch (RuntimeException rollbackFailure) {
-                exception.addSuppressed(rollbackFailure);
-            }
-            throw exception;
-        }
+        rankingService.rebuild(preview -> appendAudit(actorId, reason, preview));
+        return status();
     }
 
-    private String previousGeneration(RankingRebuildResult result) {
-        String generation = result.publishState().previousMetadata().generation();
+    private void appendAudit(UUID actorId, String reason, RankingRebuildPreview preview) {
+        Map<String, String> metadata = new LinkedHashMap<>();
+        metadata.put("previous_generation", previousGeneration(preview));
+        metadata.put("generation", preview.generation().id());
+        metadata.put("previous_hot_count", Long.toString(preview.previousCounts().hot()));
+        metadata.put("new_hot_count", Long.toString(preview.stagedCounts().hot()));
+        metadata.put("new_day_count", Long.toString(preview.stagedCounts().day()));
+        metadata.put("new_week_count", Long.toString(preview.stagedCounts().week()));
+        metadata.put("visible_posts", Integer.toString(preview.visiblePostCount()));
+        metadata.put("source_revision", Long.toString(preview.sourceRevision()));
+        auditLogService.append(new AdminAuditEvent(actorId, AdminAuditAction.ADMIN_REBUILD_RANKING,
+                AdminAuditTargetType.RANKING, "ALL", reason, metadata));
+    }
+
+    private String previousGeneration(RankingRebuildPreview preview) {
+        String generation = preview.previousMetadata().generation();
         return generation == null ? "legacy" : generation;
     }
 }
