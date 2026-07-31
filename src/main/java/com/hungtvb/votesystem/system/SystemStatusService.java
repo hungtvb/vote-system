@@ -5,6 +5,7 @@ import com.hungtvb.votesystem.admin.audit.AdminAuditEvent;
 import com.hungtvb.votesystem.admin.audit.AdminAuditLogService;
 import com.hungtvb.votesystem.admin.audit.AdminAuditTargetType;
 import com.hungtvb.votesystem.common.error.ConflictException;
+import com.hungtvb.votesystem.common.error.InvalidRequestException;
 import com.hungtvb.votesystem.system.dto.AdminSystemStatusResponse;
 import com.hungtvb.votesystem.system.dto.PublicSystemStatusResponse;
 import com.hungtvb.votesystem.system.dto.UpdateSystemStatusRequest;
@@ -75,7 +76,7 @@ public class SystemStatusService {
 
         auditLogService.append(new AdminAuditEvent(
                 actorId,
-                AdminAuditAction.ADMIN_CHANGE_SYSTEM_MODE,
+                AdminAuditAction.SYSTEM_MODE_CHANGED,
                 AdminAuditTargetType.SYSTEM,
                 "GLOBAL",
                 request.reason().strip(),
@@ -106,7 +107,7 @@ public class SystemStatusService {
             messageEn = null;
             estimatedEndAt = null;
         } else if (estimatedEndAt != null && !estimatedEndAt.isAfter(now)) {
-            throw new IllegalArgumentException("estimatedEndAt must be in the future");
+            throw new InvalidRequestException("estimatedEndAt must be in the future");
         }
 
         return new NormalizedUpdate(mode, messageVi, messageEn, estimatedEndAt);
@@ -118,7 +119,7 @@ public class SystemStatusService {
         }
         String value = raw.strip();
         if (value.length() > 200) {
-            throw new IllegalArgumentException("System status message is too long");
+            throw new InvalidRequestException("System status message is too long");
         }
         return value;
     }
