@@ -15,6 +15,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.DayOfWeek;
@@ -26,18 +28,24 @@ import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
 public class RankingService {
     private static final int FILTER_SCAN_CHUNK_SIZE = 200;
+    private static final int MAX_REBUILD_ATTEMPTS = 3;
     private static final Duration REBUILD_LOCK_TTL = Duration.ofMinutes(5);
 
     private final RedisRankingRepository rankingRepository;
     private final PostRepository postRepository;
+    private final RankingRevisionStore revisionStore;
     private final RankingFormula formula;
+    private final TransactionTemplate transactionTemplate;
     private final Clock clock = Clock.systemUTC();
     private final Counter updates;
     private final Counter rebuilds;
@@ -46,12 +54,19 @@ public class RankingService {
     private final Counter rebuildSucceeded;
     private final Counter rebuildFailed;
     private final Counter rebuildRejected;
+    private final Counter rebuildRetried;
 
-    public RankingService(RedisRankingRepository rankingRepository, PostRepository postRepository,
-                          RankingFormula formula, MeterRegistry meterRegistry) {
+    public RankingService(RedisRankingRepository rankingRepository,
+                          PostRepository postRepository,
+                          RankingRevisionStore revisionStore,
+                          RankingFormula formula,
+                          MeterRegistry meterRegistry,
+                          PlatformTransactionManager transactionManager) {
         this.rankingRepository = rankingRepository;
         this.postRepository = postRepository;
+        this.revisionStore = revisionStore;
         this.formula = formula;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.updates = meterRegistry.counter("vote.ranking.operations", "result", "update");
         this.rebuilds = meterRegistry.counter("vote.ranking.operations", "result", "rebuild");
         this.fallbacks = meterRegistry.counter("vote.ranking.operations", "result", "fallback");
@@ -59,6 +74,7 @@ public class RankingService {
         this.rebuildSucceeded = meterRegistry.counter("vote.ranking.rebuild", "result", "succeeded");
         this.rebuildFailed = meterRegistry.counter("vote.ranking.rebuild", "result", "failed");
         this.rebuildRejected = meterRegistry.counter("vote.ranking.rebuild", "result", "rejected");
+        this.rebuildRetried = meterRegistry.counter("vote.ranking.rebuild", "result", "retried");
     }
 
     public void apply(RankingChangedEvent event) {
@@ -123,6 +139,11 @@ public class RankingService {
     }
 
     public RankingRebuildResult rebuild() {
+        return rebuild(preview -> { });
+    }
+
+    public RankingRebuildResult rebuild(Consumer<RankingRebuildPreview> beforePublish) {
+        Objects.requireNonNull(beforePublish, "beforePublish is required");
         rebuildRequested.increment();
         String token = UUID.randomUUID().toString();
         if (!rankingRepository.tryAcquireRebuildLock(token, REBUILD_LOCK_TTL)) {
@@ -130,11 +151,68 @@ public class RankingService {
             throw new ConflictException("A ranking rebuild is already in progress");
         }
 
+        try {
+            for (int attempt = 1; attempt <= MAX_REBUILD_ATTEMPTS; attempt++) {
+                RankingRebuildPreview preview = prepareRebuildAttempt();
+                AtomicReference<RankingRebuildResult> published = new AtomicReference<>();
+                try {
+                    RankingRebuildResult result = transactionTemplate.execute(status -> {
+                        long currentRevision = revisionStore.lockAndRead();
+                        if (currentRevision != preview.sourceRevision()) {
+                            throw new RankingRevisionChangedException();
+                        }
+
+                        beforePublish.accept(preview);
+                        RedisRankingRepository.PublishState publishState = rankingRepository.publishGeneration(
+                                preview.generation(), preview.stagedCounts(), token, preview.preparedAt());
+                        RankingRebuildResult committed = new RankingRebuildResult(
+                                token,
+                                preview.generation(),
+                                publishState,
+                                preview.previousCounts(),
+                                preview.stagedCounts(),
+                                preview.visiblePostCount(),
+                                preview.sourceRevision(),
+                                preview.preparedAt()
+                        );
+                        published.set(committed);
+                        return committed;
+                    });
+                    if (result == null) {
+                        throw new IllegalStateException("Ranking rebuild transaction returned no result");
+                    }
+                    rankingRepository.releaseRebuildLock(token);
+                    rebuilds.increment();
+                    rebuildSucceeded.increment();
+                    return result;
+                } catch (RankingRevisionChangedException exception) {
+                    rankingRepository.discardGeneration(preview.generation());
+                    if (attempt == MAX_REBUILD_ATTEMPTS) {
+                        throw new ConflictException("Ranking changed repeatedly during rebuild; retry later");
+                    }
+                    rebuildRetried.increment();
+                } catch (RuntimeException exception) {
+                    rollbackPublishedOrDiscard(preview, published.get(), token, exception);
+                    throw exception;
+                }
+            }
+            throw new IllegalStateException("Ranking rebuild retry loop ended unexpectedly");
+        } catch (RuntimeException exception) {
+            rebuildFailed.increment();
+            throw exception;
+        } finally {
+            rankingRepository.releaseRebuildLock(token);
+        }
+    }
+
+    private RankingRebuildPreview prepareRebuildAttempt() {
+        long sourceRevision = revisionStore.current();
         RedisRankingRepository.RankingGeneration generation =
                 rankingRepository.createGeneration(UUID.randomUUID().toString());
         try {
             Instant now = clock.instant();
             RedisRankingRepository.RankingCounts previousCounts = rankingRepository.currentCounts(now);
+            RedisRankingRepository.RankingMetadata previousMetadata = rankingRepository.metadata();
             List<Post> visiblePosts = postRepository.findAll(PostSpecifications.publiclyVisible());
             for (Post post : visiblePosts) {
                 rankingRepository.stageUpsert(generation, post.getId(), post.getVoteScore(),
@@ -148,30 +226,27 @@ public class RankingService {
             if (!expected.equals(staged)) {
                 throw new IllegalStateException("Staged ranking generation failed verification");
             }
-            RedisRankingRepository.PublishState state =
-                    rankingRepository.publishGeneration(generation, expected, token, now);
-            return new RankingRebuildResult(token, generation, state, previousCounts, expected,
-                    visiblePosts.size(), now);
+            return new RankingRebuildPreview(generation, previousMetadata, previousCounts, expected,
+                    visiblePosts.size(), sourceRevision, now);
         } catch (RuntimeException exception) {
             rankingRepository.discardGeneration(generation);
-            rankingRepository.releaseRebuildLock(token);
-            rebuildFailed.increment();
             throw exception;
         }
     }
 
-    public void completeRebuild(RankingRebuildResult result) {
-        rankingRepository.releaseRebuildLock(result.lockToken());
-        rebuilds.increment();
-        rebuildSucceeded.increment();
-    }
-
-    public void rollbackRebuild(RankingRebuildResult result) {
+    private void rollbackPublishedOrDiscard(RankingRebuildPreview preview,
+                                            RankingRebuildResult published,
+                                            String token,
+                                            RuntimeException original) {
         try {
-            rankingRepository.rollbackGeneration(result.generation(), result.publishState(), result.lockToken());
-        } finally {
-            rankingRepository.releaseRebuildLock(result.lockToken());
-            rebuildFailed.increment();
+            if (published == null) {
+                rankingRepository.discardGeneration(preview.generation());
+            } else {
+                rankingRepository.rollbackGeneration(
+                        published.generation(), published.publishState(), token);
+            }
+        } catch (RuntimeException rollbackFailure) {
+            original.addSuppressed(rollbackFailure);
         }
     }
 
@@ -240,10 +315,9 @@ public class RankingService {
                 && postRepository.count(PostSpecifications.publiclyVisible().and(rankedWindow(feed, now))) > 0;
         if (!rankingRepository.needsWindowRebuild(now) && !missing) return;
         try {
-            RankingRebuildResult result = rebuild();
-            completeRebuild(result);
+            rebuild();
         } catch (ConflictException ignored) {
-            // Another request is already rebuilding the shared generation.
+            // Another request is already rebuilding or writes prevented a stable snapshot.
         }
     }
 
@@ -270,5 +344,8 @@ public class RankingService {
         LocalDate b = LocalDate.ofInstant(second, ZoneOffset.UTC)
                 .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         return a.equals(b);
+    }
+
+    private static final class RankingRevisionChangedException extends RuntimeException {
     }
 }
