@@ -239,6 +239,12 @@
   min-height: 2.75rem;
 }
 
+.dialogDescription {
+  margin: 0.2rem 0 0;
+  color: #4f5a68;
+  line-height: 1.55;
+}
+
 .transitionLine {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
