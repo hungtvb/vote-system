@@ -1,17 +1,26 @@
 import { Suspense } from 'react';
 import { AdminPageRouter } from '@/features/admin/components/AdminPageRouter';
 
-function AdminWorkspaceFallback() {
+function PageFallback() {
   return (
-    <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#1E2A3A', color: '#F0E9D8' }}>
-      <p style={{ fontFamily: 'monospace', letterSpacing: '.12em' }}>LOADING ADMIN WORKSPACE...</p>
+    <main
+      aria-busy="true"
+      style={{
+        minHeight: '100vh',
+        display: 'grid',
+        placeItems: 'center',
+        background: '#F0E9D8',
+        color: '#3A362E'
+      }}
+    >
+      <p style={{ fontFamily: 'monospace', letterSpacing: '.12em' }}>LOADING...</p>
     </main>
   );
 }
 
 export default function AdminPage() {
   return (
-    <Suspense fallback={<AdminWorkspaceFallback />}>
+    <Suspense fallback={<PageFallback />}>
       <AdminPageRouter />
     </Suspense>
   );
