@@ -14,7 +14,7 @@ final class SystemModeRequestPolicy {
     );
 
     Decision evaluate(SystemMode mode, String method, String path) {
-        if (isCorsPreflight(method) || isRecoveryEndpoint(method, path)) {
+        if (isUnconditionalRecoveryRequest(method, path)) {
             return Decision.ALLOW;
         }
         if (mode == SystemMode.NORMAL) {
@@ -26,7 +26,10 @@ final class SystemModeRequestPolicy {
         return mode == SystemMode.READ_ONLY ? Decision.REJECT_READ_ONLY : Decision.REJECT_MAINTENANCE;
     }
 
-    private boolean isRecoveryEndpoint(String method, String path) {
+    boolean isUnconditionalRecoveryRequest(String method, String path) {
+        if (isCorsPreflight(method)) {
+            return true;
+        }
         if (path == null) {
             return false;
         }
