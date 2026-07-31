@@ -20,7 +20,7 @@ final class SystemModeRequestPolicy {
         if (mode == SystemMode.NORMAL) {
             return Decision.ALLOW;
         }
-        if (mode == SystemMode.READ_ONLY && isSafeRead(method)) {
+        if (mode == SystemMode.READ_ONLY && (isSafeRead(method) || isAuthenticationFlow(method, path))) {
             return Decision.ALLOW;
         }
         return mode == SystemMode.READ_ONLY ? Decision.REJECT_READ_ONLY : Decision.REJECT_MAINTENANCE;
@@ -39,6 +39,21 @@ final class SystemModeRequestPolicy {
             return true;
         }
         return HttpMethod.POST.matches(method) && SESSION_RECOVERY_PATHS.contains(path);
+    }
+
+    private boolean isAuthenticationFlow(String method, String path) {
+        if (path == null) {
+            return false;
+        }
+        if (HttpMethod.POST.matches(method) && "/api/v1/auth/login".equals(path)) {
+            return true;
+        }
+        if (HttpMethod.POST.matches(method)) {
+            return "/api/v1/auth/social/google/start".equals(path)
+                    || "/api/v1/auth/social/github/start".equals(path);
+        }
+        return HttpMethod.GET.matches(method)
+                && (path.startsWith("/oauth2/") || path.startsWith("/login/oauth2/"));
     }
 
     private boolean isHealthPath(String path) {
