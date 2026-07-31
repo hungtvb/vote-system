@@ -86,14 +86,24 @@ export function AdminSystemOperationsPanel() {
     setError('');
     try {
       const input = toInput(draft, reason);
-      await runAuthorized(active =>
+      const committed = await runAuthorized(active =>
         adminApi.updateSystemStatus(input, active.accessToken));
-      const authoritative = await runAuthorized(active =>
-        adminApi.systemStatus(active.accessToken));
-      setStatus(authoritative);
-      setDraft(toDraft(authoritative));
+
+      // The PUT response is the committed server record. Keep it visible even if
+      // the follow-up reconciliation read is temporarily unavailable.
+      setStatus(committed);
+      setDraft(toDraft(committed));
       setConfirming(false);
       setNotice(t('admin', 'systemUpdateCompleted'));
+
+      try {
+        const authoritative = await runAuthorized(active =>
+          adminApi.systemStatus(active.accessToken));
+        setStatus(authoritative);
+        setDraft(toDraft(authoritative));
+      } catch (reloadCause) {
+        setError(safeError(reloadCause, t('admin', 'systemLoadFailed')));
+      }
     } catch (cause) {
       setError(safeError(cause, t('admin', 'systemUpdateFailed')));
     } finally {
