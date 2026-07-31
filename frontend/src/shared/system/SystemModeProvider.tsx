@@ -7,7 +7,6 @@ import {
   type PublicSystemStatus,
   type SystemMode
 } from '@/shared/api/system-status-api';
-import { isAbortError } from '@/shared/api/transport';
 import { useI18n } from '@/shared/i18n/I18nProvider';
 import {
   SYSTEM_MODE_SIGNAL_EVENT,
@@ -44,12 +43,9 @@ export function SystemModeProvider({ children }: { children: ReactNode }) {
     try {
       const authoritative = await systemStatusApi.get(controller.signal);
       if (requestSequence === sequence.current) setStatus(authoritative);
-    } catch (cause) {
-      // Status lookup is intentionally fail-open. Existing state is retained and
+    } catch {
+      // Status lookup intentionally fails open. Existing state is retained and
       // backend enforcement remains authoritative for every operation.
-      if (!isAbortError(cause) && requestSequence === sequence.current && status === null) {
-        setStatus(null);
-      }
     } finally {
       if (requestSequence === sequence.current) {
         setLoading(false);
@@ -57,7 +53,7 @@ export function SystemModeProvider({ children }: { children: ReactNode }) {
       }
       if (activeRequest.current === controller) activeRequest.current = null;
     }
-  }, [status]);
+  }, []);
 
   useEffect(() => {
     void refresh();
