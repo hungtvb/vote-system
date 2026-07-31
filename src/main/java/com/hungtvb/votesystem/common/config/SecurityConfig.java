@@ -7,6 +7,7 @@ import com.hungtvb.votesystem.auth.social.SocialAuthenticationSuccessHandler;
 import com.hungtvb.votesystem.ratelimit.RateLimitFilter;
 import com.hungtvb.votesystem.ratelimit.RateLimitProperties;
 import com.hungtvb.votesystem.security.AccountAccessFilter;
+import com.hungtvb.votesystem.system.SystemModeEnforcementFilter;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.OctetSequenceKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
@@ -44,6 +45,7 @@ import org.springframework.util.Assert;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -63,6 +65,7 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                             SystemModeEnforcementFilter systemModeEnforcementFilter,
                                              AccountAccessFilter accountAccessFilter,
                                              RateLimitFilter rateLimitFilter,
                                              SocialAuthenticationSuccessHandler socialSuccessHandler,
@@ -103,6 +106,7 @@ public class SecurityConfig {
                         .failureHandler(socialFailureHandler))
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)))
+                .addFilterAfter(systemModeEnforcementFilter, CorsFilter.class)
                 .addFilterAfter(accountAccessFilter, BearerTokenAuthenticationFilter.class)
                 .addFilterAfter(rateLimitFilter, AccountAccessFilter.class)
                 .build();
@@ -131,6 +135,13 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", configuration);
         return source;
+    }
+
+    @Bean
+    FilterRegistrationBean<SystemModeEnforcementFilter> disableSystemModeFilterAutoRegistration(SystemModeEnforcementFilter filter) {
+        FilterRegistrationBean<SystemModeEnforcementFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 
     @Bean

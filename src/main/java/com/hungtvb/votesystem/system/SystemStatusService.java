@@ -90,6 +90,11 @@ public class SystemStatusService {
         cache.evict();
     }
 
+    @Transactional(readOnly = true)
+    public SystemStatusSnapshot currentStatusSnapshot() {
+        return currentSnapshot();
+    }
+
     private SystemStatusSnapshot currentSnapshot() {
         return cache.get(() -> repository.findById(STATUS_ID)
                 .map(SystemStatusSnapshot::from)
