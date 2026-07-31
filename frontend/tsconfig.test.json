@@ -20,7 +20,8 @@
     "src/shared/api/**/*.ts",
     "src/shared/auth/**/*.ts",
     "src/shared/ballot/**/*.ts",
-    "src/shared/i18n/**/*.ts"
+    "src/shared/i18n/**/*.ts",
+    "src/shared/system/**/*.ts"
   ],
   "exclude": [
     "src/shared/api/client.ts"
