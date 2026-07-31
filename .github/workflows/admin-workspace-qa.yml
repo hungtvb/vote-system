@@ -6,10 +6,12 @@ on:
       - 'frontend/src/app/admin/**'
       - 'frontend/src/features/admin/**'
       - 'frontend/src/features/auth/components/VoterMasthead.tsx'
+      - 'frontend/src/features/auth/hooks/useSession.ts'
       - 'frontend/src/shared/api/admin-api.ts'
       - 'frontend/src/shared/api/tests/admin-api.test.ts'
       - 'frontend/src/shared/i18n/messages/*.json'
       - 'frontend/scripts/admin_qa_server.py'
+      - 'frontend/scripts/admin_auth_qa_server.py'
       - 'frontend/package*.json'
       - '.github/workflows/admin-workspace-qa.yml'
   push:
@@ -18,10 +20,12 @@ on:
       - 'frontend/src/app/admin/**'
       - 'frontend/src/features/admin/**'
       - 'frontend/src/features/auth/components/VoterMasthead.tsx'
+      - 'frontend/src/features/auth/hooks/useSession.ts'
       - 'frontend/src/shared/api/admin-api.ts'
       - 'frontend/src/shared/api/tests/admin-api.test.ts'
       - 'frontend/src/shared/i18n/messages/*.json'
       - 'frontend/scripts/admin_qa_server.py'
+      - 'frontend/scripts/admin_auth_qa_server.py'
       - 'frontend/package*.json'
       - '.github/workflows/admin-workspace-qa.yml'
 
@@ -56,9 +60,10 @@ jobs:
           ton.OUT = ton.base.OUT
           ton.PORT = ton.base.PORT
           import admin_qa_server as admin
+          import admin_auth_qa_server as admin_auth
           admin.USERS[:] = [admin.USERS[1], admin.USERS[0], *admin.USERS[2:]]
           mimetypes.add_type('application/javascript', '.js')
-          server = ThreadingHTTPServer(('127.0.0.1', ton.PORT), admin.Handler)
+          server = ThreadingHTTPServer(('127.0.0.1', ton.PORT), admin_auth.Handler)
           print(f'admin QA server listening on http://127.0.0.1:{ton.PORT}', flush=True)
           server.serve_forever()
           PY
@@ -123,10 +128,19 @@ jobs:
           grep -q 'View metadata' admin-workspace-qa/desktop-audit-table.html
           grep -q 'data-qa-admin-overflow="false"' admin-workspace-qa/desktop-audit-table.html
 
-          "$CHROME" "${COMMON[@]}" --window-size=768,1024 --dump-dom 'http://127.0.0.1:4173/admin/?qa=admin-ranking&qaLocale=en&section=ranking' > admin-workspace-qa/tablet-ranking.html
-          grep -q 'data-qa-admin-ranking="true"' admin-workspace-qa/tablet-ranking.html
-          grep -q 'UNAVAILABLE' admin-workspace-qa/tablet-ranking.html
-          grep -q 'data-qa-admin-overflow="false"' admin-workspace-qa/tablet-ranking.html
+          for spec in '390,844:390' '375,812:375' '320,700:320'; do
+            size=${spec%%:*}
+            name=${spec##*:}
+            url='http://127.0.0.1:4173/admin/?qa=admin-ranking&qaLocale=en&section=ranking'
+            "$CHROME" "${COMMON[@]}" --window-size="$size" --screenshot="admin-workspace-qa/mobile-ranking-${name}.png" "$url"
+            "$CHROME" "${COMMON[@]}" --window-size="$size" --dump-dom "$url" > "admin-workspace-qa/mobile-ranking-${name}.html"
+            grep -q 'data-qa-admin-ranking="true"' "admin-workspace-qa/mobile-ranking-${name}.html"
+            grep -q 'HEALTHY' "admin-workspace-qa/mobile-ranking-${name}.html"
+            grep -q 'data-qa-admin-overflow="false"' "admin-workspace-qa/mobile-ranking-${name}.html"
+            ! grep -q 'Authentication required' "admin-workspace-qa/mobile-ranking-${name}.html"
+            ! grep -q 'data-qa-admin-auth-failed="true"' "admin-workspace-qa/mobile-ranking-${name}.html"
+          done
+          ! grep -q 'admin-ranking refresh #2' admin-workspace-qa/server.log
       - name: Upload admin workspace evidence
         if: always()
         uses: actions/upload-artifact@v4
