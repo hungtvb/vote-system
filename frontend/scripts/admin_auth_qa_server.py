@@ -9,6 +9,11 @@ from urllib.parse import parse_qs, urlparse
 
 import admin_qa_server as admin
 
+admin.ADMIN_QA_SCRIPT = admin.ADMIN_QA_SCRIPT.replace(
+    "No authoritative ranking contract yet",
+    "RANKING STATUS",
+)
+
 _refresh_count = 0
 
 
