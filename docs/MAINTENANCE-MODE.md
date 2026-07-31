@@ -82,14 +82,16 @@ This is intentionally single-instance behavior. Redis Pub/Sub or another cross-i
 
 ## Audit
 
-Every successful state change appends `ADMIN_CHANGE_SYSTEM_MODE` targeting `SYSTEM/GLOBAL` in the immutable administrator audit log.
+Every successful state change appends `SYSTEM_MODE_CHANGED` targeting `SYSTEM/GLOBAL` in the immutable administrator audit log.
 
 Metadata contains:
 
 - previous and new mode;
-- full bounded Vietnamese and English messages;
+- full bounded Vietnamese and English public messages;
 - estimated end time;
 - bounded request ID.
+
+The dedicated public-message metadata fields may contain public contact addresses. Other audit metadata fields retain the stricter email/token privacy checks from the audit foundation.
 
 The audit append and status mutation share one PostgreSQL transaction. Validation or audit failure rolls both back.
 
