@@ -191,7 +191,6 @@ export function AdminSystemOperationsPanel() {
               <input
                 type="datetime-local"
                 min={minimumDateTime()}
-                max={maximumDateTime()}
                 value={draft.estimatedEndAt}
                 onChange={event => setDraft(current => ({ ...current, estimatedEndAt: event.target.value }))}
               />
@@ -244,6 +243,7 @@ function SystemModeConfirmationDialog({ from, to, busy, error, onClose, onConfir
 }) {
   const { t } = useI18n();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
   const busyRef = useRef(busy);
   const onCloseRef = useRef(onClose);
   const [reason, setReason] = useState('');
@@ -253,6 +253,7 @@ function SystemModeConfirmationDialog({ from, to, busy, error, onClose, onConfir
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
+    returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     dialog.showModal();
     const cancel = (event: Event) => {
       event.preventDefault();
@@ -262,6 +263,8 @@ function SystemModeConfirmationDialog({ from, to, busy, error, onClose, onConfir
     return () => {
       dialog.removeEventListener('cancel', cancel);
       if (dialog.open) dialog.close();
+      const target = returnFocusRef.current;
+      if (target?.isConnected) window.requestAnimationFrame(() => target.focus());
     };
   }, []);
 
@@ -273,7 +276,13 @@ function SystemModeConfirmationDialog({ from, to, busy, error, onClose, onConfir
   }
 
   return (
-    <dialog ref={dialogRef} className={shellStyles.dialog} aria-labelledby="system-mode-dialog-title" data-qa-system-dialog="true">
+    <dialog
+      ref={dialogRef}
+      className={`${shellStyles.dialog} ${styles.systemDialog}`}
+      aria-labelledby="system-mode-dialog-title"
+      aria-describedby="system-mode-dialog-description"
+      data-qa-system-dialog="true"
+    >
       <form className={shellStyles.dialogBody} onSubmit={submit}>
         <div className={shellStyles.dialogHeader}>
           <div>
@@ -282,7 +291,7 @@ function SystemModeConfirmationDialog({ from, to, busy, error, onClose, onConfir
           </div>
           <button type="button" className={shellStyles.iconButton} aria-label={t('common', 'close')} disabled={busy} onClick={onClose}>×</button>
         </div>
-        <p className={styles.dialogDescription}>{t('admin', 'systemConfirmationDescription', { from, to })}</p>
+        <p id="system-mode-dialog-description" className={styles.dialogDescription}>{t('admin', 'systemConfirmationDescription', { from, to })}</p>
         <div className={styles.transitionLine} aria-label={`${from} to ${to}`}>
           <span>{from}</span><span aria-hidden="true">→</span><strong>{to}</strong>
         </div>
@@ -291,7 +300,7 @@ function SystemModeConfirmationDialog({ from, to, busy, error, onClose, onConfir
           <textarea
             autoFocus
             required
-            rows={5}
+            rows={4}
             maxLength={500}
             value={reason}
             placeholder={t('admin', 'reasonPlaceholder')}
@@ -394,10 +403,6 @@ function toLocalDateTimeInput(value: Date): string {
 
 function minimumDateTime(): string {
   return toLocalDateTimeInput(new Date(Date.now() + 60_000));
-}
-
-function maximumDateTime(): string {
-  return toLocalDateTimeInput(new Date(Date.now() + 365 * 24 * 60 * 60 * 1_000));
 }
 
 function shortId(value: string): string {
