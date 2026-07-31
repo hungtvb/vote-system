@@ -142,6 +142,8 @@ Metadata contains:
 - estimated end time;
 - bounded request ID.
 
+The dedicated public-message metadata fields may contain public contact addresses. Other audit metadata fields retain the stricter email, cookie and token privacy checks from the audit foundation.
+
 The audit append and status mutation share one PostgreSQL transaction. Validation or audit failure rolls both back.
 
 ## Recovery procedure
