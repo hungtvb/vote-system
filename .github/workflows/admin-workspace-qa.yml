@@ -89,11 +89,13 @@ jobs:
           grep -q 'Official public record' admin-workspace-qa/guest.html
           ! grep -q '/api/v1/admin/' admin-workspace-qa/server.log
 
-          "$CHROME" "${COMMON[@]}" --window-size=390,844 --screenshot=admin-workspace-qa/user-denied-mobile.png 'http://127.0.0.1:4173/admin/?qa=admin-denied&qaLocale=en'
-          "$CHROME" "${COMMON[@]}" --window-size=390,844 --dump-dom 'http://127.0.0.1:4173/admin/?qa=admin-denied&qaLocale=en' > admin-workspace-qa/user-denied-mobile.html
-          grep -q 'data-qa-scenario="complete"' admin-workspace-qa/user-denied-mobile.html
-          grep -q 'data-qa-admin-denied="true"' admin-workspace-qa/user-denied-mobile.html
-          grep -q 'data-qa-admin-overflow="false"' admin-workspace-qa/user-denied-mobile.html
+          "$CHROME" "${COMMON[@]}" --window-size=390,844 --screenshot=admin-workspace-qa/user-cloaked-mobile.png 'http://127.0.0.1:4173/admin/?qa=admin-denied&qaLocale=en'
+          "$CHROME" "${COMMON[@]}" --window-size=390,844 --dump-dom 'http://127.0.0.1:4173/admin/?qa=admin-denied&qaLocale=en' > admin-workspace-qa/user-cloaked-mobile.html
+          grep -q 'data-qa-scenario="complete"' admin-workspace-qa/user-cloaked-mobile.html
+          grep -q 'data-qa-admin-cloaked="true"' admin-workspace-qa/user-cloaked-mobile.html
+          grep -q 'data-qa-admin-overflow="false"' admin-workspace-qa/user-cloaked-mobile.html
+          grep -q 'Page not found' admin-workspace-qa/user-cloaked-mobile.html
+          ! grep -q 'data-qa-admin-denied="true"' admin-workspace-qa/user-cloaked-mobile.html
           ! grep -q '/api/v1/admin/' admin-workspace-qa/server.log
 
           for spec in '390,844:mobile' '768,1024:tablet' '1440,1000:desktop'; do
