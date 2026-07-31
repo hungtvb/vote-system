@@ -94,14 +94,15 @@ export function AdminSystemOperationsPanel() {
       setStatus(committed);
       setDraft(toDraft(committed));
       setConfirming(false);
-      setNotice(t('admin', 'systemUpdateCompleted'));
 
       try {
         const authoritative = await runAuthorized(active =>
           adminApi.systemStatus(active.accessToken));
         setStatus(authoritative);
         setDraft(toDraft(authoritative));
+        setNotice(t('admin', 'systemUpdateCompleted'));
       } catch (reloadCause) {
+        setNotice('');
         setError(safeError(reloadCause, t('admin', 'systemLoadFailed')));
       }
     } catch (cause) {
