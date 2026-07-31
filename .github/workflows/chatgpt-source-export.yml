@@ -1,0 +1,42 @@
+name: ChatGPT Source Export
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/chatgpt-source-export.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Package source snapshot
+        shell: bash
+        run: |
+          tar \
+            --exclude=.git \
+            --exclude=vote-system-source.tar.gz \
+            -czf vote-system-source.tar.gz .
+          test -s vote-system-source.tar.gz
+          sha256sum vote-system-source.tar.gz > vote-system-source.tar.gz.sha256
+
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: vote-system-source
+          path: |
+            vote-system-source.tar.gz
+            vote-system-source.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 1
