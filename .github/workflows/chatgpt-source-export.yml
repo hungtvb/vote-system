@@ -24,19 +24,18 @@ jobs:
       - name: Package source snapshot
         shell: bash
         run: |
-          tar \
-            --exclude=.git \
-            --exclude=vote-system-source.tar.gz \
-            -czf vote-system-source.tar.gz .
-          test -s vote-system-source.tar.gz
-          sha256sum vote-system-source.tar.gz > vote-system-source.tar.gz.sha256
+          archive="$RUNNER_TEMP/vote-system-source.tar.gz"
+          checksum="$RUNNER_TEMP/vote-system-source.tar.gz.sha256"
+          tar --exclude=.git -czf "$archive" .
+          test -s "$archive"
+          sha256sum "$archive" | sed "s#${RUNNER_TEMP}/##" > "$checksum"
 
       - name: Upload source snapshot
         uses: actions/upload-artifact@v4
         with:
           name: vote-system-source
           path: |
-            vote-system-source.tar.gz
-            vote-system-source.tar.gz.sha256
+            ${{ runner.temp }}/vote-system-source.tar.gz
+            ${{ runner.temp }}/vote-system-source.tar.gz.sha256
           if-no-files-found: error
           retention-days: 1
