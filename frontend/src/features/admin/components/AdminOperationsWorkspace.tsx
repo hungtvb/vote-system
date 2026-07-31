@@ -11,6 +11,7 @@ import {
   type AdminPost,
   type AdminRankingStatus,
   type AdminSection,
+  type AdminSystemStatus,
   type AdminUser,
   type ModerationStatus
 } from '@/shared/api/admin-api';
@@ -18,10 +19,11 @@ import { ApiError } from '@/shared/api/transport';
 import { useI18n } from '@/shared/i18n/I18nProvider';
 import { AdminActionDialog } from './AdminActionDialog';
 import { AdminRankingPanel } from './AdminRankingPanel';
+import { AdminSystemOperationsPanel } from './AdminSystemOperationsPanel';
 import shellStyles from './AdminWorkspace.module.scss';
 import styles from './AdminOperationsWorkspace.module.scss';
 
-const SECTIONS: AdminSection[] = ['overview', 'ballots', 'users', 'audit', 'ranking'];
+const SECTIONS: AdminSection[] = ['overview', 'ballots', 'users', 'audit', 'ranking', 'system'];
 const PAGE_SIZES = [12, 25, 50, 100] as const;
 
 type PendingAction =
@@ -33,6 +35,7 @@ interface OverviewState {
   ballots?: number;
   audit?: number;
   ranking?: AdminRankingStatus;
+  system?: AdminSystemStatus;
   unavailable: boolean;
 }
 
@@ -103,15 +106,17 @@ export function AdminOperationsWorkspace() {
           runAuthorized(active => adminApi.users({ page: 0, size: 1 }, active.accessToken, signal)),
           runAuthorized(active => adminApi.posts({ page: 0, size: 1 }, active.accessToken, signal)),
           runAuthorized(active => adminApi.auditLogs({ page: 0, size: 1 }, active.accessToken, signal)),
-          runAuthorized(active => adminApi.rankingStatus(active.accessToken, signal))
+          runAuthorized(active => adminApi.rankingStatus(active.accessToken, signal)),
+          runAuthorized(active => adminApi.systemStatus(active.accessToken, signal))
         ]);
         if (signal?.aborted) return;
-        const [userResult, postResult, auditResult, rankingResult] = results;
+        const [userResult, postResult, auditResult, rankingResult, systemResult] = results;
         setOverview({
           users: userResult.status === 'fulfilled' ? userResult.value.totalElements : undefined,
           ballots: postResult.status === 'fulfilled' ? postResult.value.totalElements : undefined,
           audit: auditResult.status === 'fulfilled' ? auditResult.value.totalElements : undefined,
           ranking: rankingResult.status === 'fulfilled' ? rankingResult.value : undefined,
+          system: systemResult.status === 'fulfilled' ? systemResult.value : undefined,
           unavailable: results.some(result => result.status === 'rejected')
         });
         if (results.every(result => result.status === 'rejected')) {
@@ -153,7 +158,7 @@ export function AdminOperationsWorkspace() {
   }, [copy.loadFailed, isAdmin, page, pageSize, query, runAuthorized, section, stateFilter]);
 
   useEffect(() => {
-    if (!isAdmin || section === 'ranking') return;
+    if (!isAdmin || section === 'ranking' || section === 'system') return;
     const controller = new AbortController();
     void loadCurrentSection(controller.signal);
     return () => controller.abort();
@@ -235,6 +240,7 @@ export function AdminOperationsWorkspace() {
       data-qa-admin-overflow="false"
       data-qa-admin-table-first="true"
       data-qa-admin-ranking={section === 'ranking' ? 'true' : undefined}
+      data-qa-admin-system={section === 'system' ? 'true' : undefined}
     >
       <header className={shellStyles.topbar}>
         <a className={shellStyles.brand} href="/">
@@ -269,10 +275,6 @@ export function AdminOperationsWorkspace() {
                 <span>{copy.sections[item]}</span>
               </button>
             ))}
-            <button type="button" disabled title={copy.comingLater}>
-              <span aria-hidden="true">◇</span>
-              <span>{copy.systemOperations}</span>
-            </button>
           </nav>
           <p className={shellStyles.sidebarNote}>{copy.backendAuthority}</p>
         </aside>
@@ -284,7 +286,7 @@ export function AdminOperationsWorkspace() {
               <h1 data-qa-admin-heading={copy.sectionTitles[section]}>{copy.sectionTitles[section]}</h1>
               <p>{copy.sectionDescriptions[section]}</p>
             </div>
-            {section !== 'ranking' && (
+            {section !== 'ranking' && section !== 'system' && (
               <button type="button" className={styles.toolbarButton} disabled={loading} onClick={() => void loadCurrentSection()}>
                 {loading ? copy.refreshing : copy.refresh}
               </button>
@@ -356,7 +358,7 @@ export function AdminOperationsWorkspace() {
                 state={stateFilter}
                 placeholder={copy.auditSearchPlaceholder}
                 stateLabel={copy.targetType}
-                options={['POST', 'USER', 'RANKING']}
+                options={['POST', 'USER', 'RANKING', 'SYSTEM']}
                 onQuery={setQueryInput}
                 onState={value => updateUrl({ state: value || null, page: null })}
                 onSubmit={submitFilters}
@@ -367,6 +369,7 @@ export function AdminOperationsWorkspace() {
           )}
 
           {section === 'ranking' && <AdminRankingPanel />}
+          {section === 'system' && <AdminSystemOperationsPanel />}
 
           {activePage && (
             <Pagination
@@ -414,6 +417,7 @@ function Overview({ overview, loading, copy, formatNumber }: {
   formatNumber: (value: number) => string;
 }) {
   const ranking = overview.ranking;
+  const system = overview.system;
   const cards: Array<{ label: string; value?: number | string; note: string; status?: string }> = [
     { label: copy.registeredUsers, value: overview.users, note: copy.authoritativeRecord },
     { label: copy.registeredBallots, value: overview.ballots, note: copy.authoritativeRecord },
@@ -423,6 +427,12 @@ function Overview({ overview, loading, copy, formatNumber }: {
       value: ranking?.availability,
       note: ranking ? copy.publishedGeneration : copy.unavailable,
       status: ranking?.availability ?? 'UNAVAILABLE'
+    },
+    {
+      label: copy.systemMode,
+      value: system?.mode,
+      note: system ? copy.authoritativeRecord : copy.unavailable,
+      status: system?.mode ?? 'UNAVAILABLE'
     }
   ];
   return (
@@ -753,7 +763,7 @@ function isModerationStatus(value: string): value is ModerationStatus {
 }
 
 function isTargetType(value: string): value is AdminAuditLog['targetType'] {
-  return value === 'POST' || value === 'USER' || value === 'RANKING';
+  return value === 'POST' || value === 'USER' || value === 'RANKING' || value === 'SYSTEM';
 }
 
 function safeError(error: unknown, fallback: string): string {
@@ -762,7 +772,7 @@ function safeError(error: unknown, fallback: string): string {
 }
 
 function sectionIcon(section: AdminSection): string {
-  return ({ overview: '▦', ballots: '▤', users: '◎', audit: '≡', ranking: '↗' })[section];
+  return ({ overview: '▦', ballots: '▤', users: '◎', audit: '≡', ranking: '↗', system: '◇' })[section];
 }
 
 function shortId(value: string): string {
@@ -794,8 +804,6 @@ interface Copy {
   sections: Record<AdminSection, string>;
   sectionTitles: Record<AdminSection, string>;
   sectionDescriptions: Record<AdminSection, string>;
-  comingLater: string;
-  systemOperations: string;
   backendAuthority: string;
   officialOperations: string;
   refresh: string;
@@ -808,6 +816,7 @@ interface Copy {
   registeredBallots: string;
   auditEvents: string;
   rankingHealth: string;
+  systemMode: string;
   authoritativeRecord: string;
   immutableRecord: string;
   publishedGeneration: string;
@@ -868,18 +877,19 @@ interface Copy {
 const COPY: Record<'vi' | 'en', Copy> = {
   vi: {
     operationsConsole: 'Bảng điều hành', navigation: 'Điều hướng quản trị', controlDesk: 'TRUNG TÂM ĐIỀU HÀNH', operationsRegistry: 'Quản trị hệ thống',
-    sections: { overview: 'Tổng quan', ballots: 'Phiếu', users: 'Người dùng', audit: 'Nhật ký', ranking: 'Xếp hạng' },
-    sectionTitles: { overview: 'Tổng quan vận hành', ballots: 'Danh sách phiếu', users: 'Danh sách người dùng', audit: 'Nhật ký kiểm toán', ranking: 'Vận hành xếp hạng' },
+    sections: { overview: 'Tổng quan', ballots: 'Phiếu', users: 'Người dùng', audit: 'Nhật ký', ranking: 'Xếp hạng', system: 'Hệ thống' },
+    sectionTitles: { overview: 'Tổng quan vận hành', ballots: 'Danh sách phiếu', users: 'Danh sách người dùng', audit: 'Nhật ký kiểm toán', ranking: 'Vận hành xếp hạng', system: 'Vận hành hệ thống' },
     sectionDescriptions: {
       overview: 'Tình trạng dữ liệu có thẩm quyền và các khu vực vận hành chính.',
       ballots: 'Quét, lọc và điều tiết phiếu theo bảng dữ liệu mật độ cao.',
       users: 'Kiểm tra tài khoản, vai trò, trạng thái truy cập và thao tác quản trị.',
       audit: 'Bản ghi bất biến của các thao tác quản trị và metadata liên quan.',
-      ranking: 'Theo dõi generation Redis và chạy rebuild nguyên tử có kiểm toán.'
+      ranking: 'Theo dõi generation Redis và chạy rebuild nguyên tử có kiểm toán.',
+      system: 'Kiểm tra và thay đổi chế độ NORMAL, READ_ONLY hoặc MAINTENANCE có kiểm toán.'
     },
-    comingLater: 'Sẽ triển khai sau', systemOperations: 'Vận hành hệ thống', backendAuthority: 'Backend là nguồn phân quyền và trạng thái có thẩm quyền.', officialOperations: 'VẬN HÀNH CHÍNH THỨC',
+    backendAuthority: 'Backend là nguồn phân quyền và trạng thái có thẩm quyền.', officialOperations: 'VẬN HÀNH CHÍNH THỨC',
     refresh: 'Làm mới', refreshing: 'Đang làm mới…', loading: 'Đang tải dữ liệu', loadFailed: 'Không thể tải dữ liệu quản trị.', actionCompleted: 'Thao tác quản trị đã hoàn tất.', actionFailed: 'Thao tác quản trị thất bại.',
-    registeredUsers: 'Người dùng', registeredBallots: 'Phiếu', auditEvents: 'Sự kiện kiểm toán', rankingHealth: 'Xếp hạng', authoritativeRecord: 'Dữ liệu PostgreSQL', immutableRecord: 'Bản ghi bất biến', publishedGeneration: 'Generation đang phát hành', unavailable: 'Không khả dụng',
+    registeredUsers: 'Người dùng', registeredBallots: 'Phiếu', auditEvents: 'Sự kiện kiểm toán', rankingHealth: 'Xếp hạng', systemMode: 'Chế độ hệ thống', authoritativeRecord: 'Dữ liệu PostgreSQL', immutableRecord: 'Bản ghi bất biến', publishedGeneration: 'Generation đang phát hành', unavailable: 'Không khả dụng',
     overviewCalloutTitle: 'Dashboard ưu tiên khả năng quét dữ liệu', overviewCalloutDescription: 'Các danh sách dài sử dụng bảng, filter cố định và pagination server-side.', partialOverview: 'Một phần dữ liệu chưa khả dụng; giá trị không xác định không được thay bằng số 0.',
     search: 'Tìm kiếm', allStates: 'Tất cả trạng thái', applyFilters: 'Áp dụng', userSearchPlaceholder: 'Email hoặc tên hiển thị', ballotSearchPlaceholder: 'Tiêu đề hoặc nội dung phiếu', auditSearchPlaceholder: 'Mã action chính xác', accountState: 'Trạng thái tài khoản', moderationState: 'Trạng thái điều tiết',
     user: 'Người dùng', email: 'Email', role: 'Vai trò', accountStatus: 'Trạng thái', restrictionUntil: 'Hạn chế đến', providers: 'Provider', created: 'Ngày tạo', actions: 'Thao tác', currentAdmin: 'Tài khoản admin hiện tại',
@@ -890,18 +900,19 @@ const COPY: Record<'vi' | 'en', Copy> = {
   },
   en: {
     operationsConsole: 'Operations console', navigation: 'Administrator navigation', controlDesk: 'OPERATIONS DESK', operationsRegistry: 'System administration',
-    sections: { overview: 'Overview', ballots: 'Ballots', users: 'Users', audit: 'Audit log', ranking: 'Ranking' },
-    sectionTitles: { overview: 'Operations overview', ballots: 'Ballot registry', users: 'User registry', audit: 'Audit log', ranking: 'Ranking operations' },
+    sections: { overview: 'Overview', ballots: 'Ballots', users: 'Users', audit: 'Audit log', ranking: 'Ranking', system: 'System' },
+    sectionTitles: { overview: 'Operations overview', ballots: 'Ballot registry', users: 'User registry', audit: 'Audit log', ranking: 'Ranking operations', system: 'System operations' },
     sectionDescriptions: {
       overview: 'Authoritative data status and the primary operational surfaces.',
       ballots: 'Scan, filter and moderate ballots in a dense operational table.',
       users: 'Review accounts, roles, access state and administrator actions.',
       audit: 'Immutable administrator actions with expandable operational metadata.',
-      ranking: 'Inspect the Redis generation and run an audited atomic rebuild.'
+      ranking: 'Inspect the Redis generation and run an audited atomic rebuild.',
+      system: 'Inspect and change the audited NORMAL, READ_ONLY or MAINTENANCE operating mode.'
     },
-    comingLater: 'Coming later', systemOperations: 'System Operations', backendAuthority: 'The backend remains authoritative for access and state.', officialOperations: 'OFFICIAL OPERATIONS',
+    backendAuthority: 'The backend remains authoritative for access and state.', officialOperations: 'OFFICIAL OPERATIONS',
     refresh: 'Refresh', refreshing: 'Refreshing…', loading: 'Loading data', loadFailed: 'Administrator data could not be loaded.', actionCompleted: 'Administrator action completed.', actionFailed: 'Administrator action failed.',
-    registeredUsers: 'Registered users', registeredBallots: 'Registered ballots', auditEvents: 'Audit events', rankingHealth: 'Ranking health', authoritativeRecord: 'Authoritative PostgreSQL', immutableRecord: 'Immutable record', publishedGeneration: 'Published generation', unavailable: 'Unavailable',
+    registeredUsers: 'Registered users', registeredBallots: 'Registered ballots', auditEvents: 'Audit events', rankingHealth: 'Ranking health', systemMode: 'System mode', authoritativeRecord: 'Authoritative PostgreSQL', immutableRecord: 'Immutable record', publishedGeneration: 'Published generation', unavailable: 'Unavailable',
     overviewCalloutTitle: 'A dashboard designed for data scanning', overviewCalloutDescription: 'Long datasets use tables, persistent filters and server-side pagination.', partialOverview: 'Some data is unavailable; unknown values are never presented as zero.',
     search: 'Search', allStates: 'All states', applyFilters: 'Apply filters', userSearchPlaceholder: 'Email or display name', ballotSearchPlaceholder: 'Ballot title or content', auditSearchPlaceholder: 'Exact action code', accountState: 'Account state', moderationState: 'Moderation state',
     user: 'User', email: 'Email', role: 'Role', accountStatus: 'Account status', restrictionUntil: 'Restriction until', providers: 'Providers', created: 'Created', actions: 'Actions', currentAdmin: 'Current administrator account',

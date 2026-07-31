@@ -6,7 +6,7 @@ export type ModerationStatus = 'VISIBLE' | 'HIDDEN' | 'DELETED';
 export type RankingAvailability = 'HEALTHY' | 'STALE' | 'REBUILDING' | 'UNAVAILABLE';
 export type SystemMode = 'NORMAL' | 'READ_ONLY' | 'MAINTENANCE';
 export type AdminAuditTargetType = 'POST' | 'USER' | 'RANKING' | 'SYSTEM';
-export type AdminSection = 'overview' | 'ballots' | 'users' | 'audit' | 'ranking';
+export type AdminSection = 'overview' | 'ballots' | 'users' | 'audit' | 'ranking' | 'system';
 
 export interface AdminPage<T> {
   content: T[];
