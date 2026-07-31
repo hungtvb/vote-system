@@ -38,12 +38,12 @@ ALTER TABLE admin_audit_logs
         'ADMIN_RESTORE_USER',
         'ADMIN_REVOKE_SESSIONS',
         'ADMIN_REBUILD_RANKING',
-        'ADMIN_CHANGE_SYSTEM_MODE'
+        'SYSTEM_MODE_CHANGED'
     )),
     ADD CONSTRAINT ck_admin_audit_logs_target_type CHECK (target_type IN ('POST', 'USER', 'RANKING', 'SYSTEM')),
     ADD CONSTRAINT ck_admin_audit_logs_action_target CHECK (
         (action IN ('ADMIN_HIDE_POST', 'ADMIN_RESTORE_POST', 'ADMIN_DELETE_POST') AND target_type = 'POST')
         OR (action IN ('ADMIN_SUSPEND_USER', 'ADMIN_BAN_USER', 'ADMIN_RESTORE_USER', 'ADMIN_REVOKE_SESSIONS') AND target_type = 'USER')
         OR (action = 'ADMIN_REBUILD_RANKING' AND target_type = 'RANKING')
-        OR (action = 'ADMIN_CHANGE_SYSTEM_MODE' AND target_type = 'SYSTEM')
+        OR (action = 'SYSTEM_MODE_CHANGED' AND target_type = 'SYSTEM')
     );
