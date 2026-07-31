@@ -1,8 +1,12 @@
+import { emitSystemModeSignal } from '@/shared/system/system-mode-signal';
+
 export interface ApiProblem {
   title?: string;
   detail?: string;
   message?: string;
   status?: number;
+  code?: string;
+  mode?: string;
   errors?: Record<string, string>;
 }
 
@@ -51,6 +55,7 @@ export function createHttpClient({
 
     if (!response.ok) {
       const problem = await readProblem(response);
+      emitSystemModeSignal(problem);
       const message = problem?.detail ?? problem?.message ?? problem?.title ?? `Request failed (${response.status})`;
       throw new ApiError(message, response.status, parseRetryAfter(response.headers.get('Retry-After'), now()), problem);
     }
