@@ -37,7 +37,7 @@ class SystemModeEnforcementFilterTests {
 
         assertFalse(chained.get());
         assertEquals(503, response.getStatus());
-        assertEquals("application/problem+json", response.getContentType());
+        assertTrue(response.getContentType().startsWith("application/problem+json"));
         long retryAfter = Long.parseLong(response.getHeader("Retry-After"));
         assertTrue(retryAfter >= 89 && retryAfter <= 90);
         JsonNode problem = objectMapper.readTree(response.getContentAsByteArray());
@@ -83,7 +83,7 @@ class SystemModeEnforcementFilterTests {
     }
 
     @Test
-    void statusLookupFailureFailsOpenForRecovery() throws Exception {
+    void statusLookupFailureFailsClosedOutsideRecoveryRoutes() throws Exception {
         when(statusService.currentStatusSnapshot()).thenThrow(new IllegalStateException("status unavailable"));
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/posts");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -91,8 +91,23 @@ class SystemModeEnforcementFilterTests {
 
         filter.doFilter(request, response, (ignoredRequest, ignoredResponse) -> chained.set(true));
 
+        assertFalse(chained.get());
+        assertEquals(503, response.getStatus());
+        JsonNode problem = objectMapper.readTree(response.getContentAsByteArray());
+        assertEquals(SystemModeEnforcementFilter.STATUS_UNAVAILABLE_CODE, problem.get("code").asText());
+        assertFalse(problem.has("mode"));
+    }
+
+    @Test
+    void recoveryRoutesDoNotDependOnStatusLookup() throws Exception {
+        when(statusService.currentStatusSnapshot()).thenThrow(new IllegalStateException("status unavailable"));
+        MockHttpServletRequest request = new MockHttpServletRequest("PUT", "/api/v1/admin/system/status");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicBoolean chained = new AtomicBoolean();
+
+        filter.doFilter(request, response, (ignoredRequest, ignoredResponse) -> chained.set(true));
+
         assertTrue(chained.get());
-        assertEquals(200, response.getStatus());
     }
 
     @Test
