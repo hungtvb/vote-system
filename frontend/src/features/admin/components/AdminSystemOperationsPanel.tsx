@@ -10,6 +10,7 @@ import {
 } from '@/shared/api/admin-api';
 import { ApiError } from '@/shared/api/transport';
 import { useI18n } from '@/shared/i18n/I18nProvider';
+import type { MessageKey } from '@/shared/i18n/I18nProvider';
 import shellStyles from './AdminWorkspace.module.scss';
 import styles from './AdminSystemOperationsPanel.module.scss';
 
@@ -131,7 +132,7 @@ export function AdminSystemOperationsPanel() {
         </section>
       )}
 
-      <form className={styles.controlForm} onSubmit={submit}>
+      <form className={styles.controlForm} onSubmit={submit} data-qa-system-form="true">
         <fieldset className={styles.modeFieldset} disabled={busy || loading}>
           <legend>{t('admin', 'systemSelectMode')}</legend>
           <div className={styles.modeGrid}>
@@ -281,7 +282,7 @@ function SystemModeConfirmationDialog({ from, to, busy, error, onClose, onConfir
           </div>
           <button type="button" className={shellStyles.iconButton} aria-label={t('common', 'close')} disabled={busy} onClick={onClose}>×</button>
         </div>
-        <p className={shellStyles.dialogDescription}>{t('admin', 'systemConfirmationDescription', { from, to })}</p>
+        <p className={styles.dialogDescription}>{t('admin', 'systemConfirmationDescription', { from, to })}</p>
         <div className={styles.transitionLine} aria-label={`${from} to ${to}`}>
           <span>{from}</span><span aria-hidden="true">→</span><strong>{to}</strong>
         </div>
@@ -345,34 +346,42 @@ function sameState(status: AdminSystemStatus, draft: DraftStatus): boolean {
   return status.mode === input.mode
     && (status.messageVi ?? null) === input.messageVi
     && (status.messageEn ?? null) === input.messageEn
-    && normalizeInstant(status.estimatedEndAt) === normalizeInstant(input.estimatedEndAt ?? undefined);
+    && normalizeToLocalMinute(status.estimatedEndAt) === normalizeToLocalMinute(input.estimatedEndAt ?? undefined);
 }
 
-function normalizeInstant(value?: string): string | null {
-  return value ? new Date(value).toISOString() : null;
+function normalizeToLocalMinute(value?: string): string | null {
+  return value ? toLocalDateTimeInput(new Date(value)) : null;
 }
 
-function impactKeys(mode: SystemMode): string[] {
+function impactKeys(mode: SystemMode): MessageKey<'admin'>[] {
   if (mode === 'READ_ONLY') return ['systemImpactReadOnly1', 'systemImpactReadOnly2', 'systemImpactReadOnly3', 'systemImpactReadOnly4'];
   if (mode === 'MAINTENANCE') return ['systemImpactMaintenance1', 'systemImpactMaintenance2', 'systemImpactMaintenance3'];
   return ['systemImpactNormal1', 'systemImpactNormal2'];
 }
 
-function modeDescriptionKey(mode: SystemMode): string {
-  return ({ NORMAL: 'systemModeNormalDescription', READ_ONLY: 'systemModeReadOnlyDescription', MAINTENANCE: 'systemModeMaintenanceDescription' })[mode];
+function modeDescriptionKey(mode: SystemMode): MessageKey<'admin'> {
+  return ({
+    NORMAL: 'systemModeNormalDescription',
+    READ_ONLY: 'systemModeReadOnlyDescription',
+    MAINTENANCE: 'systemModeMaintenanceDescription'
+  } as const)[mode];
 }
 
-function modeImpactTitleKey(mode: SystemMode): string {
-  return ({ NORMAL: 'systemImpactNormalTitle', READ_ONLY: 'systemImpactReadOnlyTitle', MAINTENANCE: 'systemImpactMaintenanceTitle' })[mode];
+function modeImpactTitleKey(mode: SystemMode): MessageKey<'admin'> {
+  return ({
+    NORMAL: 'systemImpactNormalTitle',
+    READ_ONLY: 'systemImpactReadOnlyTitle',
+    MAINTENANCE: 'systemImpactMaintenanceTitle'
+  } as const)[mode];
 }
 
-function confirmationTitleKey(mode: SystemMode): string {
+function confirmationTitleKey(mode: SystemMode): MessageKey<'admin'> {
   return mode === 'MAINTENANCE' ? 'systemConfirmMaintenanceTitle'
     : mode === 'NORMAL' ? 'systemConfirmNormalTitle'
       : 'systemConfirmReadOnlyTitle';
 }
 
-function confirmationButtonKey(mode: SystemMode): string {
+function confirmationButtonKey(mode: SystemMode): MessageKey<'admin'> {
   return mode === 'MAINTENANCE' ? 'systemEnableMaintenance'
     : mode === 'NORMAL' ? 'systemRestoreNormal'
       : 'systemEnableReadOnly';
