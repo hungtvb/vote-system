@@ -12,6 +12,7 @@ import {
   SYSTEM_MODE_SIGNAL_EVENT,
   type SystemModeSignal
 } from './system-mode-signal';
+import { selectPublicMessage } from './system-mode-state';
 
 interface SystemModeContextValue {
   status: PublicSystemStatus | null;
@@ -103,11 +104,4 @@ export function useSystemMode(): SystemModeContextValue {
   const context = useContext(SystemModeContext);
   if (!context) throw new Error('useSystemMode must be used inside SystemModeProvider');
   return context;
-}
-
-export function selectPublicMessage(status: PublicSystemStatus | null, locale: 'vi' | 'en'): string {
-  if (!status) return '';
-  const primary = locale === 'vi' ? status.messageVi : status.messageEn;
-  const fallback = locale === 'vi' ? status.messageEn : status.messageVi;
-  return primary || fallback || '';
 }
