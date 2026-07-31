@@ -40,6 +40,40 @@ admin.ADMIN_QA_SCRIPT = admin.ADMIN_QA_SCRIPT.replace(
         }
       );
     }
+    if (mode === 'admin-system-update') {
+      buttonWithText('System')?.click();
+      return waitFor(
+        () => Boolean(document.querySelector('input[name="system-mode"][value="READ_ONLY"]')),
+        () => {
+          document.querySelector('input[name="system-mode"][value="READ_ONLY"]')?.click();
+          waitFor(
+            () => Boolean(buttonWithText('Review mode change')),
+            () => {
+              buttonWithText('Review mode change')?.click();
+              waitFor(
+                () => Boolean(document.querySelector('dialog[open] textarea[required]')),
+                () => {
+                  const reason = document.querySelector('dialog[open] textarea[required]');
+                  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+                  setter?.call(reason, 'Controlled read-only verification');
+                  reason?.dispatchEvent(new Event('input', { bubbles: true }));
+                  waitFor(
+                    () => Boolean(buttonWithText('Enable read-only')),
+                    () => {
+                      buttonWithText('Enable read-only')?.click();
+                      waitFor(
+                        () => document.body.textContent?.includes('authoritative operating mode was updated'),
+                        () => setTimeout(() => record(), 180)
+                      );
+                    }
+                  );
+                }
+              );
+            }
+          );
+        }
+      );
+    }
     if (mode === 'admin-user-dialog') {""",
 )
 
@@ -114,7 +148,7 @@ class Handler(admin.Handler):
         if parsed.path in ("/admin", "/admin/"):
             if mode == "admin-ranking":
                 _refresh_count = 0
-            if mode in {"admin-system", "admin-system-dialog"}:
+            if mode in {"admin-system", "admin-system-dialog", "admin-system-update"}:
                 reset_system_status()
 
         if parsed.path == "/api/v1/admin/rankings/status":
