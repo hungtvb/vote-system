@@ -9,7 +9,7 @@ public enum AdminAuditAction {
     ADMIN_RESTORE_USER(AdminAuditTargetType.USER),
     ADMIN_REVOKE_SESSIONS(AdminAuditTargetType.USER),
     ADMIN_REBUILD_RANKING(AdminAuditTargetType.RANKING),
-    ADMIN_CHANGE_SYSTEM_MODE(AdminAuditTargetType.SYSTEM);
+    SYSTEM_MODE_CHANGED(AdminAuditTargetType.SYSTEM);
 
     private final AdminAuditTargetType targetType;
 
