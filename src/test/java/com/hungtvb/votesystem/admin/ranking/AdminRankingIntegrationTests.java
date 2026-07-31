@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hungtvb.votesystem.admin.AdminBootstrapService;
 import com.hungtvb.votesystem.admin.ranking.dto.AdminRankingRebuildRequest;
 import com.hungtvb.votesystem.admin.ranking.dto.AdminRankingStatusResponse;
+import com.hungtvb.votesystem.common.error.ConflictException;
 import com.hungtvb.votesystem.post.Post;
 import com.hungtvb.votesystem.post.PostRepository;
 import com.hungtvb.votesystem.ranking.FeedType;
@@ -14,13 +15,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.test.context.support.WithMockUser;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.testcontainers.containers.GenericContainer;
@@ -32,6 +34,13 @@ import org.testcontainers.utility.DockerImageName;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -39,8 +48,12 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.reset;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -70,12 +83,13 @@ class AdminRankingIntegrationTests {
     @Autowired AdminBootstrapService adminBootstrapService;
     @Autowired AdminRankingService adminRankingService;
     @Autowired AdminRankingController adminRankingController;
-    @Autowired RedisRankingRepository rankingRepository;
+    @MockitoSpyBean RedisRankingRepository rankingRepository;
     @Autowired StringRedisTemplate redisTemplate;
     @Autowired PostRepository postRepository;
 
     @BeforeEach
     void clearRankingStore() {
+        reset(rankingRepository);
         redisTemplate.getConnectionFactory().getConnection().serverCommands().flushDb();
     }
 
@@ -131,6 +145,82 @@ class AdminRankingIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.generation").value(generation))
                 .andExpect(jsonPath("$.availability").value("HEALTHY"));
+    }
+
+    @Test
+    void concurrentVoteAfterSnapshotIsRetriedAndPublishedWithoutLostScore() throws Exception {
+        AuthSession admin = admin("ranking-race-admin@example.com");
+        AuthSession author = register("ranking-race-author@example.com");
+        AuthSession voter = register("ranking-race-voter@example.com");
+        UUID postId = createPost(author.accessToken(), "Concurrent vote ranking ballot");
+        adminRankingService.rebuild(admin.userId(), "Publish initial generation");
+        long auditBefore = auditCount();
+
+        CountDownLatch snapshotPrepared = new CountDownLatch(1);
+        CountDownLatch voteCommitted = new CountDownLatch(1);
+        AtomicBoolean blockFirstAttempt = new AtomicBoolean(true);
+        doAnswer(invocation -> {
+            RedisRankingRepository.RankingCounts counts = invocation.callRealMethod();
+            if (blockFirstAttempt.compareAndSet(true, false)) {
+                snapshotPrepared.countDown();
+                if (!voteCommitted.await(10, TimeUnit.SECONDS)) {
+                    throw new AssertionError("Concurrent vote did not commit before the rebuild fence");
+                }
+            }
+            return counts;
+        }).when(rankingRepository).generationCounts(any(RedisRankingRepository.RankingGeneration.class));
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<AdminRankingStatusResponse> rebuild = executor.submit(() ->
+                    adminRankingService.rebuild(admin.userId(), "Rebuild across a concurrent vote"));
+            assertTrue(snapshotPrepared.await(10, TimeUnit.SECONDS));
+            try {
+                mockMvc.perform(put("/api/v1/posts/{postId}/vote", postId)
+                                .header("Authorization", "Bearer " + voter.accessToken())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"type\":\"UP\"}"))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.voteScore").value(1));
+            } finally {
+                voteCommitted.countDown();
+            }
+
+            AdminRankingStatusResponse response = rebuild.get(20, TimeUnit.SECONDS);
+            assertEquals("HEALTHY", response.availability().name());
+            assertEquals(auditBefore + 1, auditCount());
+            assertEquals(1.0d, publishedDayScore(postId));
+        } finally {
+            voteCommitted.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void repeatedConcurrentCreatesExhaustRetryBudgetWithoutPublishingOrAuditing() throws Exception {
+        AuthSession admin = admin("ranking-retry-admin@example.com");
+        AuthSession author = register("ranking-retry-author@example.com");
+        createPost(author.accessToken(), "Initial stable ballot");
+        AdminRankingStatusResponse initial = adminRankingService.rebuild(
+                admin.userId(), "Publish generation before retry exhaustion");
+        long auditBefore = auditCount();
+        AtomicInteger attempts = new AtomicInteger();
+
+        doAnswer(invocation -> {
+            RedisRankingRepository.RankingCounts counts = invocation.callRealMethod();
+            int attempt = attempts.incrementAndGet();
+            createPost(author.accessToken(), "Concurrent ballot " + attempt);
+            return counts;
+        }).when(rankingRepository).generationCounts(any(RedisRankingRepository.RankingGeneration.class));
+
+        ConflictException exception = assertThrows(ConflictException.class, () ->
+                adminRankingService.rebuild(admin.userId(), "This rebuild should remain unstable"));
+
+        assertEquals("Ranking changed repeatedly during rebuild; retry later", exception.getMessage());
+        assertEquals(3, attempts.get());
+        assertEquals(initial.generation(), adminRankingService.status().generation());
+        assertEquals(auditBefore, auditCount());
+        assertFalse(adminRankingService.status().rebuildInProgress());
     }
 
     @Test
@@ -245,6 +335,17 @@ class AdminRankingIntegrationTests {
                 "select count(*) from admin_audit_logs where action = 'ADMIN_REBUILD_RANKING' and target_id = 'ALL'",
                 Long.class
         );
+    }
+
+    private double publishedDayScore(UUID postId) {
+        String generation = redisTemplate.opsForValue().get("feed:{ranking}:active-generation");
+        assertNotNull(generation);
+        Double score = redisTemplate.opsForZSet().score(
+                "feed:{ranking}:generation:" + generation + ":day",
+                postId.toString()
+        );
+        assertNotNull(score);
+        return score;
     }
 
     private record AuthSession(String accessToken, UUID userId) {
