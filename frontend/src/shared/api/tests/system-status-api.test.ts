@@ -4,7 +4,7 @@ import test from 'node:test';
 import { createSystemStatusApi } from '../system-status-api';
 import type { ApiRequester } from '../transport';
 import { systemModeSignalFromProblem } from '../../system/system-mode-signal';
-import { selectPublicMessage } from '../../system/SystemModeProvider';
+import { selectPublicMessage } from '../../system/system-mode-state';
 
 interface CapturedRequest {
   path: string;
