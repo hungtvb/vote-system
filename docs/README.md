@@ -27,6 +27,7 @@ Render is not an active production target. The root `Dockerfile` is retained for
 | [`ADMIN-SEARCH.md`](ADMIN-SEARCH.md) | Protected user/ballot read APIs, filters, privacy fields, pagination, and query-count boundary |
 | [`MODERATION.md`](MODERATION.md) | Ballot moderation states, public visibility, Redis/SSE convergence, and concurrency boundaries |
 | [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md) | User suspension, banning, session revocation, immediate access enforcement, and admin safeguards |
+| [`MAINTENANCE-MODE.md`](MAINTENANCE-MODE.md) | Persistent system mode, public/admin status APIs, cache consistency, audit, and rollout boundaries |
 | [`SOCIAL-LOGIN.md`](SOCIAL-LOGIN.md) | Google OIDC, GitHub OAuth2, callback URLs, temporary OAuth session, and explicit linking |
 | [`REALTIME-VOTES.md`](REALTIME-VOTES.md) | Public ballot SSE contract, convergence, bounded async delivery, and metrics |
 | [`DEPLOY-VERCEL-RAILWAY.md`](DEPLOY-VERCEL-RAILWAY.md) | Active production deployment, profiles, variables, and verification |
@@ -56,7 +57,8 @@ PostgreSQL owns:
 - editable profile fields and preferred-locale value;
 - ballots, lifecycle and moderation state, vote counts, score, and verdict state;
 - individual user votes;
-- append-only administrator audit records.
+- append-only administrator audit records;
+- the singleton system operating mode, localized public status copy, estimated end time, and last administrator actor.
 
 Administrator soft-delete preserves ballot and vote rows. Account restriction preserves role, profile, linked identities, ballots, and votes.
 
@@ -69,6 +71,8 @@ Redis owns rebuildable or short-lived state:
 - shared application cache entries.
 
 Ranked feeds fall back to latest-first PostgreSQL results when Redis is unavailable. Every ranked result is re-checked against PostgreSQL visibility, so a stale Redis member cannot expose a hidden or deleted ballot.
+
+The operating mode is not stored in Redis. Status reads use a process-local five-second cache whose committed value is always re-loadable from PostgreSQL. Cross-instance cache invalidation is deferred until horizontal scaling.
 
 ### Realtime delivery
 
@@ -88,7 +92,7 @@ Access tokens remain in React memory. Refresh tokens remain in path-scoped `Http
 
 System-owned UI copy is available in Vietnamese and English with Vietnamese as the default fallback. Guest resolution uses saved local preference, then supported browser language, then Vietnamese. Authenticated `preferredLocale` is applied once per resolved user without remounting the product shell. User-generated content is never auto-translated.
 
-### Administrator boundary, moderation, and search
+### Administrator boundary, moderation, search, and system status
 
 `USER` and `ADMIN` are the only application roles. Registration and social onboarding always create `USER`. `/api/v1/admin/**` requires `ROLE_ADMIN` at both request and controller-method layers. Controlled bootstrap can promote an existing account for one deployment; it is disabled by default and never creates credentials.
 
@@ -96,7 +100,11 @@ Administrator audit records are persisted as bounded JSONB rows through an inter
 
 Ballot lifecycle (`OPEN/CLOSED`) is independent from ballot moderation (`VISIBLE/HIDDEN/DELETED`). Account authorization role is independent from account moderation (`ACTIVE/SUSPENDED/BANNED`). Both moderation domains use atomic state-and-audit transactions and pessimistic/concurrency safeguards.
 
-Admin user/ballot search uses dedicated unrestricted read repositories that are never reused by public profile/feed code. Responses use explicit page DTOs, fixed `createdAt DESC, id DESC` ordering, escaped text matching, and batch provider/author hydration. Hidden/deleted ballots are visible only through protected admin routes. See [`ADMIN.md`](ADMIN.md), [`ADMIN-SEARCH.md`](ADMIN-SEARCH.md), [`MODERATION.md`](MODERATION.md), and [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md).
+Admin user/ballot search uses dedicated unrestricted read repositories that are never reused by public profile/feed code. Responses use explicit page DTOs, fixed `createdAt DESC, id DESC` ordering, escaped text matching, and batch provider/author hydration. Hidden/deleted ballots are visible only through protected admin routes.
+
+`GET /api/v1/system/status` is anonymous and exposes only the public operating-mode contract. Protected administrator status reads and updates use `/api/v1/admin/system/status`. Status changes and the immutable `SYSTEM_MODE_CHANGED` audit event commit atomically. TON-173 stores and reports the mode but does not enforce READ_ONLY or MAINTENANCE request behavior; see [`MAINTENANCE-MODE.md`](MAINTENANCE-MODE.md).
+
+See [`ADMIN.md`](ADMIN.md), [`ADMIN-SEARCH.md`](ADMIN-SEARCH.md), [`MODERATION.md`](MODERATION.md), [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md), and [`MAINTENANCE-MODE.md`](MAINTENANCE-MODE.md).
 
 ## Production profile and observability
 
@@ -136,17 +144,26 @@ TON-192  Admin authorization boundary and controlled bootstrap
 TON-194  Immutable admin audit log foundation
 TON-195  Audited ballot moderation and visibility enforcement
 TON-196  User suspension, banning, and access enforcement
+TON-197  Admin user and ballot search APIs
+TON-198  Audited atomic ranking rebuild
+TON-199  Protected admin moderation workspace
+TON-201  Table-first administrator operations dashboard
+TON-202  Ranking rebuild revision fence
 ```
 
 Current sequence:
 
 ```text
 TON-109  Admin roles, audit log, moderation, and operational dashboard
-  TON-197  Admin user and ballot search APIs
+  TON-173  Persistent system mode and status API
      ↓
-  TON-198  Audited atomic ranking rebuild
+  TON-174  Backend maintenance/read-only enforcement
      ↓
-  TON-199  Protected admin moderation workspace
+  TON-176  Public maintenance and read-only UI
+     ↓
+  TON-175  Admin System Operations controls
+     ↓
+  TON-177  Production recovery and lockout QA
      ↓
 TON-140  Unified reports and moderation cases
      ↓
