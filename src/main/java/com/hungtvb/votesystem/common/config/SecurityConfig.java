@@ -88,6 +88,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/social/*/start").permitAll()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/v1/auth/social/providers",
+                                "/api/v1/system/status",
                                 "/api/v1/posts/**").permitAll()
                         .requestMatchers(new RegexRequestMatcher(
                                 "^/api/v1/users/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",

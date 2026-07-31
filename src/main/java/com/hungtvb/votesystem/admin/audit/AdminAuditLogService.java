@@ -32,6 +32,7 @@ public class AdminAuditLogService {
     private static final Set<String> SENSITIVE_KEY_PARTS = Set.of(
             "password", "secret", "token", "authorization", "cookie", "credential", "email"
     );
+    private static final Set<String> PUBLIC_MESSAGE_KEYS = Set.of("message_vi", "message_en");
 
     private final AdminAuditLogStore store;
     private final AdminAuditLogRepository repository;
@@ -106,7 +107,7 @@ public class AdminAuditLogService {
         Map<String, String> normalized = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : metadata.entrySet()) {
             String key = normalizeMetadataKey(entry.getKey());
-            String value = normalizeMetadataValue(entry.getValue());
+            String value = normalizeMetadataValue(key, entry.getValue());
             if (normalized.putIfAbsent(key, value) != null) {
                 throw invalid("Audit metadata contains duplicate keys");
             }
@@ -137,14 +138,15 @@ public class AdminAuditLogService {
         return key;
     }
 
-    private String normalizeMetadataValue(String rawValue) {
+    private String normalizeMetadataValue(String key, String rawValue) {
         if (rawValue == null) {
             throw invalid("Audit metadata value is invalid");
         }
         String value = rawValue.strip();
+        boolean publicStatusMessage = PUBLIC_MESSAGE_KEYS.contains(key);
         if (value.length() > MAX_METADATA_VALUE_LENGTH
                 || value.chars().anyMatch(Character::isISOControl)
-                || value.contains("@")
+                || (!publicStatusMessage && value.contains("@"))
                 || value.toLowerCase(Locale.ROOT).contains("bearer ")) {
             throw invalid("Audit metadata value is invalid");
         }

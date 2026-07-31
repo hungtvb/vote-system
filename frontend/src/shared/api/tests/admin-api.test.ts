@@ -77,3 +77,38 @@ test('ballot soft delete uses the audited administrator mutation endpoint', asyn
     reason: 'Confirmed policy violation'
   });
 });
+
+test('administrator system status reads the protected contract', async () => {
+  const fixture = captureRequester({ mode: 'NORMAL', updatedAt: '2026-07-31T00:00:00Z' });
+  const api = createAdminApi(fixture.request);
+
+  await api.systemStatus('admin-token');
+
+  assert.equal(fixture.calls[0].path, '/api/v1/admin/system/status');
+  assert.equal(fixture.calls[0].options?.method, undefined);
+  assert.equal(fixture.calls[0].token, 'admin-token');
+});
+
+test('administrator system status update uses PUT and preserves nullable localized fields', async () => {
+  const fixture = captureRequester({ mode: 'MAINTENANCE', updatedAt: '2026-07-31T00:00:00Z' });
+  const api = createAdminApi(fixture.request);
+
+  await api.updateSystemStatus({
+    mode: 'MAINTENANCE',
+    messageVi: 'Hệ thống đang bảo trì',
+    messageEn: 'The system is under maintenance',
+    estimatedEndAt: '2026-07-31T04:00:00Z',
+    reason: 'Planned maintenance'
+  }, 'admin-token');
+
+  assert.equal(fixture.calls[0].path, '/api/v1/admin/system/status');
+  assert.equal(fixture.calls[0].options?.method, 'PUT');
+  assert.deepEqual(JSON.parse(String(fixture.calls[0].options?.body)), {
+    mode: 'MAINTENANCE',
+    messageVi: 'Hệ thống đang bảo trì',
+    messageEn: 'The system is under maintenance',
+    estimatedEndAt: '2026-07-31T04:00:00Z',
+    reason: 'Planned maintenance'
+  });
+  assert.equal(fixture.calls[0].token, 'admin-token');
+});

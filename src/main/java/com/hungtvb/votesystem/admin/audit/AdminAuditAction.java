@@ -8,7 +8,8 @@ public enum AdminAuditAction {
     ADMIN_BAN_USER(AdminAuditTargetType.USER),
     ADMIN_RESTORE_USER(AdminAuditTargetType.USER),
     ADMIN_REVOKE_SESSIONS(AdminAuditTargetType.USER),
-    ADMIN_REBUILD_RANKING(AdminAuditTargetType.RANKING);
+    ADMIN_REBUILD_RANKING(AdminAuditTargetType.RANKING),
+    SYSTEM_MODE_CHANGED(AdminAuditTargetType.SYSTEM);
 
     private final AdminAuditTargetType targetType;
 
