@@ -24,9 +24,9 @@ INSERT INTO system_status (
     version
 ) VALUES (1, 'NORMAL', NULL, NULL, NULL, CURRENT_TIMESTAMP, NULL, 0);
 
+ALTER TABLE admin_audit_logs DROP CONSTRAINT ck_admin_audit_logs_action_target;
 ALTER TABLE admin_audit_logs DROP CONSTRAINT ck_admin_audit_logs_action;
 ALTER TABLE admin_audit_logs DROP CONSTRAINT ck_admin_audit_logs_target_type;
-ALTER TABLE admin_audit_logs DROP CONSTRAINT ck_admin_audit_logs_action_target;
 
 ALTER TABLE admin_audit_logs
     ADD CONSTRAINT ck_admin_audit_logs_action CHECK (action IN (
