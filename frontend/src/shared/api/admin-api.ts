@@ -4,6 +4,8 @@ import { http, type ApiRequester } from './transport';
 export type AccountStatus = 'ACTIVE' | 'SUSPENDED' | 'BANNED';
 export type ModerationStatus = 'VISIBLE' | 'HIDDEN' | 'DELETED';
 export type RankingAvailability = 'HEALTHY' | 'STALE' | 'REBUILDING' | 'UNAVAILABLE';
+export type SystemMode = 'NORMAL' | 'READ_ONLY' | 'MAINTENANCE';
+export type AdminAuditTargetType = 'POST' | 'USER' | 'RANKING' | 'SYSTEM';
 export type AdminSection = 'overview' | 'ballots' | 'users' | 'audit' | 'ranking';
 
 export interface AdminPage<T> {
@@ -58,7 +60,7 @@ export interface AdminAuditLog {
   id: string;
   actorId: string;
   action: string;
-  targetType: 'POST' | 'USER' | 'RANKING';
+  targetType: AdminAuditTargetType;
   targetId: string;
   reason: string;
   metadata: Record<string, string>;
@@ -76,6 +78,23 @@ export interface AdminRankingStatus {
   generation?: string;
   lastSuccessfulRebuildAt?: string;
   rebuildInProgress: boolean;
+}
+
+export interface AdminSystemStatus {
+  mode: SystemMode;
+  messageVi?: string;
+  messageEn?: string;
+  estimatedEndAt?: string;
+  updatedAt: string;
+  updatedBy?: string;
+}
+
+export interface UpdateAdminSystemStatusInput {
+  mode: SystemMode;
+  messageVi?: string | null;
+  messageEn?: string | null;
+  estimatedEndAt?: string | null;
+  reason: string;
 }
 
 export interface AdminUserModerationResponse {
@@ -114,7 +133,7 @@ export interface AdminPostListParams {
 export interface AdminAuditListParams {
   action?: string;
   actorId?: string;
-  targetType?: 'POST' | 'USER' | 'RANKING';
+  targetType?: AdminAuditTargetType;
   targetId?: string;
   page?: number;
   size?: number;
@@ -136,6 +155,13 @@ export function createAdminApi(request: ApiRequester = http.request) {
       request<AdminRankingStatus>('/api/v1/admin/rankings/status', { signal }, token),
     rebuildRanking: (reason: string, token: string) =>
       mutate<AdminRankingStatus>(request, '/api/v1/admin/rankings/rebuild', { reason }, token),
+    systemStatus: (token: string, signal?: AbortSignal) =>
+      request<AdminSystemStatus>('/api/v1/admin/system/status', { signal }, token),
+    updateSystemStatus: (input: UpdateAdminSystemStatusInput, token: string) =>
+      request<AdminSystemStatus>('/api/v1/admin/system/status', {
+        method: 'PUT',
+        body: JSON.stringify(input)
+      }, token),
     suspendUser: (userId: string, reason: string, until: string | null, token: string) =>
       mutate<AdminModerationResponse>(request, `/api/v1/admin/users/${encodeURIComponent(userId)}/suspend`, { reason, until }, token),
     banUser: (userId: string, reason: string, until: string | null, token: string) =>
