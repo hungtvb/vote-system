@@ -9,6 +9,7 @@ public record RankingRebuildResult(
         RedisRankingRepository.RankingCounts previousCounts,
         RedisRankingRepository.RankingCounts publishedCounts,
         int visiblePostCount,
+        long sourceRevision,
         Instant publishedAt
 ) {
 }
