@@ -1,0 +1,127 @@
+name: Admin System Operations QA
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/src/features/admin/components/AdminOperationsWorkspace.tsx'
+      - 'frontend/src/features/admin/components/AdminSystemOperationsPanel.tsx'
+      - 'frontend/src/features/admin/components/AdminSystemOperationsPanel.module.scss'
+      - 'frontend/src/shared/api/admin-api.ts'
+      - 'frontend/src/shared/api/tests/admin-api.test.ts'
+      - 'frontend/src/shared/i18n/messages/*.json'
+      - 'frontend/scripts/admin_qa_server.py'
+      - 'frontend/scripts/admin_auth_qa_server.py'
+      - '.github/workflows/admin-system-operations-qa.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/src/features/admin/components/AdminOperationsWorkspace.tsx'
+      - 'frontend/src/features/admin/components/AdminSystemOperationsPanel.tsx'
+      - 'frontend/src/features/admin/components/AdminSystemOperationsPanel.module.scss'
+      - 'frontend/src/shared/api/admin-api.ts'
+      - 'frontend/src/shared/api/tests/admin-api.test.ts'
+      - 'frontend/src/shared/i18n/messages/*.json'
+      - 'frontend/scripts/admin_qa_server.py'
+      - 'frontend/scripts/admin_auth_qa_server.py'
+      - '.github/workflows/admin-system-operations-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  system-operations:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build frontend
+        run: npm run build
+      - name: Verify system operations control and authoritative reload
+        run: |
+          set -euo pipefail
+          mkdir -p admin-system-qa
+          PYTHONPATH=scripts python3 - <<'PY' > admin-system-qa/server.log 2>&1 &
+          import mimetypes
+          from http.server import ThreadingHTTPServer
+          import ton106_qa_server as ton
+          ton.OUT = ton.base.OUT
+          ton.PORT = ton.base.PORT
+          import admin_qa_server as admin
+          import admin_auth_qa_server as admin_auth
+          admin.USERS[:] = [admin.USERS[1], admin.USERS[0], *admin.USERS[2:]]
+          mimetypes.add_type('application/javascript', '.js')
+          server = ThreadingHTTPServer(('127.0.0.1', ton.PORT), admin_auth.Handler)
+          print(f'admin system QA server listening on http://127.0.0.1:{ton.PORT}', flush=True)
+          server.serve_forever()
+          PY
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          for attempt in {1..40}; do
+            if curl --fail --silent 'http://127.0.0.1:4173/admin/?qa=admin-system&qaLocale=en&section=system' >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 40 ]; then
+              cat admin-system-qa/server.log
+              exit 1
+            fi
+            sleep 0.25
+          done
+
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)
+          COMMON=(--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --run-all-compositor-stages-before-draw --virtual-time-budget=9000)
+
+          for spec in '1440,1000:desktop' '768,1024:tablet' '390,844:390' '375,812:375' '320,700:320'; do
+            size=${spec%%:*}
+            name=${spec##*:}
+            url='http://127.0.0.1:4173/admin/?qa=admin-system&qaLocale=en&section=system'
+            "$CHROME" "${COMMON[@]}" --window-size="$size" --screenshot="admin-system-qa/system-${name}.png" "$url"
+            "$CHROME" "${COMMON[@]}" --window-size="$size" --dump-dom "$url" > "admin-system-qa/system-${name}.html"
+            grep -q 'data-qa-scenario="complete"' "admin-system-qa/system-${name}.html"
+            grep -q 'data-qa-admin-system="true"' "admin-system-qa/system-${name}.html"
+            grep -q 'data-qa-system-operations="true"' "admin-system-qa/system-${name}.html"
+            grep -q 'data-qa-system-form="true"' "admin-system-qa/system-${name}.html"
+            grep -q 'Current operating mode' "admin-system-qa/system-${name}.html"
+            grep -q 'NORMAL' "admin-system-qa/system-${name}.html"
+            grep -q 'Review mode change' "admin-system-qa/system-${name}.html"
+            grep -q 'data-qa-admin-overflow="false"' "admin-system-qa/system-${name}.html"
+          done
+
+          for spec in '390,844:390' '320,700:320'; do
+            size=${spec%%:*}
+            name=${spec##*:}
+            url='http://127.0.0.1:4173/admin/?qa=admin-system-dialog&qaLocale=en&section=system'
+            "$CHROME" "${COMMON[@]}" --window-size="$size" --screenshot="admin-system-qa/dialog-${name}.png" "$url"
+            "$CHROME" "${COMMON[@]}" --window-size="$size" --dump-dom "$url" > "admin-system-qa/dialog-${name}.html"
+            grep -q 'data-qa-system-dialog="true"' "admin-system-qa/dialog-${name}.html"
+            grep -q '<dialog[^>]*open' "admin-system-qa/dialog-${name}.html"
+            grep -q 'Enable maintenance mode?' "admin-system-qa/dialog-${name}.html"
+            grep -q 'textarea[^>]*required' "admin-system-qa/dialog-${name}.html"
+            grep -q 'data-qa-admin-overflow="false"' "admin-system-qa/dialog-${name}.html"
+          done
+
+          update_url='http://127.0.0.1:4173/admin/?qa=admin-system-update&qaLocale=en&section=system'
+          "$CHROME" "${COMMON[@]}" --window-size=390,844 --screenshot=admin-system-qa/update-read-only.png "$update_url"
+          "$CHROME" "${COMMON[@]}" --window-size=390,844 --dump-dom "$update_url" > admin-system-qa/update-read-only.html
+          grep -q 'The authoritative operating mode was updated and reloaded.' admin-system-qa/update-read-only.html
+          grep -q 'data-mode="READ_ONLY"' admin-system-qa/update-read-only.html
+          grep -q 'data-qa-admin-overflow="false"' admin-system-qa/update-read-only.html
+          grep -q 'admin-system updated to READ_ONLY' admin-system-qa/server.log
+          grep -q 'admin-system authoritative read READ_ONLY' admin-system-qa/server.log
+      - name: Upload system operations evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-system-operations-qa
+          path: frontend/admin-system-qa/**
+          if-no-files-found: error
+          retention-days: 14
