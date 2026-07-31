@@ -5,6 +5,7 @@ import com.hungtvb.votesystem.common.error.ResourceNotFoundException;
 import com.hungtvb.votesystem.post.Post;
 import com.hungtvb.votesystem.post.PostRepository;
 import com.hungtvb.votesystem.ranking.RankingChangedEvent;
+import com.hungtvb.votesystem.ranking.RankingRevisionStore;
 import com.hungtvb.votesystem.user.UserRepository;
 import com.hungtvb.votesystem.vote.dto.VoteResponse;
 import com.hungtvb.votesystem.vote.metrics.VoteLatencyMetrics;
@@ -27,18 +28,21 @@ public class VoteService {
     private final UserRepository userRepository;
     private final PostRepository postRepository;
     private final VoteRepository voteRepository;
+    private final RankingRevisionStore rankingRevisionStore;
     private final ApplicationEventPublisher eventPublisher;
     private final VoteLatencyMetrics metrics;
 
     public VoteService(UserRepository userRepository,
                        PostRepository postRepository,
                        VoteRepository voteRepository,
+                       RankingRevisionStore rankingRevisionStore,
                        ApplicationEventPublisher eventPublisher,
                        VotePolicy votePolicy,
                        VoteLatencyMetrics metrics) {
         this.userRepository = userRepository;
         this.postRepository = postRepository;
         this.voteRepository = voteRepository;
+        this.rankingRevisionStore = rankingRevisionStore;
         this.eventPublisher = eventPublisher;
         this.metrics = metrics;
     }
@@ -66,6 +70,9 @@ public class VoteService {
             }
 
             Post updatedPost = delta.isEmpty() ? post : incrementTotals(OPERATION_CAST, post, delta);
+            if (!delta.isEmpty()) {
+                rankingRevisionStore.bump();
+            }
             publishEvents(OPERATION_CAST, postId, updatedPost, !delta.isEmpty());
             return VoteResponse.from(updatedPost, requestedType, updatedPost.getVerdictThreshold());
         });
@@ -88,6 +95,7 @@ public class VoteService {
             VoteDelta delta = VoteDelta.remove(vote.getType());
             metrics.timeStage(OPERATION_REMOVE, "vote_mutation", () -> voteRepository.delete(vote));
             Post updatedPost = incrementTotals(OPERATION_REMOVE, post, delta);
+            rankingRevisionStore.bump();
             publishEvents(OPERATION_REMOVE, postId, updatedPost, true);
             return VoteResponse.from(updatedPost, null, updatedPost.getVerdictThreshold());
         });
