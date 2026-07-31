@@ -1,0 +1,100 @@
+name: Admin System Partial Success QA
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/src/features/admin/components/AdminSystemOperationsPanel.tsx'
+      - 'frontend/src/features/admin/components/AdminSystemOperationsPanel.module.scss'
+      - 'frontend/src/shared/api/admin-api.ts'
+      - 'frontend/src/shared/i18n/messages/*.json'
+      - 'frontend/scripts/admin_qa_server.py'
+      - 'frontend/scripts/admin_auth_qa_server.py'
+      - 'frontend/scripts/admin_system_partial_success_qa_server.py'
+      - '.github/workflows/admin-system-partial-success-qa.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/src/features/admin/components/AdminSystemOperationsPanel.tsx'
+      - 'frontend/src/features/admin/components/AdminSystemOperationsPanel.module.scss'
+      - 'frontend/src/shared/api/admin-api.ts'
+      - 'frontend/src/shared/i18n/messages/*.json'
+      - 'frontend/scripts/admin_qa_server.py'
+      - 'frontend/scripts/admin_auth_qa_server.py'
+      - 'frontend/scripts/admin_system_partial_success_qa_server.py'
+      - '.github/workflows/admin-system-partial-success-qa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  committed-mode-survives-reload-failure:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build frontend
+        run: npm run build
+      - name: Verify committed mode survives reconciliation failure
+        run: |
+          set -euo pipefail
+          mkdir -p admin-system-partial-success-qa
+          PYTHONPATH=scripts python3 - <<'PY' > admin-system-partial-success-qa/server.log 2>&1 &
+          import mimetypes
+          from http.server import ThreadingHTTPServer
+          import ton106_qa_server as ton
+          ton.OUT = ton.base.OUT
+          ton.PORT = ton.base.PORT
+          import admin_qa_server as admin
+          import admin_system_partial_success_qa_server as partial
+          admin.USERS[:] = [admin.USERS[1], admin.USERS[0], *admin.USERS[2:]]
+          mimetypes.add_type('application/javascript', '.js')
+          server = ThreadingHTTPServer(('127.0.0.1', ton.PORT), partial.Handler)
+          print(f'partial-success QA server listening on http://127.0.0.1:{ton.PORT}', flush=True)
+          server.serve_forever()
+          PY
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          for attempt in {1..40}; do
+            if curl --fail --silent 'http://127.0.0.1:4173/admin/?qa=admin-system-update&qaLocale=en&section=system' >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 40 ]; then
+              cat admin-system-partial-success-qa/server.log
+              exit 1
+            fi
+            sleep 0.25
+          done
+
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)
+          COMMON=(--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --run-all-compositor-stages-before-draw --virtual-time-budget=10000)
+          URL='http://127.0.0.1:4173/admin/?qa=admin-system-update&qaLocale=en&section=system'
+
+          "$CHROME" "${COMMON[@]}" --window-size=390,844 --screenshot=admin-system-partial-success-qa/committed-read-only.png "$URL"
+          "$CHROME" "${COMMON[@]}" --window-size=390,844 --dump-dom "$URL" > admin-system-partial-success-qa/committed-read-only.html
+
+          grep -q 'data-qa-scenario="complete"' admin-system-partial-success-qa/committed-read-only.html
+          grep -q 'data-mode="READ_ONLY"' admin-system-partial-success-qa/committed-read-only.html
+          grep -q 'Authoritative reconciliation read unavailable' admin-system-partial-success-qa/committed-read-only.html
+          grep -q 'data-qa-admin-overflow="false"' admin-system-partial-success-qa/committed-read-only.html
+          ! grep -q 'The authoritative operating mode was updated and reloaded.' admin-system-partial-success-qa/committed-read-only.html
+          ! grep -q '<dialog[^>]*open' admin-system-partial-success-qa/committed-read-only.html
+          test "$(grep -c 'admin-system updated to READ_ONLY' admin-system-partial-success-qa/server.log)" -eq 1
+          test "$(grep -c 'admin-system reconciliation read failed after commit' admin-system-partial-success-qa/server.log)" -eq 1
+      - name: Upload partial-success evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-system-partial-success-qa
+          path: frontend/admin-system-partial-success-qa/**
+          if-no-files-found: error
+          retention-days: 14
