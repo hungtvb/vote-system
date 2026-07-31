@@ -122,7 +122,7 @@ class SystemStatusIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.mode").value("MAINTENANCE"))
                 .andExpect(jsonPath("$.messageVi").value("Hệ thống đang bảo trì"))
-                .andExpect(jsonPath("$.messageEn").value("The system is under maintenance"))
+                .andExpect(jsonPath("$.messageEn").value("The system is under maintenance. Contact support@ballotbox.io.vn"))
                 .andExpect(jsonPath("$.estimatedEndAt").value(estimatedEndAt.toString()))
                 .andExpect(jsonPath("$.updatedBy").value(admin.userId().toString()));
 
@@ -137,10 +137,18 @@ class SystemStatusIntegrationTests {
         assertEquals("maintenance-change-001", jdbcTemplate.queryForObject("""
                 select metadata ->> 'request_id'
                   from admin_audit_logs
-                 where action = 'ADMIN_CHANGE_SYSTEM_MODE'
+                 where action = 'SYSTEM_MODE_CHANGED'
                  order by created_at desc, id desc
                  limit 1
                 """, String.class));
+        assertEquals("The system is under maintenance. Contact support@ballotbox.io.vn",
+                jdbcTemplate.queryForObject("""
+                        select metadata ->> 'message_en'
+                          from admin_audit_logs
+                         where action = 'SYSTEM_MODE_CHANGED'
+                         order by created_at desc, id desc
+                         limit 1
+                        """, String.class));
     }
 
     @Test
@@ -169,7 +177,8 @@ class SystemStatusIntegrationTests {
                         .header("Authorization", "Bearer " + admin.accessToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(updatePayload(SystemMode.MAINTENANCE, past)))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("estimatedEndAt must be in the future"));
 
         assertEquals("NORMAL", jdbcTemplate.queryForObject(
                 "select mode from system_status where singleton_id = 1", String.class));
@@ -272,7 +281,7 @@ class SystemStatusIntegrationTests {
         return objectMapper.writeValueAsString(new UpdateSystemStatusRequest(
                 mode,
                 "Hệ thống đang bảo trì",
-                "The system is under maintenance",
+                "The system is under maintenance. Contact support@ballotbox.io.vn",
                 estimatedEndAt,
                 "Planned maintenance operation"
         ));
@@ -280,7 +289,7 @@ class SystemStatusIntegrationTests {
 
     private long systemAuditCount() {
         return jdbcTemplate.queryForObject(
-                "select count(*) from admin_audit_logs where action = 'ADMIN_CHANGE_SYSTEM_MODE'",
+                "select count(*) from admin_audit_logs where action = 'SYSTEM_MODE_CHANGED'",
                 Long.class
         );
     }
