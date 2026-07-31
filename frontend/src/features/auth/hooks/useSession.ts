@@ -14,8 +14,11 @@ interface SessionState {
   restoring: boolean;
 }
 
+class SessionTransitionCancelled extends Error {}
+
 const SERVER_STATE: SessionState = { session: null, profile: null, restoring: true };
 let state: SessionState = SERVER_STATE;
+let sessionEpoch = 0;
 let restorePromise: Promise<void> | null = null;
 let refreshPromise: Promise<Session> | null = null;
 const listeners = new Set<() => void>();
@@ -39,6 +42,7 @@ function publish(next: Partial<SessionState>) {
 }
 
 function clearSessionShared() {
+  sessionEpoch += 1;
   publish({ session: null, profile: null });
 }
 
@@ -52,24 +56,32 @@ async function prepareSession(next: Session) {
   return { nextSession: sessionOnly(next), nextProfile };
 }
 
+async function prepareAndPublishSession(next: Session, expectedEpoch: number) {
+  const prepared = await prepareSession(next);
+  if (expectedEpoch !== sessionEpoch) throw new SessionTransitionCancelled();
+  publish({ session: prepared.nextSession, profile: prepared.nextProfile });
+  return prepared;
+}
+
 async function saveSessionShared(next: Session): Promise<UserProfile> {
+  const expectedEpoch = ++sessionEpoch;
   try {
-    const prepared = await prepareSession(next);
-    publish({ session: prepared.nextSession, profile: prepared.nextProfile });
+    const prepared = await prepareAndPublishSession(next, expectedEpoch);
     return prepared.nextProfile;
   } catch (error) {
-    clearSessionShared();
+    if (!(error instanceof SessionTransitionCancelled) && expectedEpoch === sessionEpoch) {
+      clearSessionShared();
+    }
     throw error;
   }
 }
 
 function refreshSessionShared(): Promise<Session> {
   if (!refreshPromise) {
+    const expectedEpoch = sessionEpoch;
     refreshPromise = authApi.refresh()
-      .then(async next => {
-        await saveSessionShared(next);
-        return sessionOnly(next);
-      })
+      .then(next => prepareAndPublishSession(next, expectedEpoch))
+      .then(prepared => prepared.nextSession)
       .finally(() => {
         refreshPromise = null;
       });
@@ -82,6 +94,7 @@ function ensureSessionRestore(): Promise<void> {
     restorePromise = refreshSessionShared()
       .then(() => undefined)
       .catch(error => {
+        if (error instanceof SessionTransitionCancelled) return;
         clearSessionShared();
         if (!(error instanceof ApiError) || (error.status !== 401 && error.status !== 403)) {
           console.error('Session restore failed', error);
@@ -97,37 +110,36 @@ async function runAuthorizedShared<T>(operation: (activeSession: Session) => Pro
   return runAuthorizedRequest(operation, {
     getSession: () => state.session,
     refresh: refreshSessionShared,
-    setSession: next => publish({ session: next }),
+    setSession: () => undefined,
     clearSession: clearSessionShared
   });
 }
 
 async function updateProfileShared(payload: UpdateUserProfileRequest): Promise<UserProfile> {
+  const expectedEpoch = sessionEpoch;
   const nextProfile = await runAuthorizedShared(activeSession =>
     userApi.updateCurrent(payload, activeSession.accessToken));
-  publish({ profile: nextProfile });
+  if (expectedEpoch === sessionEpoch) publish({ profile: nextProfile });
   return nextProfile;
 }
 
 async function logoutShared() {
   const active = state.session;
+  clearSessionShared();
   try {
     if (active) await authApi.logout(active.accessToken);
   } catch (error) {
     console.error('Logout request failed', error);
-  } finally {
-    clearSessionShared();
   }
 }
 
 async function logoutAllShared() {
   const active = state.session;
+  clearSessionShared();
   try {
     if (active) await authApi.logoutAll(active.accessToken);
   } catch (error) {
     console.error('Logout-all request failed', error);
-  } finally {
-    clearSessionShared();
   }
 }
 
