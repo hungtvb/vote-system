@@ -16,26 +16,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout repository
+      - name: Checkout exact main with history
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Package source snapshot
+      - name: Package full Git working copy
         shell: bash
         run: |
-          archive="$RUNNER_TEMP/vote-system-source.tar.gz"
-          checksum="$RUNNER_TEMP/vote-system-source.tar.gz.sha256"
-          tar --exclude=.git -czf "$archive" .
+          archive="$RUNNER_TEMP/vote-system-main-with-git.tar.gz"
+          checksum="$RUNNER_TEMP/vote-system-main-with-git.tar.gz.sha256"
+          tar -czf "$archive" .
           test -s "$archive"
           sha256sum "$archive" | sed "s#${RUNNER_TEMP}/##" > "$checksum"
 
-      - name: Upload source snapshot
+      - name: Upload full Git working copy
         uses: actions/upload-artifact@v4
         with:
-          name: vote-system-source
+          name: vote-system-main-with-git
           path: |
-            ${{ runner.temp }}/vote-system-source.tar.gz
-            ${{ runner.temp }}/vote-system-source.tar.gz.sha256
+            ${{ runner.temp }}/vote-system-main-with-git.tar.gz
+            ${{ runner.temp }}/vote-system-main-with-git.tar.gz.sha256
           if-no-files-found: error
           retention-days: 1
