@@ -1,12 +1,12 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
-import { AdminRankingWorkspace } from './AdminRankingWorkspace';
-import { AdminWorkspace } from './AdminWorkspace';
+import { AdminOperationsWorkspace } from './AdminOperationsWorkspace';
+import polishStyles from './AdminOperationsPolish.module.scss';
 
 export function AdminPageRouter() {
-  const searchParams = useSearchParams();
-  return searchParams.get('section') === 'ranking'
-    ? <AdminRankingWorkspace />
-    : <AdminWorkspace />;
+  return (
+    <div className={polishStyles.root}>
+      <AdminOperationsWorkspace />
+    </div>
+  );
 }
