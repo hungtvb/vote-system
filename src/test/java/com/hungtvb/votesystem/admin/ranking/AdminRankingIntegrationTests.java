@@ -160,7 +160,8 @@ class AdminRankingIntegrationTests {
         CountDownLatch voteCommitted = new CountDownLatch(1);
         AtomicBoolean blockFirstAttempt = new AtomicBoolean(true);
         doAnswer(invocation -> {
-            RedisRankingRepository.RankingCounts counts = invocation.callRealMethod();
+            RedisRankingRepository.RankingCounts counts =
+                    (RedisRankingRepository.RankingCounts) invocation.callRealMethod();
             if (blockFirstAttempt.compareAndSet(true, false)) {
                 snapshotPrepared.countDown();
                 if (!voteCommitted.await(10, TimeUnit.SECONDS)) {
@@ -207,7 +208,8 @@ class AdminRankingIntegrationTests {
         AtomicInteger attempts = new AtomicInteger();
 
         doAnswer(invocation -> {
-            RedisRankingRepository.RankingCounts counts = invocation.callRealMethod();
+            RedisRankingRepository.RankingCounts counts =
+                    (RedisRankingRepository.RankingCounts) invocation.callRealMethod();
             int attempt = attempts.incrementAndGet();
             createPost(author.accessToken(), "Concurrent ballot " + attempt);
             return counts;
