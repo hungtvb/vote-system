@@ -239,6 +239,14 @@
   min-height: 2.75rem;
 }
 
+.systemDialog {
+  max-height: calc(100dvh - 1rem);
+}
+
+.systemDialog form {
+  gap: 0.75rem;
+}
+
 .dialogDescription {
   margin: 0.2rem 0 0;
   color: #4f5a68;
