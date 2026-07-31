@@ -10,11 +10,12 @@ import styles from './AdminWorkspace.module.scss';
 import panelStyles from './AdminRankingPanel.module.scss';
 
 export function AdminRankingPanel() {
-  const { runAuthorized } = useSession();
+  const { runAuthorized, clearSession } = useSession();
   const { locale, t, formatDate, formatNumber } = useI18n();
   const copy = COPY[locale];
   const [status, setStatus] = useState<AdminRankingStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authorizationFailed, setAuthorizationFailed] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -23,6 +24,7 @@ export function AdminRankingPanel() {
 
   const loadStatus = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
+    setAuthorizationFailed(false);
     setError('');
     try {
       setStatus(await runAuthorized(active =>
@@ -30,11 +32,16 @@ export function AdminRankingPanel() {
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === 'AbortError') return;
       setStatus(null);
+      if (isAuthorizationError(cause)) {
+        setAuthorizationFailed(true);
+        clearSession();
+        return;
+      }
       setError(safeError(cause, t('admin', 'loadFailed')));
     } finally {
       setLoading(false);
     }
-  }, [runAuthorized, t]);
+  }, [clearSession, runAuthorized, t]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -55,6 +62,12 @@ export function AdminRankingPanel() {
       setDialogOpen(false);
       setNotice(copy.completed);
     } catch (cause) {
+      if (isAuthorizationError(cause)) {
+        setAuthorizationFailed(true);
+        setDialogOpen(false);
+        clearSession();
+        return;
+      }
       setRebuildError(safeError(cause, t('admin', 'actionFailed')));
     } finally {
       setRebuilding(false);
@@ -67,13 +80,13 @@ export function AdminRankingPanel() {
   return (
     <>
       <div className={panelStyles.actions}>
-        <button type="button" className={styles.secondaryButton} disabled={loading || rebuilding} onClick={() => void loadStatus()}>
+        <button type="button" className={styles.secondaryButton} disabled={loading || rebuilding || authorizationFailed} onClick={() => void loadStatus()}>
           {loading ? t('admin', 'refreshing') : t('admin', 'refresh')}
         </button>
         <button
           type="button"
           className={styles.primaryButton}
-          disabled={loading || busy || unavailable}
+          disabled={loading || busy || unavailable || authorizationFailed}
           onClick={() => { setRebuildError(''); setDialogOpen(true); }}
         >
           {busy ? copy.rebuilding : copy.rebuild}
@@ -83,7 +96,11 @@ export function AdminRankingPanel() {
       {notice && <p className={styles.successNotice} role="status">{notice}</p>}
       {error && <p className={styles.errorNotice} role="alert">{error}</p>}
 
-      {loading && !status ? (
+      {authorizationFailed ? (
+        <div className={styles.statePanel} role="status" data-qa-admin-auth-failed="true">
+          {copy.sessionExpired}
+        </div>
+      ) : loading && !status ? (
         <div className={styles.statePanel} role="status"><span className={styles.loader} />{copy.loading}</div>
       ) : (
         <>
@@ -161,6 +178,10 @@ function availabilityDescription(availability: RankingAvailability | undefined, 
   return copy.unavailable;
 }
 
+function isAuthorizationError(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 401 || error.status === 403);
+}
+
 function safeError(error: unknown, fallback: string): string {
   if (error instanceof ApiError) return error.problem?.detail ?? error.message;
   return error instanceof Error ? error.message : fallback;
@@ -177,6 +198,7 @@ interface Copy {
   legacy: string;
   lastRebuild: string;
   loading: string;
+  sessionExpired: string;
   rebuild: string;
   rebuilding: string;
   completed: string;
@@ -193,7 +215,8 @@ const COPY: Record<'vi' | 'en', Copy> = {
     status: 'TRẠNG THÁI XẾP HẠNG', visibleBallots: 'PHIẾU ĐANG HIỂN THỊ', hotMembers: 'THÀNH VIÊN HOT',
     authoritative: 'DỮ LIỆU POSTGRESQL', published: 'THẾ HỆ ĐANG PHÁT HÀNH', expected: 'KỲ VỌNG',
     generation: 'THẾ HỆ ĐANG PHÁT HÀNH', legacy: 'LEGACY / CHƯA PHÁT HÀNH', lastRebuild: 'REBUILD THÀNH CÔNG GẦN NHẤT',
-    loading: 'ĐANG TẢI TRẠNG THÁI XẾP HẠNG...', rebuild: 'REBUILD XẾP HẠNG', rebuilding: 'ĐANG REBUILD...',
+    loading: 'ĐANG TẢI TRẠNG THÁI XẾP HẠNG...', sessionExpired: 'Phiên quản trị không còn hợp lệ. Đang chuyển về màn hình xác thực an toàn.',
+    rebuild: 'REBUILD XẾP HẠNG', rebuilding: 'ĐANG REBUILD...',
     completed: 'Thế hệ xếp hạng đã được kiểm tra, phát hành nguyên tử và ghi nhật ký.',
     healthy: 'Xếp hạng Redis đang khớp với số phiếu công khai có thẩm quyền trong PostgreSQL.',
     stale: 'Số lượng hoặc cửa sổ UTC của xếp hạng đang khác dữ liệu PostgreSQL có thẩm quyền.',
@@ -206,7 +229,8 @@ const COPY: Record<'vi' | 'en', Copy> = {
     status: 'RANKING STATUS', visibleBallots: 'VISIBLE BALLOTS', hotMembers: 'HOT MEMBERS',
     authoritative: 'AUTHORITATIVE POSTGRESQL', published: 'PUBLISHED GENERATION', expected: 'EXPECTED',
     generation: 'PUBLISHED GENERATION', legacy: 'LEGACY / NOT PUBLISHED', lastRebuild: 'LAST SUCCESSFUL REBUILD',
-    loading: 'LOADING RANKING STATUS...', rebuild: 'REBUILD RANKING', rebuilding: 'REBUILDING...',
+    loading: 'LOADING RANKING STATUS...', sessionExpired: 'The administrator session is no longer valid. Returning to the protected access gate.',
+    rebuild: 'REBUILD RANKING', rebuilding: 'REBUILDING...',
     completed: 'The verified ranking generation was atomically published and audited.',
     healthy: 'Published Redis rankings match the authoritative visible PostgreSQL ballot counts.',
     stale: 'Published ranking counts or UTC windows differ from authoritative PostgreSQL data.',
