@@ -73,7 +73,8 @@ public class AdminUserModerationService {
         appendAudit(actorId, user, AdminAuditAction.ADMIN_RESTORE_USER, reason, Map.of(
                 "previous_status", previousStatus.name(),
                 "new_status", AccountStatus.ACTIVE.name(),
-                "previous_until", previousUntil == null ? "permanent" : previousUntil.toString()
+                "previous_until", previousUntil == null ? "permanent" : previousUntil.toString(),
+                "active_access_invalidated", "true"
         ));
         return AdminUserModerationResponse.from(user, 0);
     }
@@ -82,13 +83,12 @@ public class AdminUserModerationService {
     public AdminUserModerationResponse revokeSessions(UUID actorId, UUID userId, String reason) {
         requireDifferentAccounts(actorId, userId);
         AppUser user = lockSessionsThenUser(userId);
+        user.revokeAccessTokens();
         int revokedSessions = refreshSessionService.revokeAll(userId);
-        if (revokedSessions == 0) {
-            throw new ConflictException("User has no active refresh sessions");
-        }
         appendAudit(actorId, user, AdminAuditAction.ADMIN_REVOKE_SESSIONS, reason, Map.of(
                 "account_status", user.effectiveAccountStatus(Instant.now()).name(),
-                "revoked_sessions", Integer.toString(revokedSessions)
+                "revoked_sessions", Integer.toString(revokedSessions),
+                "active_access_invalidated", "true"
         ));
         return AdminUserModerationResponse.from(user, revokedSessions);
     }
@@ -125,6 +125,7 @@ public class AdminUserModerationService {
         metadata.put("new_status", requestedStatus.name());
         metadata.put("restriction_until", until == null ? "permanent" : until.toString());
         metadata.put("revoked_sessions", Integer.toString(revokedSessions));
+        metadata.put("active_access_invalidated", "true");
         appendAudit(actorId, user, action, reason, metadata);
         return AdminUserModerationResponse.from(user, revokedSessions);
     }

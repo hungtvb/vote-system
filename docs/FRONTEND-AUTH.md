@@ -7,11 +7,11 @@ The browser keeps the short-lived Vote System access token in React memory only.
 Frontend API responsibilities:
 
 - `transport.ts`: base URL, credentialed fetch, Problem Details normalization, `Retry-After`, and request headers;
-- `auth-api.ts`: register, login, refresh, logout, logout-all, and refresh single-flight;
+- `auth-api.ts`: register, login, refresh, logout, and logout-all;
 - `social-auth-api.ts`: provider discovery, social start, and authenticated link start;
 - `authorized-request.ts`: one access-token retry after a 401;
 - `session-bootstrap.ts`: session/profile validation;
-- `useSession.ts`: React session/profile state and local clearing;
+- `useSession.ts`: shared React session/profile state, refresh single-flight, and local clearing;
 - `user-api.ts` and `ballot-api.ts`: domain requests.
 
 Google/GitHub provider tokens never enter the frontend lifecycle. Spring Security exchanges provider codes, creates the normal Vote System session, discards temporary OAuth state, and redirects with safe status metadata only.
@@ -63,7 +63,7 @@ Callback parameters contain only allowlisted status/provider/intent/code values.
 ?social=error&code=account_unavailable&intent=authenticate
 ```
 
-`account_unavailable` maps to generic VI/EN copy. It does not reveal whether the account is suspended, banned, expired, or missing, and it never reflects the administrator reason.
+`account_unavailable` maps to generic VI/EN copy. It does not reveal whether the account is suspended, banned, expired, missing, or holding a stale token, and it never reflects the administrator reason.
 
 The frontend removes callback parameters with `history.replaceState`, restores the Vote System session only after successful callback, and preserves an existing valid session on provider cancellation/failure.
 
@@ -78,7 +78,21 @@ The frontend removes callback parameters with `history.replaceState`, restores t
 5. the original request retries exactly once;
 6. failed refresh or a second 401 clears local session/profile state.
 
-Non-401 responses are not automatically retried. A 429 preserves `Retry-After`.
+Non-401 responses are not automatically retried. A 429 or 503 preserves `Retry-After`.
+
+## Server-owned token state
+
+Each access JWT contains the current database role and a monotonic `security_version`. Every authenticated backend request compares both claims with PostgreSQL. Existing JWTs become invalid immediately after:
+
+- single-session logout backed by an active refresh session;
+- logout-all;
+- administrator revoke-sessions;
+- suspend, ban, or explicit restore;
+- promotion to administrator.
+
+A temporary restriction already invalidates tokens when the restriction is created. Its later expiry does not rotate the version again.
+
+The frontend does not inspect or persist this version. It treats the resulting 401 through the standard one-refresh retry path. Because the same operation also revokes refresh sessions or changes the account version, refresh fails and local session/profile state is cleared.
 
 ## Restricted-account behavior
 
@@ -87,7 +101,7 @@ Non-401 responses are not automatically retried. A 429 preserves `Retry-After`.
 When an account is restricted:
 
 - all active refresh sessions are revoked atomically;
-- an already-issued JWT receives 401 on its next authenticated REST or SSE request;
+- all already-issued JWTs receive 401 on their next authenticated REST or SSE request;
 - the normal retry attempts refresh once;
 - refresh also returns 401;
 - local session and private profile are cleared;
@@ -102,9 +116,30 @@ Detailed backend contract: [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md).
 
 ## Logout
 
-`LOG OUT` calls `POST /api/v1/auth/logout`; `LOG OUT ALL DEVICES` calls authenticated `POST /api/v1/auth/logout-all`. Local state clears in a `finally` block so network failure cannot leave a stale authenticated UI.
+`LOG OUT` calls `POST /api/v1/auth/logout`; `LOG OUT ALL DEVICES` calls authenticated `POST /api/v1/auth/logout-all`. Local state clears before the network request so network failure cannot leave a stale authenticated UI.
 
-Administrator `revoke-sessions` differs from account restriction: current refresh cookies become unusable, but an already-issued short-lived access JWT remains valid until expiry. The frontend clears only when a later request needs refresh and receives 401.
+Single-session logout accepts the current host-only refresh cookie. When that refresh session is active, the backend revokes it and increments the account security version, so every already-issued access JWT becomes stale immediately. Other devices retain their refresh sessions and can transparently obtain a token with the new version; they are not logged out.
+
+A missing, expired, or already-revoked cookie is cleared but cannot increment the security version. This prevents a stolen historical refresh token from repeatedly invalidating a user's current access tokens.
+
+Logout-all and administrator `revoke-sessions` revoke all active refresh sessions and invalidate all existing access JWTs immediately. A later request with a retained token receives 401 rather than remaining valid until expiry.
+
+## Cookie-origin boundary
+
+Cookie-authenticated browser operations validate `Origin` and Fetch Metadata before session processing:
+
+```text
+POST /api/v1/auth/refresh
+POST /api/v1/auth/logout
+POST /api/v1/auth/social/{provider}/start
+POST /api/v1/auth/social/{provider}/link/start
+```
+
+Every explicit Origin must match an entry in `CORS_ALLOWED_ORIGINS` exactly. The filter does not derive trust from the API host, request host, proxy metadata, `X-Forwarded-Host`, or `X-Forwarded-Proto`. A combined same-origin deployment must add that browser origin explicitly to the allow-list.
+
+A browser request without Origin is accepted only when Fetch Metadata reports `same-origin` or `none`. `same-site`, `cross-site`, and unknown browser contexts are rejected. Non-browser clients with neither Origin nor Fetch Metadata remain supported. Rejections return `403 SESSION_ORIGIN_REJECTED`.
+
+This boundary complements `SameSite`, CORS, and bearer-token authorization.
 
 ## Deployment
 
@@ -121,21 +156,19 @@ Frontend:
 NEXT_PUBLIC_API_BASE_URL=https://api.ballotbox.io.vn
 ```
 
-Backend:
+Backend production requirements:
 
 ```env
 CORS_ALLOWED_ORIGINS=https://app.ballotbox.io.vn
-REFRESH_COOKIE_SECURE=true
-REFRESH_COOKIE_SAME_SITE=Lax
-OAUTH_SESSION_COOKIE_SECURE=true
-OAUTH_SESSION_COOKIE_SAME_SITE=Lax
+REFRESH_COOKIE_NAME=__Secure-vote_refresh
+OAUTH_SESSION_COOKIE_NAME=__Secure-vote_oauth
 SOCIAL_LOGIN_SUCCESS_URL=https://app.ballotbox.io.vn/
 SOCIAL_LOGIN_FAILURE_URL=https://app.ballotbox.io.vn/
 ```
 
-Credentialed requests use `credentials: include`. Wildcard CORS origins are not used.
+The production profile enforces secure refresh/OAuth cookies. Refresh uses `SameSite=Strict`; the OAuth session uses `SameSite=Lax` for provider redirects. Credentialed requests use `credentials: include`. Wildcard and non-canonical CORS origins are rejected at startup.
 
-Local development uses `http://localhost:3000` and `http://localhost:8080` with secure cookie flags disabled. The root combined Docker image remains an optional same-origin/runtime-smoke topology, not active production.
+Local development uses `http://localhost:3000` and `http://localhost:8080` with the non-production profile and secure cookie flags disabled. The root combined Docker image remains an optional same-origin topology; its browser origin must be added explicitly when used interactively. CI runs the combined image with the production profile and uses non-browser requests without Origin.
 
 ## Request correlation and metrics
 
@@ -162,4 +195,6 @@ Frontend tests cover:
 - public feed access while restore runs;
 - authenticated reconciliation, protected MINE, and abort forwarding.
 
-Backend tests cover register/login/refresh bootstrap, rotation/replay/logout, linked providers, immediate restricted-account enforcement, social callback rejection, session revocation, and restore.
+Backend and focused security tests cover register/login/refresh bootstrap, rotation/replay/logout, active-session owner resolution, repeated revoked-cookie protection, role and security-version validation, exact allow-list matching, forwarded-header irrelevance, missing-Origin rejection, linked providers, immediate restricted-account enforcement, social callback rejection, session revocation, explicit restore, and expiry normalization without redundant version rotation.
+
+See [`SECURITY-HARDENING.md`](SECURITY-HARDENING.md) for deployment kill-tests.

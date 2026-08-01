@@ -16,6 +16,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -121,14 +122,28 @@ public class RefreshSessionService {
     }
 
     @Transactional
-    public void revoke(String rawToken) {
+    public Optional<UUID> revoke(String rawToken) {
         if (rawToken == null || rawToken.isBlank()) {
-            return;
+            return Optional.empty();
         }
 
         Instant now = Instant.now();
-        sessionRepository.findByTokenHashForUpdate(hash(rawToken))
-                .ifPresent(session -> session.revoke(now));
+        Optional<RefreshSession> session = sessionRepository.findByTokenHashForUpdate(hash(rawToken));
+        if (session.isEmpty()) {
+            return Optional.empty();
+        }
+
+        RefreshSession current = session.get();
+        if (current.isRevoked()) {
+            return Optional.empty();
+        }
+        if (current.isExpired(now)) {
+            current.revoke(now);
+            return Optional.empty();
+        }
+
+        current.revoke(now);
+        return Optional.of(current.getUserId());
     }
 
     @Transactional

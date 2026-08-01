@@ -10,9 +10,25 @@ import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
-public record AuthenticatedUser(UUID id, String email, String passwordHash, Role role) implements UserDetails {
+public record AuthenticatedUser(
+        UUID id,
+        String email,
+        String passwordHash,
+        Role role,
+        long securityVersion
+) implements UserDetails {
+    public AuthenticatedUser(UUID id, String email, String passwordHash, Role role) {
+        this(id, email, passwordHash, role, 0L);
+    }
+
     public static AuthenticatedUser from(AppUser user) {
-        return new AuthenticatedUser(user.getId(), user.getEmail(), user.getPasswordHash(), user.getRole());
+        return new AuthenticatedUser(
+                user.getId(),
+                user.getEmail(),
+                user.getPasswordHash(),
+                user.getRole(),
+                user.getSecurityVersion()
+        );
     }
 
     @Override

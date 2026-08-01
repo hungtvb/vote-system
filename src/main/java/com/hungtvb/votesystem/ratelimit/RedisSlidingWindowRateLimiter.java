@@ -11,11 +11,19 @@ import org.springframework.stereotype.Component;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Component
 public class RedisSlidingWindowRateLimiter {
     private static final double[] PERCENTILES = {0.5, 0.95, 0.99};
+    private static final Set<String> SECURITY_CRITICAL_RULES = Set.of(
+            "login",
+            "register",
+            "refresh",
+            "social-start",
+            "social-link"
+    );
     private static final DefaultRedisScript<List> SCRIPT = new DefaultRedisScript<>("""
             local key = KEYS[1]
             local now = tonumber(ARGV[1])
@@ -93,11 +101,11 @@ public class RedisSlidingWindowRateLimiter {
             return RateLimitDecision.deny(Duration.ofMillis(retryMillis).toSeconds() + 1);
         } catch (RedisConnectionFailureException | IllegalStateException exception) {
             errors.increment();
-            if (properties.failOpen()) {
+            if (properties.failOpen() && !SECURITY_CRITICAL_RULES.contains(rule)) {
                 sample.stop(latencyTimer(rule, "fail_open"));
                 return RateLimitDecision.permit();
             }
-            sample.stop(latencyTimer(rule, "error"));
+            sample.stop(latencyTimer(rule, "fail_closed"));
             throw exception;
         } catch (RuntimeException exception) {
             errors.increment();
