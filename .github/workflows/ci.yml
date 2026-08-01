@@ -87,15 +87,15 @@ jobs:
           fi
 
           capture() {
-            name=$1
-            width=$2
-            height=$3
-            mode=$4
-            expected_cards=${5:-3}
-            extra_flag=${6:-}
-            query_suffix=${7:-}
-            url="http://127.0.0.1:4173/?qa=${mode}${query_suffix}"
-            common=(--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --run-all-compositor-stages-before-draw --virtual-time-budget=7000 --window-size="${width},${height}")
+            local name=$1
+            local width=$2
+            local height=$3
+            local mode=$4
+            local expected_cards=${5:-3}
+            local extra_flag=${6:-}
+            local query_suffix=${7:-}
+            local url="http://127.0.0.1:4173/?qa=${mode}${query_suffix}"
+            local -a common=(--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --run-all-compositor-stages-before-draw --virtual-time-budget=7000 --window-size="${width},${height}")
             if [ -n "$extra_flag" ]; then
               common+=("$extra_flag")
             fi
@@ -106,7 +106,7 @@ jobs:
           }
 
           assert_feed_boundaries() {
-            file=$1
+            local file=$1
             grep -q 'data-qa-vote-splits="100/0,50/50,0/0"' "$file"
             grep -q 'data-qa-stamps="2"' "$file"
             grep -q 'data-qa-current-stamps="1"' "$file"
@@ -115,7 +115,7 @@ jobs:
           }
 
           assert_feed() {
-            file=$1
+            local file=$1
             grep -q 'data-qa-authors="3"' "$file"
             assert_feed_boundaries "$file"
           }
