@@ -79,6 +79,11 @@ app:
   vote-side-effects:
     queue-capacity: ${VOTE_SIDE_EFFECT_QUEUE_CAPACITY:200}
     shutdown-wait-seconds: ${VOTE_SIDE_EFFECT_SHUTDOWN_WAIT_SECONDS:10}
+  ranking:
+    rebuild:
+      batch-size: ${RANKING_REBUILD_BATCH_SIZE:500}
+      lock-ttl: ${RANKING_REBUILD_LOCK_TTL:PT5M}
+      lock-renew-interval: ${RANKING_REBUILD_LOCK_RENEW_INTERVAL:PT1M}
   social-login:
     success-url: ${SOCIAL_LOGIN_SUCCESS_URL:/}
     failure-url: ${SOCIAL_LOGIN_FAILURE_URL:/}

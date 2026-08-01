@@ -254,6 +254,11 @@ vote.operation.total
 vote.operation.stage
 vote.side_effect.execution
 vote.ranking.operations
+vote.ranking.rebuild
+vote.ranking.rebuild.duration
+vote.ranking.rebuild.rows
+vote.ranking.rebuild.redis.batches
+vote.ranking.rebuild.lock.renewals
 vote.system.mode.requests
 hikaricp.*
 ```

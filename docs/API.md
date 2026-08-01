@@ -272,6 +272,11 @@ vote.operation.total
 vote.operation.stage
 vote.side_effect.execution
 vote.ranking.operations
+vote.ranking.rebuild
+vote.ranking.rebuild.duration
+vote.ranking.rebuild.rows
+vote.ranking.rebuild.redis.batches
+vote.ranking.rebuild.lock.renewals
 ```
 
 Metric tags and logs must not contain user/ballot IDs, email, cookies, refresh hashes, or raw tokens.
