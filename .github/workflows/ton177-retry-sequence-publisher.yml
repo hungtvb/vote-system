@@ -26,10 +26,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          patch="$GITHUB_WORKSPACE/.chatgpt/ton177/retry-sequence-fix.patch"
+          source_patch="$GITHUB_WORKSPACE/.chatgpt/ton177/retry-sequence-fix.patch"
+          patch="$RUNNER_TEMP/retry-sequence-fix.patch"
           expected_head='579ecabb85c016a1d18b56a9290462451b280f4d'
 
+          echo '0f629df3326cfc7ae7b2ab5d82170bbf2584e0884cf221ac2ad9f00df25d217e  '"$source_patch" | sha256sum --check
+          cp "$source_patch" "$patch"
           echo '0f629df3326cfc7ae7b2ab5d82170bbf2584e0884cf221ac2ad9f00df25d217e  '"$patch" | sha256sum --check
+
           git checkout --detach "$expected_head"
           git apply --check "$patch"
           git apply "$patch"
