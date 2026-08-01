@@ -1,0 +1,176 @@
+Batches = 0;
++            int page = 0;
++            while (true) {
++                watchdog.assertOwned();
++                List<RankingPostProjection> batch = postRepository.findVisibleRankingBatch(
++                        PageRequest.of(page, rebuildProperties.batchSize()));
++                if (batch.isEmpty()) break;
++
++                List<RedisRankingRepository.RankingEntry> entries = new ArrayList<>(batch.size());
++                for (RankingPostProjection post : batch) {
++                    boolean dayEligible = isSameUtcDay(post.getCreatedAt(), now);
++                    boolean weekEligible = isSameUtcWeek(post.getCreatedAt(), now);
++                    entries.add(new RedisRankingRepository.RankingEntry(
++                            post.getId(),
++                            post.getVoteScore(),
++                            formula.score(post.getVoteScore(), post.getCreatedAt(), now),
++                            dayEligible,
++                            weekEligible
++                    ));
++                    visiblePosts += 1;
++                    if (dayEligible) expectedDay += 1;
++                    if (weekEligible) expectedWeek += 1;
++                }
++
++                rankingRepository.stageBatch(generation, entries);
++                redisBatches += 1;
++                rebuildRowsScanned.increment(batch.size());
++                rebuildRedisBatches.increment();
++                watchdog.assertOwned();
++
++                if (batch.size() < rebuildProperties.batchSize()) break;
++                page += 1;
+             }
++
++            rankingRepository.completeGeneration(generation);
++            watchdog.assertOwned();
+             RedisRankingRepository.RankingCounts staged = rankingRepository.generationCounts(generation);
+-            long expectedDay = visiblePosts.stream().filter(post -> isSameUtcDay(post.getCreatedAt(), now)).count();
+-            long expectedWeek = visiblePosts.stream().filter(post -> isSameUtcWeek(post.getCreatedAt(), now)).count();
+             RedisRankingRepository.RankingCounts expected =
+-                    new RedisRankingRepository.RankingCounts(visiblePosts.size(), expectedDay, expectedWeek);
++                    new RedisRankingRepository.RankingCounts(visiblePosts, expectedDay, expectedWeek);
+             if (!expected.equals(staged)) {
++                if (revisionStore.current() != sourceRevision) {
++                    throw new RankingRevisionChangedException();
++                }
+                 throw new IllegalStateException("Staged ranking generation failed verification");
+             }
+             return new RankingRebuildPreview(generation, previousMetadata, previousCounts, expected,
+-                    visiblePosts.size(), sourceRevision, now);
++                    visiblePosts, redisBatches, sourceRevision, now);
+         } catch (RuntimeException exception) {
+             rankingRepository.discardGeneration(generation);
+             throw exception;
+         }
+     }
+ 
++    private void safeReleaseRebuildLock(String token, boolean lockLost) {
++        try {
++            boolean released = rankingRepository.releaseRebuildLock(token);
++            if (!released && !lockLost) {
++                log.warn("ranking_rebuild_lock_release result=rejected");
++            }
++        } catch (RuntimeException exception) {
++            log.warn("ranking_rebuild_lock_release result=failed failure={}",
++                    exception.getClass().getSimpleName());
++        }
++    }
++
+     private void rollbackPublishedOrDiscard(RankingRebuildPreview preview,
+                                             RankingRebuildResult published,
+                                             String token,
+@@ -348,4 +452,75 @@ public class RankingService {
+ 
+     private static final class RankingRevisionChangedException extends RuntimeException {
+     }
++    private final class LockWatchdog implements AutoCloseable {
++        private final String token;
++        private final AtomicBoolean lost = new AtomicBoolean();
++        private final AtomicReference<RuntimeException> failure = new AtomicReference<>();
++        private ScheduledFuture<?> renewal;
++
++        private LockWatchdog(String token) {
++            this.token = token;
++        }
++
++        void start() {
++            renewal = rebuildTaskScheduler.scheduleAtFixedRate(
++                    this::renew,
++                    clock.instant().plus(rebuildProperties.lockRenewInterval()),
++                    rebuildProperties.lockRenewInterval());
++            if (renewal == null) {
++                markLost(new IllegalStateException("Ranking rebuild lock renewal could not be scheduled"));
++                assertOwned();
++            }
++        }
++
++        void assertOwned() {
++            if (!lost.get()) return;
++            RuntimeException cause = failure.get();
++            if (cause == null) {
++                throw new RankingLockLostException("Ranking rebuild lock ownership was lost");
++            }
++            throw new RankingLockLostException("Ranking rebuild lock ownership was lost", cause);
++        }
++
++        boolean isLost() {
++            return lost.get();
++        }
++
++        private void renew() {
++            if (lost.get()) return;
++            try {
++                if (rankingRepository.renewRebuildLock(token, rebuildProperties.lockTtl())) {
++                    lockRenewalSucceeded.increment();
++                    return;
++                }
++                markLost(null);
++            } catch (RuntimeException exception) {
++                markLost(exception);
++            }
++        }
++
++        private void markLost(RuntimeException exception) {
++            if (!lost.compareAndSet(false, true)) return;
++            if (exception != null) failure.compareAndSet(null, exception);
++            lockRenewalFailed.increment();
++            log.warn("ranking_rebuild_lock_renewal result=failed failure={}",
++                    exception == null ? "ownership_lost" : exception.getClass().getSimpleName());
++        }
++
++        @Override
++        public void close() {
++            if (renewal != null) renewal.cancel(false);
++        }
++    }
++
++    private static final class RankingLockLostException extends RuntimeException {
++        private RankingLockLostException(String message) {
++            super(message);
++        }
++
++        private RankingLockLostException(String message, Throwable cause) {
++            super(message, cause);
++        }
++    }
++
+ }
+diff --git a/src/main/java/com/hungtvb/votesystem/ranking/RedisRankingRepository.java b/src/main/java/com/hungtvb/votesystem/ranking/RedisRankingRepository.java
+index baa3839..51cf5e9 100644
+--- a/src/main/java/com/hungtvb/votesystem/ranking/RedisRankingRepository.java
++++ b/src/main/java/com/hungtvb/votesystem/ranking/RedisRankingRepository.java
+@@ -1,6 +1,10 @@
+ package com.hungtvb.votesystem.ranking;
+ 
++import org.springframework.data.redis.core.DefaultTypedTuple;
++import org.springframework.data.redis.core.RedisOperations;
++import org.springframework.data.redis.core.SessionCallback;
+ import org.springframework.data.redis.core.StringRedisTemplate;
++import org.springframework.data.redis.core.ZSetOperations;
+ import org.springframework.data.redis.core.script.DefaultRedisScript;
+ import org.springframework.stereotype.Repository;
+ 
+@@ -24,6 +28,7 @@ public class RedisRankingRepository {
+     private static final String REBUILD_LOCK_KEY = "feed:{ranking}:rebuild-lock";
+     private static final Duration STAGING_TTL = Duration.ofMinutes(15);
+     private static final Duration OLD_GENERATION_TTL = Duration.ofHours(1);
++    private static final String STAGING_SENTINEL = "__ranking_staging__";
+ 
+     private static final DefaultRedisScript<Long> RELEASE_LOCK_SCRIPT = new DefaultRedisScript<>("""
+             if redis.call('GET', KEYS[1]) == ARGV[1] then
+@@ -32,6 +37,18 @@ public class RedisRankingRepository {
+             return 0
+             """, Long.class);
+ 
++    pri
