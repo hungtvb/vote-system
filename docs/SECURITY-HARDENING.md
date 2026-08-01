@@ -14,7 +14,7 @@ The `production` Spring profile fails startup unless all security-critical confi
 Recommended Railway values:
 
 ```dotenv
-JWT_SECRET=<cryptographically-random-secret>
+JWT_SECRET=<random-production-secret>
 JWT_ISSUER=vote-system
 CORS_ALLOWED_ORIGINS=https://app.ballotbox.io.vn
 REFRESH_COOKIE_NAME=__Secure-vote_refresh
@@ -36,9 +36,10 @@ The version increments on:
 - logout-all;
 - administrator session revocation;
 - suspend or ban;
-- restore;
-- expiry normalization of a temporary restriction;
+- explicit restore;
 - promotion to administrator.
+
+A temporary restriction already rotates the version when it is created. Expiry normalization only cleans the stored status and does not rotate the version a second time.
 
 This makes previously issued JWTs unusable immediately. Refresh-session rotation and replay detection continue to operate independently.
 
@@ -104,7 +105,7 @@ The static frontend never acts as the authorization boundary. Non-admin visits t
 
 - Spring Boot is maintained on the latest supported 3.5 patch used by the project;
 - Dependabot covers Maven, npm, GitHub Actions, and Docker;
-- dependency review blocks newly introduced high-severity vulnerable dependencies;
+- OSV Scanner checks dependencies on pull requests, main, and a weekly schedule;
 - CodeQL analyzes Java/Kotlin and JavaScript/TypeScript.
 
 ## Deployment kill-tests
