@@ -1,0 +1,74 @@
+name: TON-177 Source Publisher
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ton177-source-publisher.yml
+      - .chatgpt/ton177/**
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout publisher branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reassemble and verify deterministic patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          parts_dir="$GITHUB_WORKSPACE/.chatgpt/ton177"
+          patch="$RUNNER_TEMP/ton177-source.patch"
+
+          echo 'e200c87790ea27f3ad7202330f73b928f3b02e22ddb979f987cdd751fb8ef39a  part-00.patch' > "$RUNNER_TEMP/parts.sha256"
+          echo 'cecc3ad43c4f2631e110d8196f96c6bd3d8dd1b6d6d940faeb6b585609be413b  part-01.patch' >> "$RUNNER_TEMP/parts.sha256"
+          echo '95726485e247aadc69b53a6404aafcfe502df9067c9b9db35e96f06dd39545ae  part-02.patch' >> "$RUNNER_TEMP/parts.sha256"
+          echo '0a861c08d83801468441982d09d89518f92f242610d87ddf6f313ee68a6d191c  part-03.patch' >> "$RUNNER_TEMP/parts.sha256"
+          echo 'b9c4d72101981298920d97f2e48519c965f2fe1b45af977940aae3e80820668b  part-04.patch' >> "$RUNNER_TEMP/parts.sha256"
+          echo 'eeb207c24819870ac7e9977ab2a4b4459e3a7555458b5cef6b4201b4d1252b64  part-05.patch' >> "$RUNNER_TEMP/parts.sha256"
+
+          (
+            cd "$parts_dir"
+            sha256sum --check "$RUNNER_TEMP/parts.sha256"
+            cat part-00.patch part-01.patch part-02.patch part-03.patch part-04.patch part-05.patch > "$patch"
+          )
+
+          echo 'f3731ff077097c5af8c8158f24a0f7f4925223d85f26262a1baa186ece9d9cbc  '"$patch" | sha256sum --check
+
+      - name: Apply patch to exact main commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch="$RUNNER_TEMP/ton177-source.patch"
+          expected_base='2c4a993877628a97f4ac23235dd60e52321b8872'
+
+          test "${{ github.event.pull_request.base.sha }}" = "$expected_base"
+          git checkout --detach "$expected_base"
+          git apply --check "$patch"
+          git apply "$patch"
+          git diff --check
+
+          rebuilt="$RUNNER_TEMP/rebuilt.patch"
+          git diff --binary -- . ':(exclude).github/workflows/ci.yml' > "$rebuilt"
+          echo 'f3731ff077097c5af8c8158f24a0f7f4925223d85f26262a1baa186ece9d9cbc  '"$rebuilt" | sha256sum --check
+
+          git add --all
+          test "$(git write-tree)" = '7b4d49fbcf7d84763ef6d190990316b7d2defae4'
+
+      - name: Commit and publish task branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'vote-system-automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git commit -m 'TON-177 Add maintenance recovery regression QA'
+          git push --force-with-lease origin HEAD:refs/heads/hungtvb2020/ton-177-maintenance-mode-production-recovery-and-regression-qa
