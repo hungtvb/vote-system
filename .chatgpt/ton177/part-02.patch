@@ -1,0 +1,140 @@
++CORS_HEADERS=$(mktemp)
++
++cleanup_files() {
++  rm -f "$ADMIN_REGISTER_HEADERS" "$ADMIN_REFRESH_HEADERS" "$ADMIN_RECOVERY_HEADERS" "$CORS_HEADERS"
++}
++trap cleanup_files EXIT
++
++json_value() {
++  local key=$1
++  python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$key"
++}
++
++wait_for() {
++  local description=$1
++  shift
++  for attempt in $(seq 1 80); do
++    if "$@" >/dev/null 2>&1; then
++      return 0
++    fi
++    sleep 0.5
++  done
++  echo "Timed out waiting for ${description}." >&2
++  return 1
++}
++
++extract_refresh_cookie() {
++  local headers=$1
++  awk 'BEGIN { IGNORECASE=1 } /^Set-Cookie:/ { gsub("\\r", ""); if ($2 ~ /^__Secure-vote_refresh=/) { split($2, parts, ";"); print parts[1] } }' "$headers"
++}
++
++capture_app_logs() {
++  docker logs "$APP_NAME" >> "$APP_LOG" 2>&1 || true
++}
++
++start_app() {
++  docker run -d --name "$APP_NAME" --network "$NETWORK_NAME" -p 10000:10000 \
++    -e PORT=10000 \
++    -e SPRING_PROFILES_ACTIVE=production \
++    -e DB_URL="jdbc:postgresql://${POSTGRES_NAME}:5432/vote_system" \
++    -e DB_USERNAME=vote \
++    -e DB_PASSWORD=vote \
++    -e REDIS_URL="redis://${REDIS_NAME}:6379" \
++    -e JWT_SECRET="$CI_JWT_SECRET" \
++    -e CORS_ALLOWED_ORIGINS=https://app.ballotbox.io.vn \
++    -e REFRESH_COOKIE_NAME=__Secure-vote_refresh \
++    -e OAUTH_SESSION_COOKIE_NAME=__Secure-vote_oauth \
++    -e RATE_LIMIT_ENABLED=true \
++    -e RATE_LIMIT_FAIL_OPEN=true \
++    -e VOTE_STREAM_HEARTBEAT_MS=250 \
++    "$@" \
++    "$IMAGE_NAME" >/dev/null
++  wait_for application curl --fail --silent "$BASE_URL/actuator/health"
++}
++
++restart_app() {
++  capture_app_logs
++  docker rm -f "$APP_NAME" >/dev/null 2>&1 || true
++  start_app "$@"
++}
++
++status_code() {
++  curl --silent --output "$1" --write-out '%{http_code}' "${@:2}"
++}
++
++ADMIN_EMAIL="runtime-admin-$(date +%s)-${RANDOM}@example.com"
++ADMIN_REGISTER=$(curl --fail --silent --show-error -D "$ADMIN_REGISTER_HEADERS" \
++  -H 'Content-Type: application/json' \
++  -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"runtime-password\",\"displayName\":\"Runtime Administrator\"}" \
++  "$BASE_URL/api/v1/auth/register")
++ADMIN_USER_TOKEN=$(printf '%s' "$ADMIN_REGISTER" | json_value accessToken)
++ADMIN_REFRESH_COOKIE=$(extract_refresh_cookie "$ADMIN_REGISTER_HEADERS")
++[ -n "$ADMIN_REFRESH_COOKIE" ]
++
++USER_ADMIN_READ_STATUS=$(status_code "$ARTIFACT_DIR/user-admin-read-forbidden.json" \
++  -H "Authorization: Bearer ${ADMIN_USER_TOKEN}" \
++  "$BASE_URL/api/v1/admin/system/status")
++[ "$USER_ADMIN_READ_STATUS" = "403" ]
++
++USER_ADMIN_WRITE_STATUS=$(status_code "$ARTIFACT_DIR/user-admin-write-forbidden.json" \
++  -X PUT \
++  -H "Authorization: Bearer ${ADMIN_USER_TOKEN}" \
++  -H 'Content-Type: application/json' \
++  -d '{"mode":"READ_ONLY","reason":"Unauthorized runtime probe"}' \
++  "$BASE_URL/api/v1/admin/system/status")
++[ "$USER_ADMIN_WRITE_STATUS" = "403" ]
++
++# Promote the already-created account through the controlled one-deployment bootstrap.
++# The existing refresh session must survive the role change and restore the current ADMIN profile.
++restart_app \
++  -e ADMIN_BOOTSTRAP_ENABLED=true \
++  -e ADMIN_BOOTSTRAP_EMAIL="$ADMIN_EMAIL"
++
++ADMIN_REFRESHED=$(curl --fail --silent --show-error -D "$ADMIN_REFRESH_HEADERS" \
++  -H "Cookie: ${ADMIN_REFRESH_COOKIE}" \
++  -X POST "$BASE_URL/api/v1/auth/refresh")
++ADMIN_TOKEN=$(printf '%s' "$ADMIN_REFRESHED" | json_value accessToken)
++ADMIN_REFRESH_COOKIE=$(extract_refresh_cookie "$ADMIN_REFRESH_HEADERS")
++[ -n "$ADMIN_REFRESH_COOKIE" ]
++printf '%s' "$ADMIN_REFRESHED" | grep -q '"role":"ADMIN"'
++
++# Production-profile READ_ONLY matrix: safe reads stay available while business writes and registration fail closed.
++curl --fail --silent --show-error \
++  -X PUT \
++  -H "Authorization: Bearer ${ADMIN_TOKEN}" \
++  -H 'X-Request-ID: runtime-read-only-enable' \
++  -H 'Content-Type: application/json' \
++  -d '{"mode":"READ_ONLY","messageVi":"Hệ thống đang ở chế độ chỉ đọc để kiểm thử.","messageEn":"The system is read-only for controlled verification.","reason":"TON-177 read-only production-profile matrix"}' \
++  "$BASE_URL/api/v1/admin/system/status" > "$ARTIFACT_DIR/read-only-enabled.json"
++grep -q '"mode":"READ_ONLY"' "$ARTIFACT_DIR/read-only-enabled.json"
++
++curl --fail --silent --show-error "$BASE_URL/api/v1/posts?feed=LATEST&page=0&size=8" \
++  > "$ARTIFACT_DIR/read-only-feed.json"
++grep -q "$BALLOT_ID" "$ARTIFACT_DIR/read-only-feed.json"
++
++READ_ONLY_VOTE_STATUS=$(status_code "$ARTIFACT_DIR/read-only-vote-rejected.json" \
++  -X PUT \
++  -H "Authorization: Bearer ${VOTER_TOKEN}" \
++  -H 'Content-Type: application/json' \
++  -d '{"type":"DOWN"}' \
++  "$BASE_URL/api/v1/posts/${BALLOT_ID}/vote")
++[ "$READ_ONLY_VOTE_STATUS" = "503" ]
++grep -q '"code":"SYSTEM_READ_ONLY"' "$ARTIFACT_DIR/read-only-vote-rejected.json"
++
++READ_ONLY_CREATE_STATUS=$(status_code "$ARTIFACT_DIR/read-only-create-rejected.json" \
++  -X POST \
++  -H "Authorization: Bearer ${VOTER_TOKEN}" \
++  -H 'Content-Type: application/json' \
++  -d '{"title":"Rejected read-only ballot","content":"This write must not reach the controller.","category":"QA"}' \
++  "$BASE_URL/api/v1/posts")
++[ "$READ_ONLY_CREATE_STATUS" = "503" ]
++grep -q '"code":"SYSTEM_READ_ONLY"' "$ARTIFACT_DIR/read-only-create-rejected.json"
++
++READ_ONLY_REGISTER_STATUS=$(status_code "$ARTIFACT_DIR/read-only-register-rejected.json" \
++  -X POST \
++  -H 'Content-Type: application/json' \
++  -d '{"email":"read-only-probe@example.invalid","password":"runtime-password","displayName":"Rejected Probe"}' \
++  "$BASE_URL/api/v1/auth/register")
++[ "$READ_ONLY_REGISTER_STATUS" = "503" ]
++grep -q '"code":"SYSTEM_READ_ONLY"' "$ARTIFACT_DIR/read-only-register-rejected.json"
++
