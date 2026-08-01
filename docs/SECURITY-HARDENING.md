@@ -57,7 +57,7 @@ POST /api/v1/auth/social/{provider}/start
 POST /api/v1/auth/social/{provider}/link/start
 ```
 
-Requests with an `Origin` header must match the explicit CORS allow-list or the API origin from the framework-normalized request. The filter does not trust raw `X-Forwarded-Host` or `X-Forwarded-Proto` headers.
+Every request that carries an `Origin` header must match the explicit `CORS_ALLOWED_ORIGINS` allow-list exactly. The filter does not derive trust from request host, proxy metadata, `X-Forwarded-Host`, or `X-Forwarded-Proto`. A same-origin browser deployment must therefore include its own origin explicitly in the allow-list.
 
 Browser requests without Origin are allowed only for `Sec-Fetch-Site: same-origin` or `none`. `same-site`, `cross-site`, and unknown browser contexts are rejected. Non-browser clients without Origin and Fetch Metadata remain supported.
 
@@ -109,7 +109,7 @@ The static frontend never acts as the authorization boundary. Non-admin visits t
 - Spring Boot is maintained on the latest supported 3.5 patch used by the project;
 - Dependabot covers Maven, npm, GitHub Actions, and Docker;
 - OSV Scanner checks dependencies on pull requests, main, and a weekly schedule;
-- CodeQL analyzes Java/Kotlin and JavaScript/TypeScript;
+- GitHub CodeQL Default Setup analyzes the repository without a conflicting advanced workflow;
 - the combined Docker runtime smoke explicitly activates the production profile;
 - runtime-smoke artifacts are scanned to ensure they contain no refresh cookie or JWT.
 
@@ -125,15 +125,18 @@ Run these after deploying the backend and frontend:
 4. Login again, retain the access JWT, call logout-all, and confirm the retained JWT receives `401` and every refresh session fails.
 5. Revoke a user's sessions from admin and confirm their retained JWT receives `401`, even when no refresh session existed.
 6. Send refresh with `Origin: https://attacker.example` plus forged forwarded headers and confirm `403 SESSION_ORIGIN_REJECTED`.
-7. Send a browser-style refresh with no Origin and `Sec-Fetch-Site: same-site`; confirm `403 SESSION_ORIGIN_REJECTED`.
-8. Stop or isolate Redis and confirm login returns `503 RATE_LIMIT_UNAVAILABLE` rather than bypassing the limiter.
-9. Verify refresh and OAuth cookies have the expected `__Secure-` names, `HttpOnly`, `Secure`, and SameSite attributes.
-10. Verify Vercel returns CSP, HSTS, frame, referrer, permissions, and content-type headers.
-11. Confirm a guest and a signed-in USER visiting `/admin` reach neutral 404 behavior and produce no `/api/v1/admin/**` requests.
-12. Confirm an ADMIN can still recover the system from maintenance mode.
+7. Send refresh with `Origin: https://api.ballotbox.io.vn` while only `https://app.ballotbox.io.vn` is allow-listed; confirm `403 SESSION_ORIGIN_REJECTED`.
+8. Send a browser-style refresh with no Origin and `Sec-Fetch-Site: same-site`; confirm `403 SESSION_ORIGIN_REJECTED`.
+9. Stop or isolate Redis and confirm login returns `503 RATE_LIMIT_UNAVAILABLE` rather than bypassing the limiter.
+10. Verify refresh and OAuth cookies have the expected `__Secure-` names, `HttpOnly`, `Secure`, and SameSite attributes.
+11. Verify Vercel returns CSP, HSTS, frame, referrer, permissions, and content-type headers.
+12. Confirm a guest and a signed-in USER visiting `/admin` reach neutral 404 behavior and produce no `/api/v1/admin/**` requests.
+13. Confirm an ADMIN can still recover the system from maintenance mode.
 
 ## Rollout and rollback
 
 Flyway V14 adds `users.security_version` with default zero. Existing access tokens without the claim are treated as version zero for one rolling-deployment window. Any user whose version changes must use a newly issued token.
+
+Changing the production refresh-cookie name from `vote_refresh` to `__Secure-vote_refresh` intentionally invalidates existing browser refresh cookies. Plan the rollout as a one-time reauthentication event and communicate it before deployment.
 
 After V14 is active and versions have changed, do not roll back to a backend that does not validate `security_version` while authenticated traffic is enabled. Prefer roll-forward; otherwise enter maintenance mode during rollback.
