@@ -1,0 +1,64 @@
+name: TON-127 CodeQL Fix Publisher
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ton127-codeql-fix-publisher.yml
+      - .chatgpt/ton127-codeql/**
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply exact cookie fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch="$RUNNER_TEMP/cookie-fix.patch"
+          cp .chatgpt/ton127-codeql/cookie-fix.patch "$patch"
+          test "${{ github.event.pull_request.base.sha }}" = '1b5a865b1973fd1d7ced76b65ffb28f031a1d14d'
+          git checkout --detach bc0371718ef9204448713261e46397ef83dbca90
+          git apply --check "$patch"
+          git apply "$patch"
+          git diff --check
+          python3 -m py_compile frontend/scripts/ton106_qa_server.py
+          ! grep -q 'qa_mode={requested_mode}' frontend/scripts/ton106_qa_server.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Verify frontend
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+          npm run build
+
+      - name: Publish task branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf frontend/.test-dist frontend/.next frontend/scripts/__pycache__
+          git restore --source=bc0371718ef9204448713261e46397ef83dbca90 --staged --worktree frontend/tsconfig.json frontend/next-env.d.ts
+          git diff --check
+          git config user.name 'vote-system-automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add frontend/scripts/ton106_qa_server.py
+          git commit -m 'fix TON-127 use literal QA mode cookies'
+          test "$(git diff --name-only bc0371718ef9204448713261e46397ef83dbca90 HEAD)" = 'frontend/scripts/ton106_qa_server.py'
+          git push --force-with-lease=refs/heads/hungtvb2020/ton-127-fe-add-safe-profile-snapshot-for-instant-masthead-rendering:bc0371718ef9204448713261e46397ef83dbca90 \
+            origin HEAD:refs/heads/hungtvb2020/ton-127-fe-add-safe-profile-snapshot-for-instant-masthead-rendering
