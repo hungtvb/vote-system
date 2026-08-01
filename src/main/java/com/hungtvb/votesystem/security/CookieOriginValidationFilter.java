@@ -45,7 +45,7 @@ public class CookieOriginValidationFilter extends OncePerRequestFilter {
         String origin = request.getHeader(HttpHeaders.ORIGIN);
         String fetchSite = request.getHeader("Sec-Fetch-Site");
         if (origin != null && !origin.isBlank()) {
-            if (!allowedOrigins.contains(origin) && !isSameOrigin(request, origin)) {
+            if (!allowedOrigins.contains(origin)) {
                 reject(request, response);
                 return;
             }
@@ -72,23 +72,6 @@ public class CookieOriginValidationFilter extends OncePerRequestFilter {
         }
         return "same-origin".equalsIgnoreCase(fetchSite)
                 || "none".equalsIgnoreCase(fetchSite);
-    }
-
-    private boolean isSameOrigin(HttpServletRequest request, String origin) {
-        String scheme = request.getScheme();
-        String host = request.getServerName();
-        int port = request.getServerPort();
-        if (scheme == null || host == null || scheme.isBlank() || host.isBlank()) {
-            return false;
-        }
-
-        boolean defaultPort = ("https".equalsIgnoreCase(scheme) && port == 443)
-                || ("http".equalsIgnoreCase(scheme) && port == 80);
-        String normalizedHost = host.contains(":") && !host.startsWith("[")
-                ? "[" + host + "]"
-                : host;
-        String requestOrigin = scheme + "://" + normalizedHost + (defaultPort ? "" : ":" + port);
-        return origin.equalsIgnoreCase(requestOrigin);
     }
 
     private void reject(HttpServletRequest request, HttpServletResponse response) throws IOException {
