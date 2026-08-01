@@ -89,7 +89,7 @@ Register, login, and refresh return session fields plus the authenticated privat
 
 Access tokens remain in React memory. Refresh tokens remain in path-scoped `HttpOnly`, `Secure` cookies and are never returned in JSON or stored by frontend JavaScript.
 
-Each access JWT carries the current role and `security_version`. PostgreSQL is checked after bearer-token authentication for every request carrying a Vote System JWT. The token role and version must exactly match the current user row, and the account must be active. Logout-all, administrator revoke-sessions, moderation state changes, temporary-restriction normalization, and role promotion invalidate previously issued JWTs immediately.
+Each access JWT carries the current role and `security_version`. PostgreSQL is checked after bearer-token authentication for every request carrying a Vote System JWT. The token role and version must exactly match the current user row, and the account must be active. Logout-all, administrator revoke-sessions, suspend/ban, explicit restore, and role promotion invalidate previously issued JWTs immediately. Temporary restriction expiry does not rotate the version a second time.
 
 Cookie-authenticated refresh/logout/social-start requests validate browser Origin and Fetch Metadata. Cross-site browser requests are rejected with `SESSION_ORIGIN_REJECTED`. See [`FRONTEND-AUTH.md`](FRONTEND-AUTH.md), [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md), and [`SECURITY-HARDENING.md`](SECURITY-HARDENING.md).
 
