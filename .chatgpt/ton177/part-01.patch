@@ -1,0 +1,140 @@
++- confirmation that evidence and logs contain no cookie, JWT, email, or bootstrap secret.
+ 
+ ## Follow-up boundaries
+ 
+-- TON-175 adds the protected System Operations control to the table-first admin dashboard.
+-- TON-176 implements the public read-only banner, maintenance screen, global problem reconciliation and write-entry-point controls.
+-- TON-177 verifies deployed recovery and administrator lockout scenarios.
++- TON-175 added the protected System Operations control to the table-first admin dashboard.
++- TON-176 implemented the public read-only banner, maintenance screen, global problem reconciliation and write-entry-point controls.
++- TON-177 adds restart/Redis-loss recovery QA, bounded rejection metrics, operating guidance, and deployed-topology evidence.
+diff --git a/docs/README.md b/docs/README.md
+index 5d9220b..ac9f75b 100644
+--- a/docs/README.md
++++ b/docs/README.md
+@@ -154,7 +154,7 @@ The repository runs:
+ 
+ The combined Docker smoke explicitly activates the production profile, uses a temporary random JWT secret, validates secure cookie attributes and hidden Swagger routes, and scans uploaded artifacts to ensure they contain no refresh cookie or JWT.
+ 
+-A green workflow is evidence for the exact PR head only. Production secrets, Railway environment state, Vercel response headers, and live OAuth exchanges still require the deployment kill-tests in [`SECURITY-HARDENING.md`](SECURITY-HARDENING.md).
++A green workflow is evidence for the exact PR head only. Production secrets, Railway environment state, Vercel response headers, and live OAuth exchanges still require the deployment kill-tests in [`SECURITY-HARDENING.md`](SECURITY-HARDENING.md). Maintenance recovery evidence and the boundary between CI and a controlled production mutation are defined in [`TON-177-VERIFICATION.md`](TON-177-VERIFICATION.md).
+ 
+ ## Active roadmap
+ 
+diff --git a/docs/TON-177-VERIFICATION.md b/docs/TON-177-VERIFICATION.md
+new file mode 100644
+index 0000000..2fe3a55
+--- /dev/null
++++ b/docs/TON-177-VERIFICATION.md
+@@ -0,0 +1,72 @@
++# TON-177 verification
++
++This document defines the evidence boundary for maintenance-mode recovery and regression QA. Evidence is valid only for the exact commit and deployment identifiers recorded with it.
++
++## Automated CI matrix
++
++The primary CI workflow must complete all of these checks on the current pull-request head:
++
++### Backend
++
++- full Maven verification;
++- focused system-mode unit/integration coverage;
++- bounded `vote.system.mode.requests` tag tests;
++- production image build;
++- production-profile runtime smoke.
++
++The runtime smoke must prove:
++
++1. a normal USER receives `403` for administrator status read/update;
++2. a controlled bootstrap promotes an existing active account without exposing its email;
++3. the existing refresh cookie restores the promoted `ADMIN` session;
++4. `MAINTENANCE` rejects public feed traffic with `503 SYSTEM_MAINTENANCE` and `Retry-After`;
++5. CORS preflight, health, public status, refresh, and protected administrator recovery remain reachable;
++6. the mode survives a backend restart because PostgreSQL is authoritative;
++7. stopping Redis does not change the authoritative mode; security-critical refresh fails closed with `RATE_LIMIT_UNAVAILABLE`, while the already-restored administrator token can still use the recovery endpoint;
++8. returning to `NORMAL` restores public reads and a real vote write;
++9. enable/disable audit records correlate with bounded request IDs;
++10. the rejection metric exposes bounded code/mode/method/route/status tags;
++11. uploaded logs and artifacts contain no bootstrap email, refresh cookie, or JWT.
++
++### Frontend
++
++- 72 shared TypeScript lifecycle/model tests;
++- production Next.js build;
++- Ballot Edition contrast and asset checks;
++- READ_ONLY banner checks at 1440, 768, 390, 375, and 320 px;
++- authenticated READ_ONLY write-control checks;
++- MAINTENANCE notice checks at the same viewports;
++- long administrator-authored VI/EN copy without horizontal overflow;
++- retry transition back to NORMAL;
++- keyboard touch-target, reduced-motion, and visual/accessibility baseline checks.
++
++## Controlled deployed-topology checks
++
++Run after the exact release is deployed to:
++
++```text
++Frontend   Vercel  https://app.ballotbox.io.vn
++Backend    Railway https://api.ballotbox.io.vn
++Database   Supabase PostgreSQL
++Cache      managed Redis (derived infrastructure)
++```
++
++Safe read-only probes may run at any time:
++
++- Vercel page/assets and required security headers;
++- Railway `/actuator/health`;
++- public `/api/v1/system/status`;
++- anonymous/USER denial for protected admin and Actuator endpoints;
++- Swagger/OpenAPI unavailable in production;
++- public feed and CORS response behavior.
++
++Changing production to READ_ONLY or MAINTENANCE requires a controlled maintenance window, an active administrator recovery session, an incident/change identifier, and a rollback owner. Do not infer this lifecycle from CI alone and do not mutate production merely to satisfy a pull-request gate.
++
++## Completion rule
++
++Move TON-177 to In Review only after the current PR head is green and evidence is attached. Mark it Done only after:
++
++- the PR is merged;
++- the relevant release is deployed;
++- the controlled deployed-topology recovery lifecycle is recorded, or the product owner explicitly accepts CI/staging evidence in place of a live production mutation;
++- unresolved risks and the emergency database procedure have been reviewed.
+diff --git a/frontend/scripts/ton106_qa_server.py b/frontend/scripts/ton106_qa_server.py
+index 5b5c6e3..6c482d0 100644
+--- a/frontend/scripts/ton106_qa_server.py
++++ b/frontend/scripts/ton106_qa_server.py
+@@ -347,8 +347,8 @@ class Handler(base.Handler):
+ 
+             self._json(200, {
+                 "mode": system_mode,
+-                "messageVi": "Thông báo vận hành do quản trị viên cung cấp.\nVui lòng quay lại sau.",
+-                "messageEn": "Administrator-authored operating notice.\nPlease check again later.",
++                "messageVi": "Thông báo vận hành dài do quản trị viên cung cấp để xác minh khả năng xuống dòng trên màn hình nhỏ.\nDữ liệu này phải được giữ nguyên, không bị cắt hoặc gây tràn ngang.",
++                "messageEn": "A long administrator-authored operating notice verifies wrapping on compact screens.\nThis content must remain unchanged, readable, and free from horizontal overflow.",
+                 "estimatedEndAt": "2027-08-01T08:30:00Z" if system_mode != "NORMAL" else None,
+                 "updatedAt": "2026-08-01T07:00:00Z",
+             })
+diff --git a/scripts/ci/maintenance-recovery-smoke.sh b/scripts/ci/maintenance-recovery-smoke.sh
+new file mode 100755
+index 0000000..0f1ad9e
+--- /dev/null
++++ b/scripts/ci/maintenance-recovery-smoke.sh
+@@ -0,0 +1,317 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++: "${IMAGE_NAME:?IMAGE_NAME is required}"
++: "${NETWORK_NAME:?NETWORK_NAME is required}"
++: "${POSTGRES_NAME:?POSTGRES_NAME is required}"
++: "${REDIS_NAME:?REDIS_NAME is required}"
++: "${APP_NAME:?APP_NAME is required}"
++: "${BASE_URL:?BASE_URL is required}"
++: "${ARTIFACT_DIR:?ARTIFACT_DIR is required}"
++: "${CI_JWT_SECRET:?CI_JWT_SECRET is required}"
++: "${VOTER_TOKEN:?VOTER_TOKEN is required}"
++: "${BALLOT_ID:?BALLOT_ID is required}"
++
++APP_LOG="$ARTIFACT_DIR/app.log"
++ADMIN_REGISTER_HEADERS=$(mktemp)
++ADMIN_REFRESH_HEADERS=$(mktemp)
++ADMIN_RECOVERY_HEADERS=$(mktemp)
