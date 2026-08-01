@@ -265,7 +265,7 @@ class AdminUserModerationIntegrationTests {
 
     @Test
     @Order(7)
-    void explicitSessionRevocationKeepsAccessJwtValidAndIsAudited() throws Exception {
+    void explicitSessionRevocationInvalidatesAccessJwtAndIsAudited() throws Exception {
         AuthSession admin = admin("user-moderation-revoke-admin@example.com");
         AuthSession target = register("user-moderation-revoke-target@example.com");
 
@@ -279,16 +279,17 @@ class AdminUserModerationIntegrationTests {
 
         mockMvc.perform(get("/api/v1/users/me")
                         .header(HttpHeaders.AUTHORIZATION, bearer(target.accessToken())))
-                .andExpect(status().isOk());
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(post("/api/v1/auth/refresh").cookie(target.refreshCookie()))
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(post("/api/v1/admin/users/{userId}/revoke-sessions", target.userId())
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.accessToken()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(reason("Repeated security reset")))
-                .andExpect(status().isConflict());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.revokedSessions").value(0));
 
-        assertEquals(1L, auditCount(target.userId(), "ADMIN_REVOKE_SESSIONS"));
+        assertEquals(2L, auditCount(target.userId(), "ADMIN_REVOKE_SESSIONS"));
     }
 
     @Test
