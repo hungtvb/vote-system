@@ -17,7 +17,7 @@ https://app.ballotbox.io.vn -> Vercel
 https://api.ballotbox.io.vn -> Railway
 ```
 
-Both hosts are HTTPS subdomains of `ballotbox.io.vn`. Requests are cross-origin but same-site, so `SameSite=Lax` is appropriate for the current refresh/OAuth cookies.
+Both hosts are HTTPS subdomains of `ballotbox.io.vn`. Requests are cross-origin but same-site. Refresh cookies use `SameSite=Strict`; the temporary OAuth session uses `SameSite=Lax` because the provider callback is a top-level cross-site navigation.
 
 Render is not an active production target. The root `Dockerfile` remains for combined-image CI/runtime smoke and optional single-service deployment.
 
@@ -31,7 +31,7 @@ Connect `hungtvb/vote-system` to Railway and deploy the repository root. Railway
 SPRING_PROFILES_ACTIVE=production
 ```
 
-Do not override this unless a deliberate staging profile is introduced. The production profile disables springdoc, sets Spring/Hibernate logging to INFO, and disables Hibernate statistics/session-event metrics.
+Do not override this unless a deliberate staging profile is introduced. The production profile disables springdoc, reduces Spring/Hibernate logging, disables Hibernate statistics/session-event metrics, and rejects unsafe security configuration at startup.
 
 ### Required variables
 
@@ -40,13 +40,22 @@ DB_URL=jdbc:postgresql://<supabase-session-pooler-host>:5432/postgres?sslmode=re
 DB_USERNAME=postgres.<supabase-project-ref>
 DB_PASSWORD=<supabase-database-password>
 REDIS_URL=rediss://default:<password>@<host>:<port>
-JWT_SECRET=<at-least-32-random-characters>
+JWT_SECRET=<cryptographically-random-secret-of-at-least-32-bytes>
 JWT_ISSUER=vote-system
 CORS_ALLOWED_ORIGINS=https://app.ballotbox.io.vn
-REFRESH_COOKIE_SECURE=true
-REFRESH_COOKIE_SAME_SITE=Lax
+REFRESH_COOKIE_NAME=__Secure-vote_refresh
+OAUTH_SESSION_COOKIE_NAME=__Secure-vote_oauth
 REDIS_HEALTH_ENABLED=true
 ```
+
+The production profile enforces `Secure` cookies and these SameSite policies:
+
+```text
+refresh cookie       Strict
+OAuth session cookie Lax
+```
+
+Startup fails when JWT secret, CORS origin, or cookie settings are missing or unsafe. Placeholders, wildcard origins, HTTP origins, localhost origins, non-Secure cookies, and names without `__Secure-` are rejected.
 
 Do not set `PORT`; Railway supplies it and Spring Boot reads `${PORT}`.
 
@@ -68,6 +77,8 @@ RATE_LIMIT_PROFILE_UPDATE_LIMIT=10
 RATE_LIMIT_PROFILE_UPDATE_WINDOW=PT1H
 ```
 
+`RATE_LIMIT_FAIL_OPEN=true` applies only to non-authentication operations. Login, registration, refresh, social authentication, and social linking always fail closed when Redis cannot verify their limit and return `503 RATE_LIMIT_UNAVAILABLE`.
+
 The vote side-effect queue is bounded. After commit, ranking and SSE tasks enter separate ordered executors. Queue saturation may block enqueue briefly; ordinary Redis/SSE network I/O does not remain on the vote request thread.
 
 ### Optional social-login variables
@@ -82,9 +93,7 @@ GITHUB_CLIENT_SECRET=<github-client-secret>
 SOCIAL_LOGIN_SUCCESS_URL=https://app.ballotbox.io.vn/
 SOCIAL_LOGIN_FAILURE_URL=https://app.ballotbox.io.vn/
 OAUTH_SESSION_TIMEOUT=10m
-OAUTH_SESSION_COOKIE_NAME=vote_oauth
-OAUTH_SESSION_COOKIE_SECURE=true
-OAUTH_SESSION_COOKIE_SAME_SITE=Lax
+OAUTH_SESSION_COOKIE_NAME=__Secure-vote_oauth
 ```
 
 Provider callback URLs:
@@ -98,12 +107,20 @@ Do not configure wildcard callbacks. Do not store provider access/refresh tokens
 
 Detailed provider rules: [`SOCIAL-LOGIN.md`](SOCIAL-LOGIN.md).
 
-### Health and production API-doc policy
+### Health, Actuator, and production API-doc policy
 
 Expected public endpoint:
 
 ```http
 GET https://api.ballotbox.io.vn/actuator/health
+```
+
+Administrator-only endpoints:
+
+```text
+/actuator/info
+/actuator/metrics
+/actuator/metrics/**
 ```
 
 Expected unavailable production routes:
@@ -116,8 +133,6 @@ https://api.ballotbox.io.vn/swagger-ui/index.html
 ```
 
 Spring Security permits the documentation paths when springdoc is active, but `application-production.yml` disables the springdoc beans. Do not treat a public Swagger UI as normal production behavior.
-
-Only health is public under Actuator security. `info` and `metrics` require authentication.
 
 ## 2. Vercel frontend
 
@@ -143,6 +158,8 @@ NEXT_PUBLIC_API_BASE_URL=https://api.ballotbox.io.vn
 
 The frontend transport uses `credentials: include`. Backend CORS must return the explicit frontend origin and `Access-Control-Allow-Credentials: true`; do not use `*` with cookies.
 
+`frontend/vercel.json` installs CSP, HSTS, frame denial, `nosniff`, referrer policy, permissions policy, COOP, and an admin no-index header. The CSP explicitly permits only the production API host. A staging deployment must use its own reviewed header configuration rather than widening production to arbitrary preview origins.
+
 Local example: [`../frontend/.env.example`](../frontend/.env.example).
 
 ## 3. DNS and TLS
@@ -155,7 +172,7 @@ Always test through:
 https://app.ballotbox.io.vn
 ```
 
-Do not validate production through HTTP. HTTP and HTTPS are distinct CORS origins, and secure refresh/OAuth cookies are not sent over HTTP.
+Do not validate production through HTTP. HTTP and HTTPS are distinct CORS origins, and Secure refresh/OAuth cookies are not sent over HTTP.
 
 ## 4. Deployment verification
 
@@ -163,31 +180,40 @@ Do not validate production through HTTP. HTTP and HTTPS are distinct CORS origin
 
 - Railway builds `Dockerfile.railway`.
 - Runtime reports the `production` Spring profile.
-- Flyway completes against Supabase.
+- Flyway completes through V14 or later against Supabase.
 - Hibernate validation succeeds.
 - `/actuator/health` returns `UP`.
 - PostgreSQL and Redis health components report `UP`.
 - `/v3/api-docs` and Swagger UI are unavailable.
-- Startup/request logs do not contain springdoc enablement warnings, Hibernate `Session Metrics`, or broad Spring/Hibernate DEBUG traffic.
+- anonymous and USER tokens cannot read `/actuator/metrics`.
+- startup/request logs do not contain springdoc enablement warnings, Hibernate `Session Metrics`, or broad Spring/Hibernate DEBUG traffic.
+- removing or replacing `JWT_SECRET` with a committed placeholder makes startup fail.
+
+### Authentication security
+
+- Refresh cookie name is `__Secure-vote_refresh` and attributes include `HttpOnly`, `Secure`, `Path=/api/v1/auth`, and `SameSite=Strict`.
+- OAuth session cookie name is `__Secure-vote_oauth` and attributes include `HttpOnly`, `Secure`, and `SameSite=Lax`.
+- A hard refresh restores session/profile through one `POST /api/v1/auth/refresh` request.
+- Login, registration, and refresh return `503 RATE_LIMIT_UNAVAILABLE` instead of bypassing abuse protection while Redis is unavailable.
+- A refresh request with `Origin: https://attacker.example` returns `403 SESSION_ORIGIN_REJECTED`.
+- Logout-all invalidates a retained access JWT immediately.
+- Administrator revoke-sessions invalidates retained access JWTs even when the revoked refresh-session count is zero.
+- Suspend, ban, restore, and role promotion invalidate tokens issued before the state change.
 
 ### Frontend and core product
 
 - `https://app.ballotbox.io.vn` returns Ballot Edition with CSS/JS/assets loaded.
+- Vercel returns CSP, HSTS, frame, referrer, permissions, content-type, and COOP headers.
 - Public LATEST/HOT/TOP starts before session restore completes.
 - Registration and email/password login succeed.
-- Refresh cookie is `HttpOnly`, `Secure`, and `SameSite=Lax`.
-- A hard refresh restores session/profile through one `POST /api/v1/auth/refresh` request.
-- The normal bootstrap path does not call `GET /api/v1/users/me` afterward.
 - Create, search, filter, vote, close, edit, and delete work.
 - Profile edit/public profile/Ballot Mark render correctly.
-- Empty public bio shows no default user-authored sentence.
 - VI/EN switching works and survives refresh through local preference.
 - `MINE` is unavailable to guests and returns only the authenticated author's ballots.
 - Optimistic voting reconciles authoritative REST counts.
 - SSE converges across two tabs observing the same open ballot.
-- Logout and logout-all revoke refresh sessions.
-
-The authenticated profile's `preferredLocale` is currently durable but not automatically applied during bootstrap; TON-191 tracks that known gap.
+- Guest and USER visits to `/admin` resolve to neutral 404 UI and do not call `/api/v1/admin/**`.
+- ADMIN access to the workspace and recovery endpoints continues to work.
 
 ### Social login
 
@@ -205,7 +231,7 @@ CI cannot perform live provider token exchange because production secrets are ab
 
 ## 5. Observability after deployment
 
-Use Railway logs and authenticated Actuator metrics to separate ordinary API latency from long-lived SSE connections.
+Use Railway logs and ADMIN-authenticated Actuator metrics to separate ordinary API latency from long-lived SSE connections.
 
 Important metrics:
 
@@ -248,8 +274,8 @@ Vercel previews use separate origins. Production must not allow arbitrary `*.ver
 
 Use either:
 
-- a dedicated staging frontend/backend pair; or
-- an explicit CORS allow-list containing only selected stable preview origins.
+- a dedicated staging frontend/backend pair with its own exact CORS origin and CSP API host; or
+- an explicitly reviewed stable preview origin.
 
 OAuth previews require provider callbacks registered specifically for the staging backend. Do not point production OAuth callbacks to ephemeral preview domains.
 
@@ -266,3 +292,5 @@ Do not commit:
 - production cookie values or captured session headers.
 
 Repository examples: [`../.env.example`](../.env.example) and [`../frontend/.env.example`](../frontend/.env.example).
+
+See [`SECURITY-HARDENING.md`](SECURITY-HARDENING.md) for the full security boundary, kill-tests, and rollback warning.
