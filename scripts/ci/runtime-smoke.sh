@@ -11,12 +11,13 @@ ARTIFACT_DIR=${ARTIFACT_DIR:-runtime-smoke}
 
 mkdir -p "$ARTIFACT_DIR"
 APP_LOG="$ARTIFACT_DIR/app.log"
+: > "$APP_LOG"
 REGISTER_HEADERS=$(mktemp)
 CI_JWT_SECRET=$(openssl rand -base64 48 | tr -d '\n')
 
 cleanup() {
   rm -f "$REGISTER_HEADERS"
-  docker logs "$APP_NAME" > "$APP_LOG" 2>&1 || true
+  docker logs "$APP_NAME" >> "$APP_LOG" 2>&1 || true
   docker rm -f "$APP_NAME" "$POSTGRES_NAME" "$REDIS_NAME" >/dev/null 2>&1 || true
   docker network rm "$NETWORK_NAME" >/dev/null 2>&1 || true
 }
@@ -64,7 +65,8 @@ docker run -d --name "$APP_NAME" --network "$NETWORK_NAME" -p 10000:10000 \
   -e CORS_ALLOWED_ORIGINS=https://app.ballotbox.io.vn \
   -e REFRESH_COOKIE_NAME=__Secure-vote_refresh \
   -e OAUTH_SESSION_COOKIE_NAME=__Secure-vote_oauth \
-  -e RATE_LIMIT_ENABLED=false \
+  -e RATE_LIMIT_ENABLED=true \
+  -e RATE_LIMIT_FAIL_OPEN=true \
   -e VOTE_STREAM_HEARTBEAT_MS=250 \
   "$IMAGE_NAME" >/dev/null
 
@@ -155,8 +157,11 @@ REFRESHED_SESSION=$(curl --fail --silent --show-error \
   -X POST "$BASE_URL/api/v1/auth/refresh")
 printf '%s' "$REFRESHED_SESSION" | grep -q '"accessToken"'
 
+export IMAGE_NAME NETWORK_NAME POSTGRES_NAME REDIS_NAME APP_NAME BASE_URL ARTIFACT_DIR CI_JWT_SECRET VOTER_TOKEN BALLOT_ID
+bash scripts/ci/maintenance-recovery-smoke.sh
+
 # Capture logs before scanning so the uploaded artifact is covered end-to-end.
-docker logs "$APP_NAME" > "$APP_LOG" 2>&1 || true
+docker logs "$APP_NAME" >> "$APP_LOG" 2>&1 || true
 
 # Never persist raw cookies or bearer tokens in uploaded runtime-smoke artifacts.
 ! grep -R -E '__Secure-vote_refresh=|eyJ[A-Za-z0-9_-]+\.' "$ARTIFACT_DIR"

@@ -2,6 +2,7 @@ package com.hungtvb.votesystem.system;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -20,7 +21,8 @@ import static org.mockito.Mockito.when;
 class SystemModeEnforcementFilterTests {
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private final SystemStatusService statusService = mock(SystemStatusService.class);
-    private final SystemModeEnforcementFilter filter = new SystemModeEnforcementFilter(statusService, objectMapper);
+    private final SystemModeMetrics metrics = new SystemModeMetrics(new SimpleMeterRegistry());
+    private final SystemModeEnforcementFilter filter = new SystemModeEnforcementFilter(statusService, objectMapper, metrics);
 
     @Test
     void readOnlyRejectsMutationWithStableProblemAndRetryAfter() throws Exception {

@@ -304,6 +304,25 @@ class Handler(base.Handler):
     _status_counts: dict[str, int] = {}
     _status_lock = threading.Lock()
 
+    @classmethod
+    def _reset_status_sequence(cls, mode: str) -> None:
+        if mode != "maintenance-retry":
+            return
+        with cls._status_lock:
+            cls._status_counts.pop(mode, None)
+
+    @classmethod
+    def _next_system_mode(cls, mode: str) -> str:
+        with cls._status_lock:
+            count = cls._status_counts.get(mode, 0) + 1
+            cls._status_counts[mode] = count
+
+        if mode in ("read-only", "auth-read-only"):
+            return "READ_ONLY"
+        if mode == "maintenance" or (mode == "maintenance-retry" and count == 1):
+            return "MAINTENANCE"
+        return "NORMAL"
+
     def _profile(self) -> dict:
         linked = ["GOOGLE"] if self._fixture_mode() == "auth-social-linked" else []
         return {
@@ -334,21 +353,16 @@ class Handler(base.Handler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         mode = self._fixture_mode()
+        if parsed.path == "/":
+            requested_mode = parse_qs(parsed.query).get("qa", [mode])[0]
+            self._reset_status_sequence(requested_mode)
         if parsed.path == "/api/v1/system/status":
-            with self._status_lock:
-                count = self._status_counts.get(mode, 0) + 1
-                self._status_counts[mode] = count
-
-            system_mode = "NORMAL"
-            if mode in ("read-only", "auth-read-only"):
-                system_mode = "READ_ONLY"
-            elif mode == "maintenance" or (mode == "maintenance-retry" and count == 1):
-                system_mode = "MAINTENANCE"
+            system_mode = self._next_system_mode(mode)
 
             self._json(200, {
                 "mode": system_mode,
-                "messageVi": "Thông báo vận hành do quản trị viên cung cấp.\nVui lòng quay lại sau.",
-                "messageEn": "Administrator-authored operating notice.\nPlease check again later.",
+                "messageVi": "Thông báo vận hành dài do quản trị viên cung cấp để xác minh khả năng xuống dòng trên màn hình nhỏ.\nDữ liệu này phải được giữ nguyên, không bị cắt hoặc gây tràn ngang.",
+                "messageEn": "A long administrator-authored operating notice verifies wrapping on compact screens.\nThis content must remain unchanged, readable, and free from horizontal overflow.",
                 "estimatedEndAt": "2027-08-01T08:30:00Z" if system_mode != "NORMAL" else None,
                 "updatedAt": "2026-08-01T07:00:00Z",
             })

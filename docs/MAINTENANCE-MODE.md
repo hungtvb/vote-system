@@ -172,19 +172,113 @@ The dedicated public-message metadata fields may contain public contact addresse
 
 The audit append and status mutation share one PostgreSQL transaction. Validation or audit failure rolls both back.
 
-## Recovery procedure
+## Operating procedure
 
-1. Keep an existing administrator session or refresh cookie available.
-2. Enable `MAINTENANCE` through `PUT /api/v1/admin/system/status`.
-3. Confirm public feed requests return `SYSTEM_MAINTENANCE`.
-4. After a browser refresh, restore the administrator session through `POST /api/v1/auth/refresh`.
-5. Return the mode to `NORMAL` through the administrator status endpoint.
-6. Confirm public feed and supported writes are available again.
+### Before enabling a restricted mode
 
-The automated integration kill-test covers this full sequence. TON-177 will repeat it against the deployed topology and attach production evidence.
+1. Confirm at least one active `ADMIN` account can open the protected System Operations control.
+2. Keep that administrator's refresh cookie available in the same browser. Do not copy the cookie into tickets, chat, screenshots, shell history, or logs.
+3. Record an incident/change identifier and the planned restoration time.
+4. Confirm PostgreSQL is reachable. Redis is derived infrastructure and is not the authority for system mode.
+5. Verify these recovery routes before changing mode:
+   - `GET /actuator/health`;
+   - `GET /api/v1/system/status`;
+   - `POST /api/v1/auth/refresh` with the active administrator browser session;
+   - `GET /api/v1/admin/system/status` with the administrator access token.
+
+### Enable and verify `READ_ONLY`
+
+1. Select `READ_ONLY` in the admin dashboard and provide bounded VI/EN public copy, an optional future estimated end, and a required reason.
+2. Confirm `GET /api/v1/system/status` returns `READ_ONLY`.
+3. Confirm feed/detail reads still succeed.
+4. Confirm vote, registration, create, edit, close, and delete requests return `503 SYSTEM_READ_ONLY`.
+5. Confirm the public banner appears at 1440, 768, 390, 375, and 320 px without horizontal overflow.
+
+### Enable and recover from `MAINTENANCE`
+
+1. Select `MAINTENANCE` in the admin dashboard and provide the operating notice, optional future estimated end, and incident reason.
+2. Confirm public feed/detail and writes return `503 SYSTEM_MAINTENANCE`; health and public status must remain reachable.
+3. Hard refresh the administrator browser.
+4. Restore the administrator session through `POST /api/v1/auth/refresh` using the existing secure refresh cookie.
+5. Open System Operations and confirm the authoritative mode is still `MAINTENANCE`.
+6. Return mode to `NORMAL` through `PUT /api/v1/admin/system/status`.
+7. Confirm public status is `NORMAL`, feed/detail reads recover, and a real business write such as a vote succeeds.
+8. Confirm the enable and disable audit records contain the bounded request IDs used for the change.
+
+The CI production-profile kill-test repeats this sequence across a backend restart, then separately removes Redis. It proves that PostgreSQL retains the mode, the administrator refresh path survives the backend restart while Redis is healthy, security-critical refresh fails closed during the Redis outage, an already-restored administrator token can still use the unconditional recovery endpoint, and normal reads/writes recover after Redis returns. It does not replace a controlled post-deployment smoke against the current Railway/Vercel/Supabase release.
+
+## Emergency PostgreSQL recovery
+
+Use direct database recovery only when all application-level administrator recovery paths are unavailable and the incident owner has approved bypassing the normal audit path. This is a last-resort Supabase/PostgreSQL operation, not a routine mode change.
+
+Before changing data, capture the current row and preserve it in the incident record:
+
+```sql
+BEGIN;
+
+SELECT singleton_id,
+       mode,
+       message_vi,
+       message_en,
+       estimated_end_at,
+       updated_at,
+       updated_by,
+       version
+FROM system_status
+WHERE singleton_id = 1
+FOR UPDATE;
+
+UPDATE system_status
+SET mode = 'NORMAL',
+    message_vi = NULL,
+    message_en = NULL,
+    estimated_end_at = NULL,
+    updated_at = CURRENT_TIMESTAMP,
+    updated_by = NULL,
+    version = version + 1
+WHERE singleton_id = 1;
+
+COMMIT;
+```
+
+After emergency recovery:
+
+1. Verify exactly one singleton row exists and it reports `NORMAL`.
+2. Restart the Railway backend or wait longer than the five-second process-local cache, then verify `GET /api/v1/system/status` returns `NORMAL`.
+3. Confirm feed and one controlled business write recover.
+4. Record who approved and executed the SQL, the prior row values, timestamps, and the reason in the incident system. Direct SQL cannot append the application `SYSTEM_MODE_CHANGED` audit event.
+5. Investigate and repair the failed administrator recovery path before the next maintenance window.
+
+Never delete the singleton row, change `singleton_id`, weaken the database constraints, or store a recovery secret in the repository.
+
+## Observability and evidence
+
+Rejected mode-boundary requests increment `vote.system.mode.requests` with bounded tags only:
+
+```text
+result=rejected
+status=503
+code=SYSTEM_READ_ONLY|SYSTEM_MAINTENANCE|SYSTEM_STATUS_UNAVAILABLE|UNKNOWN
+mode=NORMAL|READ_ONLY|MAINTENANCE|UNKNOWN
+method=GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|OTHER
+route=system-status|admin-system-status|auth|posts|users|oauth|actuator|other
+```
+
+The metric intentionally excludes raw paths, user IDs, ballot IDs, emails, cookies, request IDs, and tokens. Request correlation remains in `http_request_complete requestId=<bounded-id>` logs and in the system-mode audit metadata.
+
+Attach evidence for the exact release under test:
+
+- backend and frontend commit SHA;
+- CI workflow run and production-profile runtime-smoke artifact;
+- safe status codes/problem codes for NORMAL, READ_ONLY, and MAINTENANCE;
+- responsive frontend screenshots/HTML evidence;
+- audit records with bounded request IDs;
+- metric output containing only bounded tag values;
+- Railway/Vercel deployment identifiers and test timestamp;
+- confirmation that evidence and logs contain no cookie, JWT, email, or bootstrap secret.
 
 ## Follow-up boundaries
 
-- TON-175 adds the protected System Operations control to the table-first admin dashboard.
-- TON-176 implements the public read-only banner, maintenance screen, global problem reconciliation and write-entry-point controls.
-- TON-177 verifies deployed recovery and administrator lockout scenarios.
+- TON-175 added the protected System Operations control to the table-first admin dashboard.
+- TON-176 implemented the public read-only banner, maintenance screen, global problem reconciliation and write-entry-point controls.
+- TON-177 adds restart/Redis-loss recovery QA, bounded rejection metrics, operating guidance, and deployed-topology evidence.

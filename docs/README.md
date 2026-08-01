@@ -154,7 +154,7 @@ The repository runs:
 
 The combined Docker smoke explicitly activates the production profile, uses a temporary random JWT secret, validates secure cookie attributes and hidden Swagger routes, and scans uploaded artifacts to ensure they contain no refresh cookie or JWT.
 
-A green workflow is evidence for the exact PR head only. Production secrets, Railway environment state, Vercel response headers, and live OAuth exchanges still require the deployment kill-tests in [`SECURITY-HARDENING.md`](SECURITY-HARDENING.md).
+A green workflow is evidence for the exact PR head only. Production secrets, Railway environment state, Vercel response headers, and live OAuth exchanges still require the deployment kill-tests in [`SECURITY-HARDENING.md`](SECURITY-HARDENING.md). Maintenance recovery evidence and the boundary between CI and a controlled production mutation are defined in [`TON-177-VERIFICATION.md`](TON-177-VERIFICATION.md).
 
 ## Active roadmap
 
