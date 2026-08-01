@@ -63,13 +63,19 @@ jobs:
           npm test
           npm run build
 
-      - name: Publish task branch
+      - name: Publish clean task source
         shell: bash
         run: |
           set -euo pipefail
+          base='1b5a865b1973fd1d7ced76b65ffb28f031a1d14d'
+          rm -rf frontend/.test-dist frontend/scripts/__pycache__
+          git checkout "$base" -- .github/workflows/auth-bootstrap-qa.yml frontend/tsconfig.json
+          git diff --check
+          test -z "$(git status --short | grep -E 'frontend/(\.test-dist|scripts/__pycache__)' || true)"
           git config user.name 'vote-system-automation'
           git config user.email 'actions@users.noreply.github.com'
           git add --all
           git commit -m 'TON-127 Add safe profile presentation snapshot'
-          git push --force-with-lease=refs/heads/hungtvb2020/ton-127-fe-add-safe-profile-snapshot-for-instant-masthead-rendering:1b5a865b1973fd1d7ced76b65ffb28f031a1d14d \
+          test "$(git diff --name-only "$base" HEAD | wc -l)" -eq 7
+          git push --force-with-lease=refs/heads/hungtvb2020/ton-127-fe-add-safe-profile-snapshot-for-instant-masthead-rendering:$base \
             origin HEAD:refs/heads/hungtvb2020/ton-127-fe-add-safe-profile-snapshot-for-instant-masthead-rendering
