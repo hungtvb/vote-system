@@ -1,0 +1,62 @@
+name: TON-177 Retry Sequence Publisher
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ton177-retry-sequence-publisher.yml
+      - .chatgpt/ton177/retry-sequence-fix.patch
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout publisher branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify and apply exact fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch="$GITHUB_WORKSPACE/.chatgpt/ton177/retry-sequence-fix.patch"
+          expected_head='579ecabb85c016a1d18b56a9290462451b280f4d'
+
+          echo '0f629df3326cfc7ae7b2ab5d82170bbf2584e0884cf221ac2ad9f00df25d217e  '"$patch" | sha256sum --check
+          git checkout --detach "$expected_head"
+          git apply --check "$patch"
+          git apply "$patch"
+          git diff --check
+
+          python3 -m py_compile frontend/scripts/ton106_qa_server.py
+          PYTHONPATH=frontend/scripts python3 - <<'PY'
+          from ton106_qa_server import Handler
+
+          for _ in range(2):
+              Handler._reset_status_sequence('maintenance-retry')
+              assert Handler._next_system_mode('maintenance-retry') == 'MAINTENANCE'
+              assert Handler._next_system_mode('maintenance-retry') == 'NORMAL'
+          assert Handler._next_system_mode('read-only') == 'READ_ONLY'
+          assert Handler._next_system_mode('maintenance') == 'MAINTENANCE'
+          PY
+          rm -rf frontend/scripts/__pycache__
+
+          git add --all
+          test "$(git write-tree)" = 'cbf3a605e710243015de9e536c72b4733d20c77a'
+
+      - name: Publish task branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'vote-system-automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git commit -m 'fix TON-177 reset maintenance retry fixture per browser load'
+          git push --force-with-lease=refs/heads/hungtvb2020/ton-177-maintenance-mode-production-recovery-and-regression-qa:579ecabb85c016a1d18b56a9290462451b280f4d \
+            origin HEAD:refs/heads/hungtvb2020/ton-177-maintenance-mode-production-recovery-and-regression-qa
