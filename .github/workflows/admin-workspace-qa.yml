@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'frontend/src/app/admin/**'
+      - 'frontend/src/app/not-found.tsx'
       - 'frontend/src/features/admin/**'
       - 'frontend/src/features/auth/components/VoterMasthead.tsx'
       - 'frontend/src/features/auth/hooks/useSession.ts'
@@ -18,6 +19,7 @@ on:
     branches: [main]
     paths:
       - 'frontend/src/app/admin/**'
+      - 'frontend/src/app/not-found.tsx'
       - 'frontend/src/features/admin/**'
       - 'frontend/src/features/auth/components/VoterMasthead.tsx'
       - 'frontend/src/features/auth/hooks/useSession.ts'
@@ -84,9 +86,10 @@ jobs:
           CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)
           COMMON=(--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --run-all-compositor-stages-before-draw --virtual-time-budget=8000)
 
-          "$CHROME" "${COMMON[@]}" --window-size=390,844 --dump-dom 'http://127.0.0.1:4173/admin/?qa=admin-guest&qaLocale=en' > admin-workspace-qa/guest.html
-          grep -q 'data-qa-guest-actions="true"' admin-workspace-qa/guest.html
-          grep -q 'Official public record' admin-workspace-qa/guest.html
+          "$CHROME" "${COMMON[@]}" --window-size=390,844 --dump-dom 'http://127.0.0.1:4173/admin/?qa=admin-guest&qaLocale=en' > admin-workspace-qa/guest-cloaked.html
+          grep -q 'Page not found' admin-workspace-qa/guest-cloaked.html
+          ! grep -q 'data-qa-guest-actions="true"' admin-workspace-qa/guest-cloaked.html
+          ! grep -q 'LOADING ADMIN WORKSPACE' admin-workspace-qa/guest-cloaked.html
           ! grep -q '/api/v1/admin/' admin-workspace-qa/server.log
 
           "$CHROME" "${COMMON[@]}" --window-size=390,844 --screenshot=admin-workspace-qa/user-cloaked-mobile.png 'http://127.0.0.1:4173/admin/?qa=admin-denied&qaLocale=en'
