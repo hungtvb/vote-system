@@ -10,10 +10,12 @@ BASE_URL=${BASE_URL:-http://127.0.0.1:10000}
 ARTIFACT_DIR=${ARTIFACT_DIR:-runtime-smoke}
 
 mkdir -p "$ARTIFACT_DIR"
-COOKIE_JAR="$ARTIFACT_DIR/cookies.txt"
 APP_LOG="$ARTIFACT_DIR/app.log"
+REGISTER_HEADERS=$(mktemp)
+CI_JWT_SECRET=$(openssl rand -base64 48 | tr -d '\n')
 
 cleanup() {
+  rm -f "$REGISTER_HEADERS"
   docker logs "$APP_NAME" > "$APP_LOG" 2>&1 || true
   docker rm -f "$APP_NAME" "$POSTGRES_NAME" "$REDIS_NAME" >/dev/null 2>&1 || true
   docker network rm "$NETWORK_NAME" >/dev/null 2>&1 || true
@@ -53,14 +55,16 @@ wait_for Redis docker exec "$REDIS_NAME" redis-cli ping
 
 docker run -d --name "$APP_NAME" --network "$NETWORK_NAME" -p 10000:10000 \
   -e PORT=10000 \
+  -e SPRING_PROFILES_ACTIVE=production \
   -e DB_URL="jdbc:postgresql://${POSTGRES_NAME}:5432/vote_system" \
   -e DB_USERNAME=vote \
   -e DB_PASSWORD=vote \
   -e REDIS_URL="redis://${REDIS_NAME}:6379" \
-  -e JWT_SECRET=runtime-smoke-change-me-0123456789abcdef \
+  -e JWT_SECRET="$CI_JWT_SECRET" \
+  -e CORS_ALLOWED_ORIGINS=https://app.ballotbox.io.vn \
+  -e REFRESH_COOKIE_NAME=__Secure-vote_refresh \
+  -e OAUTH_SESSION_COOKIE_NAME=__Secure-vote_oauth \
   -e RATE_LIMIT_ENABLED=false \
-  -e REFRESH_COOKIE_SECURE=false \
-  -e REFRESH_COOKIE_SAME_SITE=Lax \
   -e VOTE_STREAM_HEARTBEAT_MS=250 \
   "$IMAGE_NAME" >/dev/null
 
@@ -71,6 +75,12 @@ grep -q '"status":"UP"' "$ARTIFACT_DIR/health.json"
 
 curl --fail --silent "$BASE_URL/" > "$ARTIFACT_DIR/index.html"
 grep -q 'Vote System' "$ARTIFACT_DIR/index.html"
+
+# Production must not expose OpenAPI or Swagger UI.
+API_DOCS_STATUS=$(curl --silent --output /dev/null --write-out '%{http_code}' "$BASE_URL/v3/api-docs")
+SWAGGER_STATUS=$(curl --silent --output /dev/null --write-out '%{http_code}' "$BASE_URL/swagger-ui/index.html")
+[ "$API_DOCS_STATUS" = "404" ]
+[ "$SWAGGER_STATUS" = "404" ]
 
 # Social login remains optional. With no provider secrets the app must expose
 # an empty discovery list and reject a dead provider start instead of failing startup.
@@ -83,11 +93,14 @@ SOCIAL_START_STATUS=$(curl --silent --output "$ARTIFACT_DIR/social-start-disable
 [ "$SOCIAL_START_STATUS" = "404" ]
 
 AUTHOR_EMAIL="runtime-author-$(date +%s)-${RANDOM}@example.com"
-AUTHOR_SESSION=$(curl --fail --silent --show-error -c "$COOKIE_JAR" \
+AUTHOR_SESSION=$(curl --fail --silent --show-error -D "$REGISTER_HEADERS" \
   -H 'Content-Type: application/json' \
   -d "{\"email\":\"${AUTHOR_EMAIL}\",\"password\":\"runtime-password\",\"displayName\":\"Runtime Author\"}" \
   "$BASE_URL/api/v1/auth/register")
 AUTHOR_TOKEN=$(printf '%s' "$AUTHOR_SESSION" | json_value accessToken)
+REFRESH_COOKIE=$(awk 'BEGIN { IGNORECASE=1 } /^Set-Cookie:/ { gsub("\\r", ""); if ($2 ~ /^__Secure-vote_refresh=/) { split($2, parts, ";"); print parts[1] } }' "$REGISTER_HEADERS")
+[ -n "$REFRESH_COOKIE" ]
+grep -qi '^Set-Cookie: __Secure-vote_refresh=.*; Path=/api/v1/auth; Max-Age=.*; Expires=.*; Secure; HttpOnly; SameSite=Strict' "$REGISTER_HEADERS"
 
 curl --fail --silent --show-error \
   -H "Authorization: Bearer ${AUTHOR_TOKEN}" \
@@ -137,8 +150,12 @@ fi
 grep -q 'event:vote-update' "$ARTIFACT_DIR/stream.txt"
 grep -q '"upVotes":1' "$ARTIFACT_DIR/stream.txt"
 
-curl --fail --silent --show-error -b "$COOKIE_JAR" -c "$COOKIE_JAR" \
+curl --fail --silent --show-error \
+  -H "Cookie: ${REFRESH_COOKIE}" \
   -X POST "$BASE_URL/api/v1/auth/refresh" > "$ARTIFACT_DIR/refreshed-session.json"
 grep -q '"accessToken"' "$ARTIFACT_DIR/refreshed-session.json"
+
+# Never persist raw cookies or bearer tokens in uploaded runtime-smoke artifacts.
+! grep -R -E '__Secure-vote_refresh=|eyJ[A-Za-z0-9_-]+\.' "$ARTIFACT_DIR"
 
 echo "Production runtime smoke passed for ballot ${BALLOT_ID}."
