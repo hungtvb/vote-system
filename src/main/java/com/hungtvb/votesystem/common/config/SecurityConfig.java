@@ -7,6 +7,7 @@ import com.hungtvb.votesystem.auth.social.SocialAuthenticationSuccessHandler;
 import com.hungtvb.votesystem.ratelimit.RateLimitFilter;
 import com.hungtvb.votesystem.ratelimit.RateLimitProperties;
 import com.hungtvb.votesystem.security.AccountAccessFilter;
+import com.hungtvb.votesystem.security.CookieOriginValidationFilter;
 import com.hungtvb.votesystem.system.SystemModeEnforcementFilter;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.OctetSequenceKey;
@@ -22,7 +23,6 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -39,6 +39,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtGra
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.security.web.savedrequest.NullRequestCache;
 import org.springframework.security.web.util.matcher.RegexRequestMatcher;
 import org.springframework.util.Assert;
@@ -65,6 +66,7 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                             CookieOriginValidationFilter cookieOriginValidationFilter,
                                              SystemModeEnforcementFilter systemModeEnforcementFilter,
                                              AccountAccessFilter accountAccessFilter,
                                              RateLimitFilter rateLimitFilter,
@@ -75,6 +77,22 @@ public class SecurityConfig {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
+                .headers(headers -> headers
+                        .frameOptions(frame -> frame.deny())
+                        .referrerPolicy(referrer -> referrer.policy(
+                                ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN
+                        ))
+                        .contentSecurityPolicy(csp -> csp.policyDirectives(
+                                "default-src 'self'; "
+                                        + "script-src 'self' 'unsafe-inline'; "
+                                        + "style-src 'self' 'unsafe-inline'; "
+                                        + "img-src 'self' data:; "
+                                        + "connect-src 'self'; "
+                                        + "object-src 'none'; "
+                                        + "base-uri 'self'; "
+                                        + "frame-ancestors 'none'; "
+                                        + "form-action 'self'"
+                        )))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .securityContext(context -> context
                         .securityContextRepository(new RequestAttributeSecurityContextRepository()))
@@ -98,6 +116,7 @@ public class SecurityConfig {
                                 HttpMethod.GET.name()
                         )).permitAll()
                         .requestMatchers("/actuator/health/**").permitAll()
+                        .requestMatchers("/actuator/info", "/actuator/metrics", "/actuator/metrics/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .oauth2Login(oauth2 -> oauth2
@@ -106,7 +125,8 @@ public class SecurityConfig {
                         .failureHandler(socialFailureHandler))
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)))
-                .addFilterAfter(systemModeEnforcementFilter, CorsFilter.class)
+                .addFilterAfter(cookieOriginValidationFilter, CorsFilter.class)
+                .addFilterAfter(systemModeEnforcementFilter, CookieOriginValidationFilter.class)
                 .addFilterAfter(accountAccessFilter, BearerTokenAuthenticationFilter.class)
                 .addFilterAfter(rateLimitFilter, AccountAccessFilter.class)
                 .build();
@@ -135,6 +155,13 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", configuration);
         return source;
+    }
+
+    @Bean
+    FilterRegistrationBean<CookieOriginValidationFilter> disableCookieOriginFilterAutoRegistration(CookieOriginValidationFilter filter) {
+        FilterRegistrationBean<CookieOriginValidationFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 
     @Bean
