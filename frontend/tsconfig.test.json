@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES2022"
+    ],
     "module": "CommonJS",
     "moduleResolution": "Node",
     "rootDir": "src/shared",
@@ -9,10 +13,14 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": [
+        "src/*"
+      ]
     },
     "noEmit": false
   },
@@ -20,7 +28,8 @@
     "src/shared/api/**/*.ts",
     "src/shared/auth/**/*.ts",
     "src/shared/ballot/**/*.ts",
-    "src/shared/i18n/**/*.ts"
+    "src/shared/i18n/**/*.ts",
+    "src/shared/system/**/*.ts"
   ],
   "exclude": [
     "src/shared/api/client.ts"

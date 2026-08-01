@@ -4,7 +4,7 @@ import test from 'node:test';
 import { createAuthApi } from '../auth-api';
 import { runAuthorizedRequest } from '../authorized-request';
 import type { AuthBootstrap, Session, UserProfile } from '../types';
-import { ApiError, createHttpClient, parseRetryAfter, type ApiRequester } from '../transport';
+import { ApiError, createHttpClient, parseRetryAfter, subscribeApiProblems, type ApiRequester } from '../transport';
 
 const OLD_SESSION: Session = {
   tokenType: 'Bearer',
@@ -168,6 +168,50 @@ test('transport includes cookies and normalizes problem responses', async () => 
   assert.equal(capturedUrl, 'https://api.example.test/api/v1/posts');
   assert.equal(capturedInit?.credentials, 'include');
   assert.equal(new Headers(capturedInit?.headers).get('Authorization'), 'Bearer access-token');
+});
+
+test('transport publishes stable problem codes for global system-mode reconciliation', async () => {
+  const observed: Array<{ code?: string; mode?: string }> = [];
+  const unsubscribe = subscribeApiProblems(problem => observed.push({ code: problem.code, mode: problem.mode }));
+  const { request } = createHttpClient({
+    fetchImpl: async () => new Response(JSON.stringify({
+      title: 'Service under maintenance',
+      status: 503,
+      code: 'SYSTEM_MAINTENANCE',
+      mode: 'MAINTENANCE'
+    }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/problem+json' }
+    })
+  });
+
+  try {
+    await assert.rejects(request('/api/v1/posts'), ApiError);
+  } finally {
+    unsubscribe();
+  }
+
+  assert.deepEqual(observed, [{ code: 'SYSTEM_MAINTENANCE', mode: 'MAINTENANCE' }]);
+});
+
+
+test('a failing problem observer cannot replace the transport ApiError', async () => {
+  const unsubscribe = subscribeApiProblems(() => { throw new Error('observer failed'); });
+  const { request } = createHttpClient({
+    fetchImpl: async () => new Response(JSON.stringify({ detail: 'Authoritative failure', code: 'SYSTEM_READ_ONLY' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/problem+json' }
+    })
+  });
+
+  try {
+    await assert.rejects(
+      request('/api/v1/posts'),
+      (error: unknown) => error instanceof ApiError && error.message === 'Authoritative failure'
+    );
+  } finally {
+    unsubscribe();
+  }
 });
 
 test('Retry-After supports both seconds and HTTP dates', () => {

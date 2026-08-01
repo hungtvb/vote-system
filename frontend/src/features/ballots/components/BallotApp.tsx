@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuthDialog } from '@/features/auth/components/AuthDialog';
 import { VoterMasthead } from '@/features/auth/components/VoterMasthead';
+import { MaintenanceScreen, ReadOnlyBanner } from '@/features/system/components/SystemModeNotice';
 import { useSession } from '@/features/auth/hooks/useSession';
 import { useBallotVoteStream } from '@/features/ballots/hooks/useBallotVoteStream';
 import { ballotApi, type BallotListParams } from '@/shared/api/ballot-api';
 import { socialAuthApi, type SocialProviderId } from '@/shared/api/social-auth-api';
-import { ApiError, isAbortError } from '@/shared/api/transport';
+import { systemStatusApi, type PublicSystemStatus, type SystemMode } from '@/shared/api/system-status-api';
+import { ApiError, isAbortError, subscribeApiProblems } from '@/shared/api/transport';
 import type { Ballot, BallotStatus, BallotVoteUpdate, FeedType, VoteType } from '@/shared/api/types';
 import {
   beginAuth,
@@ -37,6 +39,7 @@ import {
 } from '@/shared/ballot/feed-request';
 import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue';
 import { useI18n } from '@/shared/i18n/I18nProvider';
+import { modeFromProblem, reconcileSystemStatus, systemWritesBlocked } from '@/shared/system/system-mode';
 import { BallotCard } from './BallotCard';
 import { BallotDetailDialog } from './BallotDetailDialog';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -52,6 +55,8 @@ export function BallotApp() {
   const i18nRef = useRef({ t, formatNumber });
   i18nRef.current = { t, formatNumber };
   const { session, profile, restoring, saveSession, runAuthorized, logout, logoutAll } = useSession();
+  const [systemStatus, setSystemStatus] = useState<PublicSystemStatus | null>(null);
+  const [systemStatusRefreshing, setSystemStatusRefreshing] = useState(false);
   const [ballots, setBallots] = useState<Ballot[]>([]);
   const [feed, setFeed] = useState<FeedType>('LATEST');
   const [queryInput, setQueryInput] = useState('');
@@ -77,13 +82,21 @@ export function BallotApp() {
   const [pendingEnrichmentKey, setPendingEnrichmentKey] = useState<string | null>(null);
   const requestSequence = useRef(0);
   const activeFeedRequest = useRef<AbortController | null>(null);
+  const activeSystemStatusRequest = useRef<AbortController | null>(null);
   const sessionRef = useRef(session);
   const restoringRef = useRef(restoring);
   const runAuthorizedRef = useRef(runAuthorized);
+  const systemModeRef = useRef<SystemMode>('NORMAL');
+
+  const systemMode = systemStatus?.mode ?? 'NORMAL';
+  const readOnly = systemMode === 'READ_ONLY';
+  const maintenance = systemMode === 'MAINTENANCE';
+  const writesBlocked = systemWritesBlocked(systemMode);
 
   sessionRef.current = session;
   restoringRef.current = restoring;
   runAuthorizedRef.current = runAuthorized;
+  systemModeRef.current = systemMode;
 
   const selected = selectedId ? ballots.find(ballot => ballot.id === selectedId) ?? null : null;
   const lastPage = totalPages === 0 || page + 1 >= totalPages;
@@ -93,11 +106,62 @@ export function BallotApp() {
     setBallots(current => current.map(ballot =>
       ballot.id === update.postId ? applyStreamUpdate(ballot, update) : ballot));
   }, []);
-  useBallotVoteStream(selected, handleStreamUpdate);
+  useBallotVoteStream(maintenance ? null : selected, handleStreamUpdate);
 
   const openAuth = useCallback((mode: AuthMode, intent: AuthIntent = 'authenticate') => {
+    if (systemModeRef.current !== 'NORMAL' && (mode === 'register' || intent === 'create-ballot')) {
+      setMessage(i18nRef.current.t('system', 'readOnlyActionUnavailable'));
+      return;
+    }
     setAuthWorkflow(beginAuth(mode, intent));
   }, []);
+
+  const reloadSystemStatus = useCallback(async (interactive = false) => {
+    activeSystemStatusRequest.current?.abort();
+    const controller = new AbortController();
+    activeSystemStatusRequest.current = controller;
+    if (interactive) setSystemStatusRefreshing(true);
+
+    try {
+      const nextStatus = await systemStatusApi.status(controller.signal);
+      if (activeSystemStatusRequest.current === controller) {
+        setSystemStatus(current => reconcileSystemStatus(current, { type: 'status-loaded', status: nextStatus }));
+      }
+    } catch (error) {
+      if (!isAbortError(error)) {
+        setSystemStatus(current => reconcileSystemStatus(current, { type: 'status-failed' }));
+      }
+    } finally {
+      if (activeSystemStatusRequest.current === controller) {
+        activeSystemStatusRequest.current = null;
+        setSystemStatusRefreshing(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => subscribeApiProblems(problem => {
+    if (!modeFromProblem(problem)) return;
+    setSystemStatus(current => reconcileSystemStatus(current, { type: 'api-problem', problem }));
+    if (!activeSystemStatusRequest.current) void reloadSystemStatus(false);
+  }), [reloadSystemStatus]);
+
+  useEffect(() => {
+    void reloadSystemStatus(false);
+    const interval = window.setInterval(() => void reloadSystemStatus(false), 30_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void reloadSystemStatus(false);
+    };
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      activeSystemStatusRequest.current?.abort();
+      activeSystemStatusRequest.current = null;
+    };
+  }, [reloadSystemStatus]);
 
   useEffect(() => {
     let active = true;
@@ -128,7 +192,7 @@ export function BallotApp() {
     }
 
     setSocialNotice(socialCallbackMessage(socialCallback));
-    if (socialCallback.status === 'success' && socialCallback.intent === 'create-ballot') setCreateOpen(true);
+    if (socialCallback.status === 'success' && socialCallback.intent === 'create-ballot' && systemModeRef.current === 'NORMAL') setCreateOpen(true);
     setSocialCallback(null);
   }, [profile, restoring, session, socialCallback]);
 
@@ -142,12 +206,40 @@ export function BallotApp() {
     activeFeedRequest.current = null;
   }, []);
 
+  useEffect(() => {
+    if (maintenance) {
+      cancelFeedRequest();
+      setLoading(false);
+      setMessage('');
+      setSocialNotice('');
+      setAuthWorkflow(CLOSED_AUTH_WORKFLOW);
+      setCreateOpen(false);
+      setEditing(null);
+      setDeleting(null);
+      setSelectedId(null);
+      setLinkingProvider(null);
+      return;
+    }
+
+    if (readOnly) {
+      setCreateOpen(false);
+      setEditing(null);
+      setDeleting(null);
+      setLinkingProvider(null);
+      setAuthWorkflow(current => current.open && (current.mode === 'register' || current.intent === 'create-ballot')
+        ? cancelAuth()
+        : current);
+    }
+  }, [cancelFeedRequest, maintenance, readOnly]);
+
   const load = useCallback(async (
     nextPage = 0,
     append = false,
     mode: FeedRequestMode = 'auto',
     background = false
   ) => {
+    if (systemModeRef.current === 'MAINTENANCE') return;
+
     const currentSession = sessionRef.current;
     const access = resolveFeedRequestAccess({
       feed,
@@ -199,7 +291,7 @@ export function BallotApp() {
       if (activeFeedRequest.current === controller) activeFeedRequest.current = null;
       if (sequence === requestSequence.current && !background) setLoading(false);
     }
-  }, [category, feed, feedRequestKey, query, status]);
+  }, [category, feed, feedRequestKey, maintenance, query, status]);
 
   useEffect(() => {
     setPendingEnrichmentKey(null);
@@ -235,6 +327,10 @@ export function BallotApp() {
 
   async function linkProvider(provider: SocialProviderId) {
     if (!session || linkingProvider) return;
+    if (systemModeRef.current !== 'NORMAL') {
+      setSocialNotice(t('system', 'readOnlyActionUnavailable'));
+      return;
+    }
     setLinkingProvider(provider);
     setSocialNotice('');
     try {
@@ -248,6 +344,10 @@ export function BallotApp() {
   }
 
   async function vote(ballot: Ballot, type: VoteType) {
+    if (systemModeRef.current !== 'NORMAL') {
+      setMessage(t('system', 'readOnlyVoteHint'));
+      return;
+    }
     if (!session) return openAuth('login');
     if (ballot.status === 'CLOSED' || busyIds.has(ballot.id)) return;
 
@@ -280,7 +380,12 @@ export function BallotApp() {
     }
   }
 
+  function assertWritesAvailable() {
+    if (systemModeRef.current !== 'NORMAL') throw new Error(t('system', 'readOnlyActionUnavailable'));
+  }
+
   async function createBallot(title: string, content: string) {
+    assertWritesAvailable();
     await runAuthorized(activeSession => ballotApi.create({ title, content }, activeSession.accessToken));
     setCreateOpen(false);
     await load(0, false);
@@ -288,6 +393,7 @@ export function BallotApp() {
   }
 
   async function updateBallot(ballot: Ballot, title: string, content: string) {
+    assertWritesAvailable();
     markBusy(ballot.id, true);
     try {
       const updated = await runAuthorized(activeSession =>
@@ -302,6 +408,7 @@ export function BallotApp() {
   }
 
   async function deleteBallot(ballot: Ballot) {
+    assertWritesAvailable();
     markBusy(ballot.id, true);
     try {
       await runAuthorized(activeSession => ballotApi.delete(ballot.id, activeSession.accessToken));
@@ -318,6 +425,10 @@ export function BallotApp() {
   }
 
   async function closeBallot(ballot: Ballot) {
+    if (systemModeRef.current !== 'NORMAL') {
+      setMessage(t('system', 'readOnlyActionUnavailable'));
+      return;
+    }
     if (!window.confirm(t('ballots', 'closeConfirm', { number: ballot.ballotNumber }))) return;
     markBusy(ballot.id, true);
     try {
@@ -348,6 +459,10 @@ export function BallotApp() {
     });
   }
 
+  if (maintenance && systemStatus) {
+    return <MaintenanceScreen status={systemStatus} refreshing={systemStatusRefreshing} onRetry={() => void reloadSystemStatus(true)} />;
+  }
+
   return (
     <div className={styles.appShell}>
       <VoterMasthead
@@ -355,16 +470,22 @@ export function BallotApp() {
         session={session}
         profile={profile}
         restoring={restoring}
+        readOnly={readOnly}
         socialProviders={socialProviders}
         linkingProvider={linkingProvider}
         onQueryChange={setQueryInput}
         onLogin={() => openAuth('login')}
         onRegister={() => openAuth('register')}
-        onCreate={() => session ? setCreateOpen(true) : openAuth('login', 'create-ballot')}
+        onCreate={() => {
+          if (writesBlocked) return setMessage(t('system', 'readOnlyActionUnavailable'));
+          session ? setCreateOpen(true) : openAuth('login', 'create-ballot');
+        }}
         onLinkProvider={provider => void linkProvider(provider)}
         onLogout={() => void logout()}
         onLogoutAll={() => void logoutAll()}
       />
+
+      {readOnly && systemStatus && <ReadOnlyBanner status={systemStatus} />}
 
       <main id="top" className={styles.main} tabIndex={-1}>
         <section className={styles.hero}>
@@ -405,6 +526,7 @@ export function BallotApp() {
               ballot={ballot}
               busy={busyIds.has(ballot.id)}
               owned={session?.userId === ballot.authorId}
+              readOnly={readOnly}
               onOpen={() => setSelectedId(ballot.id)}
               onVote={type => void vote(ballot, type)}
               onEdit={() => setEditing(ballot)}
@@ -427,19 +549,20 @@ export function BallotApp() {
           initialMode={authWorkflow.mode}
           intent={authWorkflow.intent}
           socialProviders={socialProviders}
+          allowRegistration={!readOnly}
           onClose={() => setAuthWorkflow(cancelAuth())}
           onAuthenticated={async next => {
             await saveSession(next);
             const completion = completeAuth(authWorkflow);
             setAuthWorkflow(completion.workflow);
-            if (completion.resumeCreateBallot) setCreateOpen(true);
+            if (completion.resumeCreateBallot && systemModeRef.current === 'NORMAL') setCreateOpen(true);
           }}
         />
       )}
-      {createOpen && <CreateBallotDialog onClose={() => setCreateOpen(false)} onCreate={createBallot} />}
-      {editing && <EditBallotDialog ballot={editing} onClose={() => setEditing(null)} onSave={(title, content) => updateBallot(editing, title, content)} />}
-      {selected && <BallotDetailDialog ballot={selected} busy={busyIds.has(selected.id)} owned={session?.userId === selected.authorId} onClose={() => setSelectedId(null)} onVote={type => void vote(selected, type)} onEdit={() => { setSelectedId(null); setEditing(selected); }} onDelete={() => { setSelectedId(null); setDeleting(selected); }} onCloseBallot={() => void closeBallot(selected)} />}
-      {deleting && (
+      {createOpen && !writesBlocked && <CreateBallotDialog onClose={() => setCreateOpen(false)} onCreate={createBallot} />}
+      {editing && !writesBlocked && <EditBallotDialog ballot={editing} onClose={() => setEditing(null)} onSave={(title, content) => updateBallot(editing, title, content)} />}
+      {selected && <BallotDetailDialog ballot={selected} busy={busyIds.has(selected.id)} owned={session?.userId === selected.authorId} readOnly={readOnly} onClose={() => setSelectedId(null)} onVote={type => void vote(selected, type)} onEdit={() => { setSelectedId(null); setEditing(selected); }} onDelete={() => { setSelectedId(null); setDeleting(selected); }} onCloseBallot={() => void closeBallot(selected)} />}
+      {deleting && !writesBlocked && (
         <ConfirmDialog
           title={t('ballots', 'deleteTitle')}
           reference={`${deleting.ballotNumber} · ${deleting.title}`}

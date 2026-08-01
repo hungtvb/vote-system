@@ -15,6 +15,7 @@ interface BallotCardProps {
   ballot: Ballot;
   busy: boolean;
   owned: boolean;
+  readOnly: boolean;
   onOpen: () => void;
   onVote: (type: VoteType) => void;
   onEdit: () => void;
@@ -22,7 +23,7 @@ interface BallotCardProps {
   onCloseBallot: () => void;
 }
 
-export function BallotCard({ ballot, busy, owned, onOpen, onVote, onEdit, onDelete, onCloseBallot }: BallotCardProps) {
+export function BallotCard({ ballot, busy, owned, readOnly, onOpen, onVote, onEdit, onDelete, onCloseBallot }: BallotCardProps) {
   const { t, formatNumber } = useI18n();
   const [authorOpen, setAuthorOpen] = useState(false);
 
@@ -61,6 +62,7 @@ export function BallotCard({ ballot, busy, owned, onOpen, onVote, onEdit, onDele
               owned={owned}
               busy={busy}
               closed={ballot.status === 'CLOSED'}
+              readOnly={readOnly}
               onOpen={onOpen}
               onEdit={onEdit}
               onDelete={onDelete}
@@ -68,7 +70,7 @@ export function BallotCard({ ballot, busy, owned, onOpen, onVote, onEdit, onDele
             />
           </div>
 
-          <BallotOptions ballot={ballot} busy={busy} onVote={onVote} />
+          <BallotOptions ballot={ballot} busy={busy} readOnly={readOnly} onVote={onVote} />
         </div>
 
         <BallotStamp verdict={ballot.verdict} finalVerdict={ballot.finalVerdict} />
