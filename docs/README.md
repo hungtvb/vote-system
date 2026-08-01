@@ -89,9 +89,9 @@ Register, login, and refresh return session fields plus the authenticated privat
 
 Access tokens remain in React memory. Refresh tokens remain in path-scoped `HttpOnly`, `Secure` cookies and are never returned in JSON or stored by frontend JavaScript.
 
-Each access JWT carries the current role and `security_version`. PostgreSQL is checked after bearer-token authentication for every request carrying a Vote System JWT. The token role and version must exactly match the current user row, and the account must be active. Logout-all, administrator revoke-sessions, suspend/ban, explicit restore, and role promotion invalidate previously issued JWTs immediately. Temporary restriction expiry does not rotate the version a second time.
+Each access JWT carries the current role and `security_version`. PostgreSQL is checked after bearer-token authentication for every request carrying a Vote System JWT. The token role and version must exactly match the current user row, and the account must be active. Active-session logout, logout-all, administrator revoke-sessions, suspend/ban, explicit restore, and role promotion invalidate previously issued JWTs immediately. A missing, expired, or already-revoked logout cookie cannot rotate the version repeatedly. Temporary restriction expiry does not rotate the version a second time.
 
-Cookie-authenticated refresh/logout/social-start requests validate browser Origin and Fetch Metadata. Cross-site browser requests are rejected with `SESSION_ORIGIN_REJECTED`. See [`FRONTEND-AUTH.md`](FRONTEND-AUTH.md), [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md), and [`SECURITY-HARDENING.md`](SECURITY-HARDENING.md).
+Cookie-authenticated refresh/logout/social-start requests validate browser Origin and Fetch Metadata. Explicit Origin values must match the configured frontend or framework-normalized API origin. Raw forwarded headers are not trusted. Browser POSTs without Origin are accepted only for `same-origin` or `none`; same-site and cross-site contexts are rejected with `SESSION_ORIGIN_REJECTED`. See [`FRONTEND-AUTH.md`](FRONTEND-AUTH.md), [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md), and [`SECURITY-HARDENING.md`](SECURITY-HARDENING.md).
 
 ### Internationalization
 
@@ -117,9 +117,9 @@ See [`ADMIN.md`](ADMIN.md), [`ADMIN-SEARCH.md`](ADMIN-SEARCH.md), [`MODERATION.m
 
 `Dockerfile.railway` sets `SPRING_PROFILES_ACTIVE=production`.
 
-`application-production.yml` disables OpenAPI/Swagger, verbose Spring/Hibernate logging, Hibernate statistics, and session-event metrics. It also requires an explicit non-placeholder JWT secret, explicit HTTPS CORS origins, and Secure `__Secure-` refresh/OAuth cookie names. Unsafe or missing security configuration stops application startup.
+`application-production.yml` disables OpenAPI/Swagger, verbose Spring/Hibernate logging, Hibernate statistics, and session-event metrics. It also requires an explicit non-placeholder JWT secret, canonical explicit HTTPS CORS origins, and Secure `__Secure-` refresh/OAuth cookie names. Unsafe or missing security configuration stops application startup.
 
-Actuator exposes `health`, `info`, and `metrics`; only health is public. `info`, `metrics`, and metric detail endpoints require `ROLE_ADMIN`.
+Actuator exposes `health`, `info`, and `metrics`; only health is public. Every other `/actuator/**` route requires `ROLE_ADMIN`, including the discovery root and any endpoint exposed later.
 
 Vercel responses include CSP, HSTS, frame denial, `nosniff`, strict-origin referrer policy, restrictive permissions policy, and COOP. Admin paths receive no-index headers.
 
@@ -151,6 +151,8 @@ The repository runs:
 - CodeQL for Java/Kotlin and JavaScript/TypeScript;
 - OSV dependency scanning;
 - weekly Dependabot updates for Maven, npm, GitHub Actions, and Docker.
+
+The combined Docker smoke explicitly activates the production profile, uses a temporary random JWT secret, validates secure cookie attributes and hidden Swagger routes, and scans uploaded artifacts to ensure they contain no refresh cookie or JWT.
 
 A green workflow is evidence for the exact PR head only. Production secrets, Railway environment state, Vercel response headers, and live OAuth exchanges still require the deployment kill-tests in [`SECURITY-HARDENING.md`](SECURITY-HARDENING.md).
 
