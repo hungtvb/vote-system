@@ -304,3 +304,12 @@
     transition: none;
   }
 }
+
+.primaryButton:disabled,
+.textButton:disabled,
+.menuActions button:disabled {
+  cursor: not-allowed;
+  opacity: .48;
+  box-shadow: none;
+  transform: none;
+}

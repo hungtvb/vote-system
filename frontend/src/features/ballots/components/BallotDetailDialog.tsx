@@ -12,6 +12,7 @@ interface BallotDetailDialogProps {
   ballot: Ballot;
   busy: boolean;
   owned: boolean;
+  readOnly: boolean;
   onClose: () => void;
   onVote: (type: VoteType) => void;
   onEdit: () => void;
@@ -19,7 +20,7 @@ interface BallotDetailDialogProps {
   onCloseBallot: () => void;
 }
 
-export function BallotDetailDialog({ ballot, busy, owned, onClose, onVote, onEdit, onDelete, onCloseBallot }: BallotDetailDialogProps) {
+export function BallotDetailDialog({ ballot, busy, owned, readOnly, onClose, onVote, onEdit, onDelete, onCloseBallot }: BallotDetailDialogProps) {
   const { formatDate, formatNumber, t } = useI18n();
   const modal = useModalDialog(onClose);
 
@@ -52,13 +53,14 @@ export function BallotDetailDialog({ ballot, busy, owned, onClose, onVote, onEdi
               owned={owned}
               busy={busy}
               closed={ballot.status === 'CLOSED'}
+              readOnly={readOnly}
               onEdit={onEdit}
               onDelete={onDelete}
               onCloseBallot={onCloseBallot}
             />
             <BallotStamp verdict={ballot.verdict} finalVerdict={ballot.finalVerdict} placement="detail" />
           </div>
-          <BallotOptions ballot={ballot} busy={busy} onVote={onVote} />
+          <BallotOptions ballot={ballot} busy={busy} readOnly={readOnly} onVote={onVote} />
         </div>
       </section>
     </div>

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import mimetypes
+import threading
 from http.server import ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -34,7 +35,11 @@ EXTRA_QA_SCRIPT = r"""
     'reduced-motion',
     'auth-owner-actions',
     'auth-delete-modal',
-    'auth-negative-score'
+    'auth-negative-score',
+    'read-only',
+    'auth-read-only',
+    'maintenance',
+    'maintenance-retry'
   ]);
   if (!supported.has(mode)) return;
 
@@ -51,7 +56,7 @@ EXTRA_QA_SCRIPT = r"""
     setTimeout(() => waitFor(predicate, callback, attempt + 1), 80);
   };
   const keyTouchTargets = () => [...document.querySelectorAll(
-    '[data-qa-create-ballot], [data-qa-auth-submit], [data-qa-submit-ballot], [data-qa-auth-tab], [data-qa-social-provider], [data-qa-owner-action], [data-qa-confirm-action]'
+    '[data-qa-create-ballot], [data-qa-auth-submit], [data-qa-submit-ballot], [data-qa-auth-tab], [data-qa-social-provider], [data-qa-owner-action], [data-qa-confirm-action], [data-qa-system-retry]'
   )].filter(element => {
     const rect = element.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
@@ -69,6 +74,13 @@ EXTRA_QA_SCRIPT = r"""
     const authSubmit = document.querySelector('[data-qa-auth-submit]');
     const submitBallot = document.querySelector('[data-qa-submit-ballot]');
     const createButton = document.querySelector('[data-qa-create-ballot]');
+    const registerButton = document.querySelector('[data-qa-register]');
+    const loginButton = document.querySelector('[data-qa-login]');
+    const voteOptions = [...document.querySelectorAll('[data-qa-vote-option]')];
+    const systemNotice = document.querySelector('[data-qa-system-mode]');
+    const systemRetry = document.querySelector('[data-qa-system-retry]');
+    const profileEdit = document.querySelector('[data-qa-profile-edit]');
+    const providerLinks = [...document.querySelectorAll('[data-qa-provider-link]')];
     const socialButtons = [...document.querySelectorAll('[data-qa-social-provider]')];
     const ownerActions = [...document.querySelectorAll('[data-qa-owner-action]')];
     const ownerWrapViolations = ownerActions.filter(textWraps);
@@ -114,6 +126,19 @@ EXTRA_QA_SCRIPT = r"""
     root.dataset.qaCreateDialog = String(Boolean(createDialog));
     root.dataset.qaSubmitBallot = submitBallot?.textContent?.trim() || '';
     root.dataset.qaCreateLabel = createButton?.textContent?.trim() || '';
+    root.dataset.qaCreatePresent = String(Boolean(createButton));
+    root.dataset.qaCreateDisabled = String(Boolean(createButton?.disabled));
+    root.dataset.qaRegisterDisabled = String(Boolean(registerButton?.disabled));
+    root.dataset.qaLoginDisabled = String(Boolean(loginButton?.disabled));
+    root.dataset.qaVoteOptions = String(voteOptions.length);
+    root.dataset.qaVoteOptionsDisabled = String(voteOptions.filter(button => button.disabled).length);
+    root.dataset.qaOwnerActionsDisabled = String(ownerActions.filter(button => button.disabled).length);
+    root.dataset.qaProfileEditDisabled = String(Boolean(profileEdit?.disabled));
+    root.dataset.qaProviderLinksDisabled = String(providerLinks.filter(button => button.disabled).length);
+    root.dataset.qaSystemMode = systemNotice?.getAttribute('data-qa-system-mode') || '';
+    root.dataset.qaSystemNotice = systemNotice?.textContent?.replace(/\s+/g, ' ').trim() || '';
+    root.dataset.qaSystemRetry = String(Boolean(systemRetry));
+    root.dataset.qaCards = String(document.querySelectorAll('article').length);
     root.dataset.qaVoterAfterAuth = String(Boolean(document.querySelector('[data-qa-voter-id]')));
     root.dataset.qaFocusInsideDialog = String(Boolean(dialog && dialog.contains(document.activeElement)));
     root.dataset.qaTouchTargets = String(targets.length);
@@ -143,6 +168,30 @@ EXTRA_QA_SCRIPT = r"""
   const guestAction = index => document.querySelectorAll('[data-qa-guest-actions] button')[index];
   const authTab = index => document.querySelectorAll('[data-qa-auth-tab]')[index];
   const start = () => {
+    if (mode === 'read-only') {
+      return waitFor(
+        () => document.querySelector('[data-qa-system-mode="READ_ONLY"]')
+          && document.querySelectorAll('[data-qa-vote-option]').length === 6,
+        () => setTimeout(() => record(), 120)
+      );
+    }
+    if (mode === 'auth-read-only') {
+      return waitFor(
+        () => document.querySelector('[data-qa-system-mode="READ_ONLY"]')
+          && document.querySelectorAll('[data-qa-owner-action]').length === 3
+          && document.querySelectorAll('[data-qa-provider-link]').length === 2,
+        () => setTimeout(() => record(), 120)
+      );
+    }
+    if (mode === 'maintenance') return setTimeout(() => record(), 120);
+    if (mode === 'maintenance-retry') {
+      document.querySelector('[data-qa-system-retry]')?.click();
+      return waitFor(
+        () => !document.querySelector('[data-qa-system-mode]')
+          && Boolean(document.querySelector('[data-qa-create-ballot]')),
+        () => setTimeout(() => record('restored'), 180)
+      );
+    }
     if (mode === 'reduced-motion') return setTimeout(() => record(), 250);
 
     if (mode === 'auth-owner-actions' || mode === 'auth-negative-score') {
@@ -237,8 +286,11 @@ EXTRA_QA_SCRIPT = r"""
     setTimeout(() => record(), 1300);
   };
 
+  const maintenanceScenario = mode === 'maintenance' || mode === 'maintenance-retry';
   waitFor(
-    () => Boolean(document.querySelector('[data-qa-create-ballot]')),
+    () => maintenanceScenario
+      ? Boolean(document.querySelector('[data-qa-system-mode="MAINTENANCE"]'))
+      : Boolean(document.querySelector('[data-qa-create-ballot]')),
     () => setTimeout(start, 500)
   );
 })();
@@ -249,6 +301,9 @@ base.QA_SCRIPT = base.QA_SCRIPT + EXTRA_QA_SCRIPT
 
 
 class Handler(base.Handler):
+    _status_counts: dict[str, int] = {}
+    _status_lock = threading.Lock()
+
     def _profile(self) -> dict:
         linked = ["GOOGLE"] if self._fixture_mode() == "auth-social-linked" else []
         return {
@@ -279,6 +334,25 @@ class Handler(base.Handler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         mode = self._fixture_mode()
+        if parsed.path == "/api/v1/system/status":
+            with self._status_lock:
+                count = self._status_counts.get(mode, 0) + 1
+                self._status_counts[mode] = count
+
+            system_mode = "NORMAL"
+            if mode in ("read-only", "auth-read-only"):
+                system_mode = "READ_ONLY"
+            elif mode == "maintenance" or (mode == "maintenance-retry" and count == 1):
+                system_mode = "MAINTENANCE"
+
+            self._json(200, {
+                "mode": system_mode,
+                "messageVi": "Thông báo vận hành do quản trị viên cung cấp.\nVui lòng quay lại sau.",
+                "messageEn": "Administrator-authored operating notice.\nPlease check again later.",
+                "estimatedEndAt": "2027-08-01T08:30:00Z" if system_mode != "NORMAL" else None,
+                "updatedAt": "2026-08-01T07:00:00Z",
+            })
+            return
         if parsed.path == "/api/v1/auth/social/providers":
             self._json(200, {"providers": ["google", "github"]})
             return

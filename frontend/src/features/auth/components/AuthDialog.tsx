@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { authApi } from '@/shared/api/auth-api';
 import { socialAuthApi, type SocialProviderId } from '@/shared/api/social-auth-api';
@@ -17,6 +17,7 @@ interface AuthDialogProps {
   initialMode?: AuthMode;
   intent?: AuthIntent;
   socialProviders?: SocialProviderId[];
+  allowRegistration?: boolean;
   onClose: () => void;
   onAuthenticated: (session: AuthBootstrap) => void | Promise<void>;
 }
@@ -44,11 +45,12 @@ export function AuthDialog({
   initialMode = 'login',
   intent = 'authenticate',
   socialProviders = [],
+  allowRegistration = true,
   onClose,
   onAuthenticated
 }: AuthDialogProps) {
   const { t } = useI18n();
-  const [mode, setMode] = useState<AuthMode>(initialMode);
+  const [mode, setMode] = useState<AuthMode>(initialMode === 'register' && !allowRegistration ? 'login' : initialMode);
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -58,7 +60,12 @@ export function AuthDialog({
   const [socialBusy, setSocialBusy] = useState<SocialProviderId | null>(null);
   const modal = useModalDialog(onClose);
 
+  useEffect(() => {
+    if (!allowRegistration && mode === 'register') setMode('login');
+  }, [allowRegistration, mode]);
+
   function changeMode(nextMode: AuthMode) {
+    if (nextMode === 'register' && !allowRegistration) return;
     setMode(nextMode);
     setError('');
   }
@@ -77,6 +84,7 @@ export function AuthDialog({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (mode === 'register' && !allowRegistration) return setError(t('system', 'readOnlyActionUnavailable'));
     if (mode === 'register' && password !== confirm) return setError(t('auth', 'passwordMismatch'));
     setBusy(true);
     setError('');
@@ -112,7 +120,7 @@ export function AuthDialog({
         <div className={styles.dialogHeader}>
           <div className={styles.dialogTabs} role="tablist" aria-label={t('auth', 'voterAccount')}>
             <button type="button" role="tab" aria-selected={mode === 'login'} data-qa-auth-tab style={{ minHeight: 44 }} onClick={() => changeMode('login')}>{t('auth', 'signIn')}</button>
-            <button type="button" role="tab" aria-selected={mode === 'register'} data-qa-auth-tab style={{ minHeight: 44 }} onClick={() => changeMode('register')}>{t('auth', 'register')}</button>
+            <button type="button" role="tab" aria-selected={mode === 'register'} data-qa-auth-tab style={{ minHeight: 44 }} disabled={!allowRegistration} title={!allowRegistration ? t('system', 'readOnlyActionUnavailable') : undefined} onClick={() => changeMode('register')}>{t('auth', 'register')}</button>
           </div>
           <button type="button" className={styles.closeIcon} onClick={onClose} disabled={locked} aria-label={t('common', 'close')}>×</button>
         </div>

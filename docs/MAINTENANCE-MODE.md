@@ -119,6 +119,32 @@ When a future estimated end time exists, the response includes `Retry-After` in 
 
 If the status lookup fails, non-recovery traffic fails closed with `SYSTEM_STATUS_UNAVAILABLE`; unconditional recovery routes remain reachable without reading the status row. This avoids silently enabling writes while preserving an administrator recovery path.
 
+
+## Public frontend behavior
+
+The public Next.js application loads `GET /api/v1/system/status` during startup, refreshes it every 30 seconds, and reloads it when the page regains focus. The status request is deliberately fail-open for presentation: a failed request keeps the current UI state and never invents `MAINTENANCE`. Backend request enforcement remains authoritative.
+
+The shared API transport preserves the stable problem `code` and `mode` fields. A `SYSTEM_READ_ONLY` or `SYSTEM_MAINTENANCE` response from any application request immediately reconciles the public UI, even when the most recent status poll is stale. The app then reloads the public status endpoint to obtain the administrator-authored message and estimated end time.
+
+### `READ_ONLY`
+
+- public feed, search, filters, ballot details, public profiles, login and logout remain available;
+- a persistent bilingual Ballot Edition banner presents the localized administrator message without rewriting it;
+- voting, registration, ballot creation, editing, closing and deletion are disabled;
+- profile editing and social-provider linking are disabled as additional business mutations;
+- any open write dialog is closed when the mode changes.
+
+### `MAINTENANCE`
+
+- the public application is replaced by a full-page bilingual service notice;
+- feed, session and mutation error noise is hidden behind the notice;
+- active feed requests and vote-stream subscriptions are stopped;
+- the administrator message and estimated restoration time are shown when supplied;
+- the retry action reloads the authoritative public status;
+- polling or retrying a `NORMAL` response restores the public feed without a page reload.
+
+The notice and banner use status semantics, keyboard-operable controls, preserved line breaks for administrator-authored messages, mobile-safe wrapping, and reduced-motion handling.
+
 ## Local cache
 
 Reads use a process-local five-second cache:
@@ -160,5 +186,5 @@ The automated integration kill-test covers this full sequence. TON-177 will repe
 ## Follow-up boundaries
 
 - TON-175 adds the protected System Operations control to the table-first admin dashboard.
-- TON-176 renders the public read-only banner and maintenance screen.
+- TON-176 implements the public read-only banner, maintenance screen, global problem reconciliation and write-entry-point controls.
 - TON-177 verifies deployed recovery and administrator lockout scenarios.

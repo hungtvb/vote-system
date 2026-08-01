@@ -1,10 +1,11 @@
+import type { SystemMode } from './system-status-api';
 import type { AuthorSummary, BallotStatus, SocialProvider, VoteVerdict } from './types';
 import { http, type ApiRequester } from './transport';
 
 export type AccountStatus = 'ACTIVE' | 'SUSPENDED' | 'BANNED';
 export type ModerationStatus = 'VISIBLE' | 'HIDDEN' | 'DELETED';
 export type RankingAvailability = 'HEALTHY' | 'STALE' | 'REBUILDING' | 'UNAVAILABLE';
-export type SystemMode = 'NORMAL' | 'READ_ONLY' | 'MAINTENANCE';
+export type { SystemMode } from './system-status-api';
 export type AdminAuditTargetType = 'POST' | 'USER' | 'RANKING' | 'SYSTEM';
 export type AdminSection = 'overview' | 'ballots' | 'users' | 'audit' | 'ranking' | 'system';
 

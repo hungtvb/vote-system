@@ -20,6 +20,7 @@ interface VoterMastheadProps {
   session: Session | null;
   profile: UserProfile | null;
   restoring: boolean;
+  readOnly: boolean;
   socialProviders?: SocialProviderId[];
   linkingProvider?: SocialProviderId | null;
   onQueryChange: (query: string) => void;
@@ -36,6 +37,7 @@ export function VoterMasthead({
   session,
   profile,
   restoring,
+  readOnly,
   socialProviders = [],
   linkingProvider = null,
   onQueryChange,
@@ -67,6 +69,10 @@ export function VoterMasthead({
 
     if (decision.localeToApply) applyLocale(decision.localeToApply);
   }, [applyLocale, profile, resetLocale]);
+
+  useEffect(() => {
+    if (readOnly) setProfileOpen(false);
+  }, [readOnly]);
 
   const authenticated = Boolean(session && visibleProfile);
   const linkedProviders = new Set<SocialProvider>(visibleProfile?.linkedProviders ?? []);
@@ -131,12 +137,12 @@ export function VoterMasthead({
 
           {!restoring && !authenticated && (
             <div className={styles.guestActions} data-qa-guest-actions>
-              <button type="button" className={styles.textButton} onClick={onLogin}>{t('auth', 'signIn')}</button>
-              <button type="button" className={styles.textButton} onClick={onRegister}>{t('auth', 'register')}</button>
+              <button type="button" className={styles.textButton} onClick={onLogin} data-qa-login>{t('auth', 'signIn')}</button>
+              <button type="button" className={styles.textButton} onClick={onRegister} data-qa-register disabled={readOnly} title={readOnly ? t('system', 'readOnlyActionUnavailable') : undefined}>{t('auth', 'register')}</button>
             </div>
           )}
 
-          <button type="button" className={styles.primaryButton} onClick={onCreate} data-qa-create-ballot>
+          <button type="button" className={styles.primaryButton} onClick={onCreate} disabled={readOnly} title={readOnly ? t('system', 'readOnlyActionUnavailable') : undefined} data-qa-create-ballot>
             {t('ballots', 'createBallot')}
           </button>
 
@@ -168,6 +174,9 @@ export function VoterMasthead({
                   </button>
                   <button
                     type="button"
+                    disabled={readOnly}
+                    data-qa-profile-edit
+                    title={readOnly ? t('system', 'readOnlyActionUnavailable') : undefined}
                     onClick={event => {
                       closeMenu(event.currentTarget);
                       setProfileOpen(true);
@@ -185,10 +194,10 @@ export function VoterMasthead({
                   )}
                   {linkedProviders.has('GOOGLE')
                     ? <span>{t('auth', 'googleLinked')}</span>
-                    : googleEnabled && <button type="button" disabled={linkingProvider !== null} onClick={() => onLinkProvider('google')}>{linkingProvider === 'google' ? t('auth', 'connectingGoogle') : t('auth', 'linkGoogle')}</button>}
+                    : googleEnabled && <button type="button" data-qa-provider-link="google" disabled={readOnly || linkingProvider !== null} title={readOnly ? t('system', 'readOnlyActionUnavailable') : undefined} onClick={() => onLinkProvider('google')}>{linkingProvider === 'google' ? t('auth', 'connectingGoogle') : t('auth', 'linkGoogle')}</button>}
                   {linkedProviders.has('GITHUB')
                     ? <span>{t('auth', 'githubLinked')}</span>
-                    : githubEnabled && <button type="button" disabled={linkingProvider !== null} onClick={() => onLinkProvider('github')}>{linkingProvider === 'github' ? t('auth', 'connectingGithub') : t('auth', 'linkGithub')}</button>}
+                    : githubEnabled && <button type="button" data-qa-provider-link="github" disabled={readOnly || linkingProvider !== null} title={readOnly ? t('system', 'readOnlyActionUnavailable') : undefined} onClick={() => onLinkProvider('github')}>{linkingProvider === 'github' ? t('auth', 'connectingGithub') : t('auth', 'linkGithub')}</button>}
                   <button type="button" onClick={onLogout}>{t('auth', 'logout')}</button>
                   <button type="button" onClick={onLogoutAll}>{t('auth', 'logoutAll')}</button>
                 </div>
@@ -198,7 +207,7 @@ export function VoterMasthead({
         </div>
       </header>
 
-      {profileOpen && visibleProfile && (
+      {profileOpen && visibleProfile && !readOnly && (
         <ProfileDialog
           profile={visibleProfile}
           onClose={() => setProfileOpen(false)}

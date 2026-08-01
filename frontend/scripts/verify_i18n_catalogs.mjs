@@ -6,6 +6,7 @@ const requiredDomains = [
   'ballots',
   'profile',
   'admin',
+  'system',
   'comments',
   'notifications',
   'errors'

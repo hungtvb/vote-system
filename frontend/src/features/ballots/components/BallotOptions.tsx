@@ -9,12 +9,13 @@ import styles from './BallotCard.module.scss';
 interface BallotOptionsProps {
   ballot: Ballot;
   busy: boolean;
+  readOnly: boolean;
   onVote: (type: VoteType) => void;
 }
 
-export function BallotOptions({ ballot, busy, onVote }: BallotOptionsProps) {
+export function BallotOptions({ ballot, busy, readOnly, onVote }: BallotOptionsProps) {
   const { formatNumber, t } = useI18n();
-  const disabled = busy || ballot.status === 'CLOSED';
+  const disabled = busy || readOnly || ballot.status === 'CLOSED';
   const breakdown = calculateVoteBreakdown(ballot.upVotes, ballot.downVotes);
 
   return (
@@ -58,7 +59,11 @@ export function BallotOptions({ ballot, busy, onVote }: BallotOptionsProps) {
       />
 
       <p className={styles.optionHint}>
-        {ballot.status === 'CLOSED' ? t('ballots', 'votingClosed') : t('ballots', 'removeVoteHint')}
+        {readOnly
+          ? t('system', 'readOnlyVoteHint')
+          : ballot.status === 'CLOSED'
+            ? t('ballots', 'votingClosed')
+            : t('ballots', 'removeVoteHint')}
       </p>
     </div>
   );
@@ -83,6 +88,7 @@ function VoteOption({ type, label, count, percentage, selected, disabled, onVote
   return (
     <button
       type="button"
+      data-qa-vote-option={type}
       disabled={disabled}
       aria-pressed={selected}
       aria-label={ariaLabel(count, percentage, selected)}

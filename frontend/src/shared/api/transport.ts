@@ -4,6 +4,8 @@ export interface ApiProblem {
   message?: string;
   status?: number;
   errors?: Record<string, string>;
+  code?: string;
+  mode?: string;
 }
 
 export class ApiError extends Error {
@@ -27,6 +29,23 @@ interface HttpClientOptions {
 }
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
+const problemListeners = new Set<(problem: ApiProblem) => void>();
+
+export function subscribeApiProblems(listener: (problem: ApiProblem) => void): () => void {
+  problemListeners.add(listener);
+  return () => problemListeners.delete(listener);
+}
+
+function publishApiProblem(problem: ApiProblem | undefined) {
+  if (!problem) return;
+  for (const listener of problemListeners) {
+    try {
+      listener(problem);
+    } catch {
+      // Observers must never alter the request's error semantics.
+    }
+  }
+}
 
 export function resolveApiUrl(path: string): string {
   return `${API_BASE_URL}${path}`;
@@ -51,6 +70,7 @@ export function createHttpClient({
 
     if (!response.ok) {
       const problem = await readProblem(response);
+      publishApiProblem(problem);
       const message = problem?.detail ?? problem?.message ?? problem?.title ?? `Request failed (${response.status})`;
       throw new ApiError(message, response.status, parseRetryAfter(response.headers.get('Retry-After'), now()), problem);
     }
