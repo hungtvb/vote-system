@@ -1,0 +1,140 @@
++  "$BASE_URL/actuator/metrics/vote.system.mode.requests?tag=code:SYSTEM_MAINTENANCE&tag=route:posts&tag=status:503" \
++  > "$ARTIFACT_DIR/maintenance-rejection-metric.json"
++grep -q '"name":"vote.system.mode.requests"' "$ARTIFACT_DIR/maintenance-rejection-metric.json"
++grep -Eq '"value":[1-9][0-9]*([.]0)?' "$ARTIFACT_DIR/maintenance-rejection-metric.json"
++
++capture_app_logs
++grep -q 'requestId=runtime-read-only-enable' "$APP_LOG"
++grep -q 'requestId=runtime-read-only-disable' "$APP_LOG"
++grep -q 'requestId=runtime-maintenance-enable' "$APP_LOG"
++grep -q 'requestId=runtime-maintenance-disable' "$APP_LOG"
++! grep -E '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' "$APP_LOG"
++! grep -E '__Secure-vote_refresh=|eyJ[A-Za-z0-9_-]+\.' "$APP_LOG"
++
++# Uploaded evidence must never contain bearer tokens, refresh cookies, or the bootstrap email.
++# Existing authenticated-profile evidence may contain the runtime author's email, so the broader email rule applies to logs.
++! grep -R -F "$ADMIN_EMAIL" "$ARTIFACT_DIR"
++! grep -R -E '__Secure-vote_refresh=|eyJ[A-Za-z0-9_-]+\.' "$ARTIFACT_DIR"
++
++echo "Maintenance recovery smoke passed across restart and Redis loss."
++diff --git a/scripts/ci/runtime-smoke.sh b/scripts/ci/runtime-smoke.sh
++index 2f068ac..f07e048 100644
++--- a/scripts/ci/runtime-smoke.sh
+++++ b/scripts/ci/runtime-smoke.sh
++@@ -11,12 +11,13 @@ ARTIFACT_DIR=${ARTIFACT_DIR:-runtime-smoke}
++ 
++ mkdir -p "$ARTIFACT_DIR"
++ APP_LOG="$ARTIFACT_DIR/app.log"
+++: > "$APP_LOG"
++ REGISTER_HEADERS=$(mktemp)
++ CI_JWT_SECRET=$(openssl rand -base64 48 | tr -d '\n')
++ 
++ cleanup() {
++   rm -f "$REGISTER_HEADERS"
++-  docker logs "$APP_NAME" > "$APP_LOG" 2>&1 || true
+++  docker logs "$APP_NAME" >> "$APP_LOG" 2>&1 || true
++   docker rm -f "$APP_NAME" "$POSTGRES_NAME" "$REDIS_NAME" >/dev/null 2>&1 || true
++   docker network rm "$NETWORK_NAME" >/dev/null 2>&1 || true
++ }
++@@ -64,7 +65,8 @@ docker run -d --name "$APP_NAME" --network "$NETWORK_NAME" -p 10000:10000 \
++   -e CORS_ALLOWED_ORIGINS=https://app.ballotbox.io.vn \
++   -e REFRESH_COOKIE_NAME=__Secure-vote_refresh \
++   -e OAUTH_SESSION_COOKIE_NAME=__Secure-vote_oauth \
++-  -e RATE_LIMIT_ENABLED=false \
+++  -e RATE_LIMIT_ENABLED=true \
+++  -e RATE_LIMIT_FAIL_OPEN=true \
++   -e VOTE_STREAM_HEARTBEAT_MS=250 \
++   "$IMAGE_NAME" >/dev/null
++ 
++@@ -155,8 +157,11 @@ REFRESHED_SESSION=$(curl --fail --silent --show-error \
++   -X POST "$BASE_URL/api/v1/auth/refresh")
++ printf '%s' "$REFRESHED_SESSION" | grep -q '"accessToken"'
++ 
+++export IMAGE_NAME NETWORK_NAME POSTGRES_NAME REDIS_NAME APP_NAME BASE_URL ARTIFACT_DIR CI_JWT_SECRET VOTER_TOKEN BALLOT_ID
+++bash scripts/ci/maintenance-recovery-smoke.sh
+++
++ # Capture logs before scanning so the uploaded artifact is covered end-to-end.
++-docker logs "$APP_NAME" > "$APP_LOG" 2>&1 || true
+++docker logs "$APP_NAME" >> "$APP_LOG" 2>&1 || true
++ 
++ # Never persist raw cookies or bearer tokens in uploaded runtime-smoke artifacts.
++ ! grep -R -E '__Secure-vote_refresh=|eyJ[A-Za-z0-9_-]+\.' "$ARTIFACT_DIR"
++diff --git a/src/main/java/com/hungtvb/votesystem/system/SystemModeEnforcementFilter.java b/src/main/java/com/hungtvb/votesystem/system/SystemModeEnforcementFilter.java
++index 311eaf6..2f0ab08 100644
++--- a/src/main/java/com/hungtvb/votesystem/system/SystemModeEnforcementFilter.java
+++++ b/src/main/java/com/hungtvb/votesystem/system/SystemModeEnforcementFilter.java
++@@ -32,12 +32,15 @@ public class SystemModeEnforcementFilter extends OncePerRequestFilter {
++ 
++     private final SystemStatusService systemStatusService;
++     private final ObjectMapper objectMapper;
+++    private final SystemModeMetrics metrics;
++     private final SystemModeRequestPolicy policy = new SystemModeRequestPolicy();
++ 
++     public SystemModeEnforcementFilter(SystemStatusService systemStatusService,
++-                                       ObjectMapper objectMapper) {
+++                                       ObjectMapper objectMapper,
+++                                       SystemModeMetrics metrics) {
++         this.systemStatusService = systemStatusService;
++         this.objectMapper = objectMapper;
+++        this.metrics = metrics;
++     }
++ 
++     @Override
++@@ -92,6 +95,7 @@ public class SystemModeEnforcementFilter extends OncePerRequestFilter {
++                               SystemMode mode,
++                               Rejection rejection) throws IOException {
++         Instant now = Instant.now();
+++        metrics.recordRejection(rejection.code(), mode, request.getMethod(), request.getRequestURI());
++         response.setStatus(HttpStatus.SERVICE_UNAVAILABLE.value());
++         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
++         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
++diff --git a/src/main/java/com/hungtvb/votesystem/system/SystemModeMetrics.java b/src/main/java/com/hungtvb/votesystem/system/SystemModeMetrics.java
++new file mode 100644
++index 0000000..bfab01d
++--- /dev/null
+++++ b/src/main/java/com/hungtvb/votesystem/system/SystemModeMetrics.java
++@@ -0,0 +1,84 @@
+++package com.hungtvb.votesystem.system;
+++
+++import io.micrometer.core.instrument.Counter;
+++import io.micrometer.core.instrument.MeterRegistry;
+++import org.springframework.stereotype.Component;
+++
+++import java.util.Locale;
+++import java.util.Set;
+++
+++@Component
+++public class SystemModeMetrics {
+++    private static final Set<String> SAFE_METHODS = Set.of(
+++            "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"
+++    );
+++
+++    private final MeterRegistry meterRegistry;
+++
+++    public SystemModeMetrics(MeterRegistry meterRegistry) {
+++        this.meterRegistry = meterRegistry;
+++    }
+++
+++    public void recordRejection(String code,
+++                                SystemMode mode,
+++                                String method,
+++                                String path) {
+++        Counter.builder("vote.system.mode.requests")
+++                .description("Requests rejected by the authoritative operating-mode boundary")
+++                .tags(
+++                        "result", "rejected",
+++                        "status", "503",
+++                        "code", safeCode(code),
+++                        "mode", mode == null ? "UNKNOWN" : mode.name(),
+++                        "method", safeMethod(method),
+++                        "route", routeFamily(path)
+++                )
+++                .register(meterRegistry)
+++                .increment();
+++    }
+++
+++    private String safeCode(String code) {
+++        if (SystemModeEnforcementFilter.READ_ONLY_CODE.equals(code)
+++                || SystemModeEnforcementFilter.MAINTENANCE_CODE.equals(code)
+++                || SystemModeEnforcementFilter.STATUS_UNAVAILABLE_CODE.equals(code)) {
+++            return code;
