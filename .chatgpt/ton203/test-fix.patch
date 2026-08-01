@@ -1,0 +1,71 @@
+diff --git a/src/test/java/com/hungtvb/votesystem/admin/ranking/RankingRebuildScalabilityIntegrationTests.java b/src/test/java/com/hungtvb/votesystem/admin/ranking/RankingRebuildScalabilityIntegrationTests.java
+index cdf5f2f..da58227 100644
+--- a/src/test/java/com/hungtvb/votesystem/admin/ranking/RankingRebuildScalabilityIntegrationTests.java
++++ b/src/test/java/com/hungtvb/votesystem/admin/ranking/RankingRebuildScalabilityIntegrationTests.java
+@@ -7,6 +7,7 @@ import com.hungtvb.votesystem.post.PostRepository;
+ import com.hungtvb.votesystem.ranking.RankingRebuildResult;
+ import com.hungtvb.votesystem.ranking.RankingService;
+ import com.hungtvb.votesystem.ranking.RedisRankingRepository;
++import com.hungtvb.votesystem.system.SystemStatusService;
+ import io.micrometer.core.instrument.MeterRegistry;
+ import org.junit.jupiter.api.BeforeEach;
+ import org.junit.jupiter.api.Test;
+@@ -85,6 +86,7 @@ class RankingRebuildScalabilityIntegrationTests {
+     @Autowired ObjectMapper objectMapper;
+     @Autowired JdbcTemplate jdbcTemplate;
+     @Autowired RankingService rankingService;
++    @Autowired SystemStatusService systemStatusService;
+     @Autowired MeterRegistry meterRegistry;
+     @Autowired StringRedisTemplate redisTemplate;
+     @MockitoSpyBean PostRepository postRepository;
+@@ -95,6 +97,21 @@ class RankingRebuildScalabilityIntegrationTests {
+         reset(postRepository, rankingRepository);
+         redisTemplate.getConnectionFactory().getConnection().serverCommands().flushDb();
+         jdbcTemplate.execute("truncate table users cascade");
++        jdbcTemplate.update("""
++                insert into system_status (
++                    singleton_id, mode, message_vi, message_en, estimated_end_at,
++                    updated_at, updated_by, version
++                ) values (1, 'NORMAL', null, null, null, current_timestamp, null, 0)
++                on conflict (singleton_id) do update
++                   set mode = 'NORMAL',
++                       message_vi = null,
++                       message_en = null,
++                       estimated_end_at = null,
++                       updated_at = current_timestamp,
++                       updated_by = null,
++                       version = system_status.version + 1
++                """);
++        systemStatusService.evictCache();
+         jdbcTemplate.update("update ranking_revision set revision = 0, updated_at = current_timestamp where singleton_id = 1");
+     }
+ 
+@@ -177,11 +194,11 @@ class RankingRebuildScalabilityIntegrationTests {
+         rankingRepository.completeGeneration(generation);
+         RedisRankingRepository.RankingCounts empty = new RedisRankingRepository.RankingCounts(0, 0, 0);
+ 
+-        assertThrows(IllegalStateException.class, () ->
++        assertRejected("Ranking generation publish was rejected", () ->
+                 rankingRepository.publishGeneration(generation, empty, expiredToken, Instant.now()));
+         RedisRankingRepository.PublishState published =
+                 rankingRepository.publishGeneration(generation, empty, currentToken, Instant.now());
+-        assertThrows(IllegalStateException.class, () ->
++        assertRejected("Ranking generation rollback was rejected", () ->
+                 rankingRepository.rollbackGeneration(generation, published, expiredToken));
+         assertEquals(generation.id(), rankingRepository.metadata().generation());
+         assertFalse(rankingRepository.releaseRebuildLock(expiredToken));
+@@ -208,6 +225,14 @@ class RankingRebuildScalabilityIntegrationTests {
+         assertFalse(rankingRepository.isRebuildInProgress());
+     }
+ 
++    private void assertRejected(String expectedMessage, Runnable action) {
++        RuntimeException failure = assertThrows(RuntimeException.class, action::run);
++        Throwable root = failure;
++        while (root.getCause() != null) root = root.getCause();
++        assertTrue(root instanceof IllegalStateException);
++        assertEquals(expectedMessage, root.getMessage());
++    }
++
+     private UUID register(String email) throws Exception {
+         MvcResult result = mockMvc.perform(post("/api/v1/auth/register")
+                         .contentType(MediaType.APPLICATION_JSON)
