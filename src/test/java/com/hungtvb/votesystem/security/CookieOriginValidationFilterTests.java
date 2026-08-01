@@ -36,6 +36,21 @@ class CookieOriginValidationFilterTests {
     }
 
     @Test
+    void forgedForwardedHeadersCannotTurnAttackerOriginIntoSameOrigin() throws Exception {
+        MockHttpServletRequest request = post("/api/v1/auth/refresh");
+        request.addHeader("Origin", "https://attacker.example");
+        request.addHeader("X-Forwarded-Proto", "https");
+        request.addHeader("X-Forwarded-Host", "attacker.example");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        verifyNoInteractions(chain);
+    }
+
+    @Test
     void allowsExplicitConfiguredOrigin() throws Exception {
         MockHttpServletRequest request = post("/api/v1/auth/refresh");
         request.addHeader("Origin", "https://app.ballotbox.io.vn");
@@ -48,9 +63,34 @@ class CookieOriginValidationFilterTests {
     }
 
     @Test
+    void allowsFrameworkNormalizedApiOrigin() throws Exception {
+        MockHttpServletRequest request = post("/api/v1/auth/logout");
+        request.addHeader("Origin", "https://api.ballotbox.io.vn");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilter(request, response, chain);
+
+        verify(chain).doFilter(any(), any());
+    }
+
+    @Test
     void rejectsFetchMetadataMarkedCrossSiteWithoutOrigin() throws Exception {
         MockHttpServletRequest request = post("/api/v1/auth/logout");
         request.addHeader("Sec-Fetch-Site", "cross-site");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        verifyNoInteractions(chain);
+    }
+
+    @Test
+    void rejectsSameSiteBrowserPostWithoutOrigin() throws Exception {
+        MockHttpServletRequest request = post("/api/v1/auth/logout");
+        request.addHeader("Sec-Fetch-Site", "same-site");
         MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain chain = mock(FilterChain.class);
 
@@ -74,7 +114,8 @@ class CookieOriginValidationFilterTests {
     private MockHttpServletRequest post(String path) {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", path);
         request.setScheme("https");
-        request.addHeader("Host", "api.ballotbox.io.vn");
+        request.setServerName("api.ballotbox.io.vn");
+        request.setServerPort(443);
         return request;
     }
 }
