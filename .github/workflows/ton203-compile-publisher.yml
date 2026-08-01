@@ -68,9 +68,33 @@ jobs:
           git apply "$test_fix"
           git apply --check "$captor_fix"
           git apply "$captor_fix"
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/test/java/com/hungtvb/votesystem/admin/ranking/RankingRebuildScalabilityIntegrationTests.java')
+          source = path.read_text()
+          replacements = {
+              '        long expireBefore = commandCalls("expire");':
+                  '        long expiryBefore = expiryCommandCalls();',
+              '        assertEquals(3L, commandCalls("expire") - expireBefore);':
+                  '        assertEquals(3L, expiryCommandCalls() - expiryBefore);',
+              '    private long commandCalls(String command) {':
+                  '    private long expiryCommandCalls() {\n'
+                  '        return commandCalls("expire") + commandCalls("pexpire");\n'
+                  '    }\n\n'
+                  '    private long commandCalls(String command) {'
+          }
+          for old, new in replacements.items():
+              if source.count(old) != 1:
+                  raise SystemExit(f'Expected exactly one occurrence: {old}')
+              source = source.replace(old, new)
+          path.write_text(source)
+          PY
+
           git diff --check
           git add --all
-          test "$(git write-tree)" = '46a5dfeecb333cd56571d9a048dfc846ab7c7045'
+          test "$(git write-tree)" = '6c9c5008dc46df2e7df577b096150d3f101a95df'
 
       - name: Set up Java
         uses: actions/setup-java@v4
