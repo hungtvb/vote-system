@@ -425,12 +425,14 @@ class Handler(base.Handler):
         if parsed.path == "/":
             requested_mode = parse_qs(parsed.query).get("qa", [mode])[0]
             self._reset_status_sequence(requested_mode)
-            snapshot_modes = {
-                "auth-profile-snapshot",
-                "auth-profile-snapshot-success",
-                "auth-profile-snapshot-failed",
-            }
-            if requested_mode in snapshot_modes:
+            snapshot_mode = None
+            if requested_mode == "auth-profile-snapshot":
+                snapshot_mode = "auth-profile-snapshot"
+            elif requested_mode == "auth-profile-snapshot-success":
+                snapshot_mode = "auth-profile-snapshot-success"
+            elif requested_mode == "auth-profile-snapshot-failed":
+                snapshot_mode = "auth-profile-snapshot-failed"
+            if snapshot_mode is not None:
                 snapshot = {
                     "version": 1,
                     "userId": "dddddddd-dddd-dddd-dddd-dddddddddddd",
@@ -442,7 +444,7 @@ class Handler(base.Handler):
                     "linkedProviders": ["GOOGLE"],
                 }
                 freeze_refresh = ""
-                if requested_mode == "auth-profile-snapshot":
+                if snapshot_mode == "auth-profile-snapshot":
                     freeze_refresh = """
                     const originalFetch = window.fetch.bind(window);
                     window.fetch = (input, init) => String(input).includes('/api/v1/auth/refresh')
@@ -452,7 +454,7 @@ class Handler(base.Handler):
                 prelude = f"""
                 <script>
                 localStorage.setItem('vote-system.profile-presentation.v1', {base.json.dumps(base.json.dumps(snapshot))});
-                sessionStorage.setItem('qa-profile-snapshot-seeded', {base.json.dumps(requested_mode)});
+                sessionStorage.setItem('qa-profile-snapshot-seeded', {base.json.dumps(snapshot_mode)});
                 {freeze_refresh}
                 </script>
                 """
@@ -463,7 +465,12 @@ class Handler(base.Handler):
                 body = html.encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Set-Cookie", f"qa_mode={requested_mode}; Path=/; SameSite=Lax")
+                if snapshot_mode == "auth-profile-snapshot":
+                    self.send_header("Set-Cookie", "qa_mode=auth-profile-snapshot; Path=/; SameSite=Lax")
+                elif snapshot_mode == "auth-profile-snapshot-success":
+                    self.send_header("Set-Cookie", "qa_mode=auth-profile-snapshot-success; Path=/; SameSite=Lax")
+                else:
+                    self.send_header("Set-Cookie", "qa_mode=auth-profile-snapshot-failed; Path=/; SameSite=Lax")
                 self.send_header("Set-Cookie", "qa_auth=1; Path=/; SameSite=Lax")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
