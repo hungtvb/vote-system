@@ -75,10 +75,32 @@ jobs:
           path = Path('src/test/java/com/hungtvb/votesystem/admin/ranking/RankingRebuildScalabilityIntegrationTests.java')
           source = path.read_text()
           replacements = {
-              '        long expireBefore = commandCalls("expire");':
-                  '        long expiryBefore = expiryCommandCalls();',
-              '        assertEquals(3L, commandCalls("expire") - expireBefore);':
-                  '        assertEquals(3L, expiryCommandCalls() - expiryBefore);',
+              'import java.util.concurrent.atomic.AtomicBoolean;':
+                  'import java.util.concurrent.TimeUnit;\nimport java.util.concurrent.atomic.AtomicBoolean;',
+              '        long zaddBefore = commandCalls("zadd");\n        long expireBefore = commandCalls("expire");':
+                  '        long zaddBefore = commandCalls("zadd");',
+              '        assertEquals(15L, commandCalls("zadd") - zaddBefore);\n'
+              '        assertEquals(3L, commandCalls("expire") - expireBefore);\n'
+              '    }\n\n'
+              '    @Test\n'
+              '    void watchdogRetainsOwnershipBeyondInitialLockTtl()':
+                  '        assertEquals(15L, commandCalls("zadd") - zaddBefore);\n'
+                  '    }\n\n'
+                  '    @Test\n'
+                  '    void generationInitializationSetsOneExpiryPerStagingKey() {\n'
+                  '        RedisRankingRepository.RankingGeneration generation =\n'
+                  '                rankingRepository.createGeneration(UUID.randomUUID().toString());\n'
+                  '        long expiryBefore = expiryCommandCalls();\n\n'
+                  '        rankingRepository.initializeGeneration(generation);\n\n'
+                  '        assertEquals(3L, expiryCommandCalls() - expiryBefore);\n'
+                  '        for (String key : List.of(generation.hotKey(), generation.dayKey(), generation.weekKey())) {\n'
+                  '            Long ttl = redisTemplate.getExpire(key, TimeUnit.SECONDS);\n'
+                  '            assertTrue(ttl != null && ttl > 0 && ttl <= Duration.ofMinutes(15).toSeconds());\n'
+                  '        }\n'
+                  '        rankingRepository.discardGeneration(generation);\n'
+                  '    }\n\n'
+                  '    @Test\n'
+                  '    void watchdogRetainsOwnershipBeyondInitialLockTtl()',
               '    private long commandCalls(String command) {':
                   '    private long expiryCommandCalls() {\n'
                   '        return commandCalls("expire") + commandCalls("pexpire");\n'
@@ -94,7 +116,7 @@ jobs:
 
           git diff --check
           git add --all
-          test "$(git write-tree)" = '6c9c5008dc46df2e7df577b096150d3f101a95df'
+          test "$(git write-tree)" = '52cda0e2681b04c42e1ee6e7ffc1749579764f54'
 
       - name: Set up Java
         uses: actions/setup-java@v4
