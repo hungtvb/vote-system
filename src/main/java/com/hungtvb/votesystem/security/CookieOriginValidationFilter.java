@@ -49,10 +49,7 @@ public class CookieOriginValidationFilter extends OncePerRequestFilter {
                 reject(request, response);
                 return;
             }
-        } else if (fetchSite != null
-                && !"same-origin".equalsIgnoreCase(fetchSite)
-                && !"same-site".equalsIgnoreCase(fetchSite)
-                && !"none".equalsIgnoreCase(fetchSite)) {
+        } else if (!isAllowedWithoutOrigin(fetchSite)) {
             reject(request, response);
             return;
         }
@@ -69,16 +66,29 @@ public class CookieOriginValidationFilter extends OncePerRequestFilter {
                 || path.matches("/api/v1/auth/social/(google|github)/(link/)?start");
     }
 
+    private boolean isAllowedWithoutOrigin(String fetchSite) {
+        if (fetchSite == null || fetchSite.isBlank()) {
+            return true;
+        }
+        return "same-origin".equalsIgnoreCase(fetchSite)
+                || "none".equalsIgnoreCase(fetchSite);
+    }
+
     private boolean isSameOrigin(HttpServletRequest request, String origin) {
-        String forwardedProto = request.getHeader("X-Forwarded-Proto");
-        String scheme = forwardedProto == null || forwardedProto.isBlank()
-                ? request.getScheme()
-                : forwardedProto.split(",", 2)[0].trim();
-        String forwardedHost = request.getHeader("X-Forwarded-Host");
-        String authority = forwardedHost == null || forwardedHost.isBlank()
-                ? request.getHeader(HttpHeaders.HOST)
-                : forwardedHost.split(",", 2)[0].trim();
-        return authority != null && origin.equalsIgnoreCase(scheme + "://" + authority);
+        String scheme = request.getScheme();
+        String host = request.getServerName();
+        int port = request.getServerPort();
+        if (scheme == null || host == null || scheme.isBlank() || host.isBlank()) {
+            return false;
+        }
+
+        boolean defaultPort = ("https".equalsIgnoreCase(scheme) && port == 443)
+                || ("http".equalsIgnoreCase(scheme) && port == 80);
+        String normalizedHost = host.contains(":") && !host.startsWith("[")
+                ? "[" + host + "]"
+                : host;
+        String requestOrigin = scheme + "://" + normalizedHost + (defaultPort ? "" : ":" + port);
+        return origin.equalsIgnoreCase(requestOrigin);
     }
 
     private void reject(HttpServletRequest request, HttpServletResponse response) throws IOException {
