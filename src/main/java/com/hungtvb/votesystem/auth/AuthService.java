@@ -88,8 +88,13 @@ public class AuthService {
         return response(refreshSessionService.rotate(refreshToken), true);
     }
 
+    @Transactional
     public void logout(String refreshToken) {
-        refreshSessionService.revoke(refreshToken);
+        refreshSessionService.revoke(refreshToken).ifPresent(userId -> {
+            AppUser user = userRepository.findByIdForUpdate(userId)
+                    .orElseThrow(() -> new UnauthorizedException("User account is unavailable"));
+            user.revokeAccessTokens();
+        });
     }
 
     @Transactional
