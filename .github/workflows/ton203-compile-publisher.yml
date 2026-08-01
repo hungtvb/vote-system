@@ -28,7 +28,8 @@ jobs:
           set -euo pipefail
           parts="$GITHUB_WORKSPACE/.chatgpt/ton203"
           patch="$RUNNER_TEMP/ton203.patch"
-          fix="$RUNNER_TEMP/ton203-test-fix.patch"
+          test_fix="$RUNNER_TEMP/ton203-test-fix.patch"
+          captor_fix="$RUNNER_TEMP/ton203-page-captor-fix.patch"
 
           cat > "$RUNNER_TEMP/parts.sha256" <<'SHA'
           475f2c19e4ba811bf3e0debfdc3e066be76a02a27ccac2ccf4b09fadee0341e7  part-00.patch
@@ -45,26 +46,31 @@ jobs:
             sha256sum --check "$RUNNER_TEMP/parts.sha256"
             cat part-00.patch part-01.patch part-02.patch part-03.patch part-04.patch part-05.patch part-06.patch > "$patch"
           )
-          cp "$parts/test-fix.patch" "$fix"
+          cp "$parts/test-fix.patch" "$test_fix"
+          cp "$parts/page-captor-fix.patch" "$captor_fix"
           echo 'c83fa01d299dd775775fef29b496ade0aa48cec22526a1e777e5528e3e1d120e  '"$patch" | sha256sum --check
-          echo '8eed4af4a58d0553ef3972f60deda933fdd4c8d4fbe4e940d3e91990ad3befd2  '"$fix" | sha256sum --check
+          echo '8eed4af4a58d0553ef3972f60deda933fdd4c8d4fbe4e940d3e91990ad3befd2  '"$test_fix" | sha256sum --check
+          echo '40b8256f300a6f9bb7b2c74af8ecf7153fab5b1fc7a070745f05c858ff2d806e  '"$captor_fix" | sha256sum --check
 
       - name: Apply exact TON-203 source tree
         shell: bash
         run: |
           set -euo pipefail
           patch="$RUNNER_TEMP/ton203.patch"
-          fix="$RUNNER_TEMP/ton203-test-fix.patch"
+          test_fix="$RUNNER_TEMP/ton203-test-fix.patch"
+          captor_fix="$RUNNER_TEMP/ton203-page-captor-fix.patch"
           expected_base='c1fc52a0820c16c1299dbc5417d6a4e41566d673'
           test "${{ github.event.pull_request.base.sha }}" = "$expected_base"
           git checkout --detach "$expected_base"
           git apply --check "$patch"
           git apply "$patch"
-          git apply --check "$fix"
-          git apply "$fix"
+          git apply --check "$test_fix"
+          git apply "$test_fix"
+          git apply --check "$captor_fix"
+          git apply "$captor_fix"
           git diff --check
           git add --all
-          test "$(git write-tree)" = 'a780ab4da3b514672dff63641d72333a1f8892ca'
+          test "$(git write-tree)" = '46a5dfeecb333cd56571d9a048dfc846ab7c7045'
 
       - name: Set up Java
         uses: actions/setup-java@v4
