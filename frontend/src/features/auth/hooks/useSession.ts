@@ -7,20 +7,29 @@ import { ApiError } from '@/shared/api/transport';
 import type { Session, UpdateUserProfileRequest, UserProfile } from '@/shared/api/types';
 import { userApi } from '@/shared/api/user-api';
 import { resolveAuthProfile, sessionOnly } from '@/shared/auth/session-bootstrap';
+import {
+  clearProfileSnapshot,
+  readProfileSnapshot,
+  snapshotFromProfile,
+  type ProfilePresentationSnapshot,
+  writeProfileSnapshot
+} from '@/shared/auth/profile-snapshot';
 
 interface SessionState {
   session: Session | null;
   profile: UserProfile | null;
+  profileSnapshot: ProfilePresentationSnapshot | null;
   restoring: boolean;
 }
 
 class SessionTransitionCancelled extends Error {}
 
-const SERVER_STATE: SessionState = { session: null, profile: null, restoring: true };
+const SERVER_STATE: SessionState = { session: null, profile: null, profileSnapshot: null, restoring: true };
 let state: SessionState = SERVER_STATE;
 let sessionEpoch = 0;
 let restorePromise: Promise<void> | null = null;
 let refreshPromise: Promise<Session> | null = null;
+let snapshotHydrated = false;
 const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void) {
@@ -41,9 +50,38 @@ function publish(next: Partial<SessionState>) {
   for (const listener of listeners) listener();
 }
 
+function browserStorage(): Storage | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function hydrateProfileSnapshotShared() {
+  if (snapshotHydrated) return;
+  snapshotHydrated = true;
+  const storage = browserStorage();
+  if (!storage) return;
+  publish({ profileSnapshot: readProfileSnapshot(storage) });
+}
+
+function replaceProfileSnapshotShared(profile: UserProfile): ProfilePresentationSnapshot {
+  const snapshot = snapshotFromProfile(profile);
+  const storage = browserStorage();
+  if (storage && state.profileSnapshot && state.profileSnapshot.userId !== profile.id) {
+    clearProfileSnapshot(storage);
+  }
+  if (storage && !writeProfileSnapshot(storage, profile)) clearProfileSnapshot(storage);
+  return snapshot;
+}
+
 function clearSessionShared() {
   sessionEpoch += 1;
-  publish({ session: null, profile: null });
+  const storage = browserStorage();
+  if (storage) clearProfileSnapshot(storage);
+  publish({ session: null, profile: null, profileSnapshot: null });
 }
 
 async function prepareSession(next: Session) {
@@ -59,7 +97,11 @@ async function prepareSession(next: Session) {
 async function prepareAndPublishSession(next: Session, expectedEpoch: number) {
   const prepared = await prepareSession(next);
   if (expectedEpoch !== sessionEpoch) throw new SessionTransitionCancelled();
-  publish({ session: prepared.nextSession, profile: prepared.nextProfile });
+  publish({
+    session: prepared.nextSession,
+    profile: prepared.nextProfile,
+    profileSnapshot: replaceProfileSnapshotShared(prepared.nextProfile)
+  });
   return prepared;
 }
 
@@ -119,7 +161,9 @@ async function updateProfileShared(payload: UpdateUserProfileRequest): Promise<U
   const expectedEpoch = sessionEpoch;
   const nextProfile = await runAuthorizedShared(activeSession =>
     userApi.updateCurrent(payload, activeSession.accessToken));
-  if (expectedEpoch === sessionEpoch) publish({ profile: nextProfile });
+  if (expectedEpoch === sessionEpoch) {
+    publish({ profile: nextProfile, profileSnapshot: replaceProfileSnapshotShared(nextProfile) });
+  }
   return nextProfile;
 }
 
@@ -151,6 +195,7 @@ export function useSession() {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   useEffect(() => {
+    hydrateProfileSnapshotShared();
     void ensureSessionRestore();
   }, []);
 
@@ -165,6 +210,7 @@ export function useSession() {
   return {
     session: snapshot.session,
     profile: snapshot.profile,
+    profileSnapshot: snapshot.profileSnapshot,
     restoring: snapshot.restoring,
     saveSession,
     updateProfile,

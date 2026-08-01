@@ -54,7 +54,7 @@ export function BallotApp() {
   const { t, formatNumber } = useI18n();
   const i18nRef = useRef({ t, formatNumber });
   i18nRef.current = { t, formatNumber };
-  const { session, profile, restoring, saveSession, runAuthorized, logout, logoutAll } = useSession();
+  const { session, profile, profileSnapshot, restoring, saveSession, runAuthorized, logout, logoutAll } = useSession();
   const [systemStatus, setSystemStatus] = useState<PublicSystemStatus | null>(null);
   const [systemStatusRefreshing, setSystemStatusRefreshing] = useState(false);
   const [ballots, setBallots] = useState<Ballot[]>([]);
@@ -469,6 +469,7 @@ export function BallotApp() {
         query={queryInput}
         session={session}
         profile={profile}
+        profileSnapshot={profileSnapshot}
         restoring={restoring}
         readOnly={readOnly}
         socialProviders={socialProviders}

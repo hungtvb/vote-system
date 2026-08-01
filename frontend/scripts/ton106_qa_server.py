@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import mimetypes
 import threading
+import time
 from http.server import ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -19,6 +20,9 @@ EXTRA_QA_SCRIPT = r"""
     'detail',
     'auth',
     'auth-bootstrap',
+    'auth-profile-snapshot',
+    'auth-profile-snapshot-success',
+    'auth-profile-snapshot-failed',
     'auth-menu',
     'auth-stamp',
     'server-search',
@@ -42,6 +46,28 @@ EXTRA_QA_SCRIPT = r"""
     'maintenance-retry'
   ]);
   if (!supported.has(mode)) return;
+
+  const snapshotKey = 'vote-system.profile-presentation.v1';
+  const snapshotModes = new Set([
+    'auth-profile-snapshot',
+    'auth-profile-snapshot-success',
+    'auth-profile-snapshot-failed'
+  ]);
+  if (snapshotModes.has(mode) && sessionStorage.getItem('qa-profile-snapshot-seeded') !== mode) {
+    localStorage.setItem(snapshotKey, JSON.stringify({
+      version: 1,
+      userId: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
+      displayName: 'Cached Administrator Presentation',
+      initials: 'CA',
+      avatarIcon: 'ANALYST',
+      avatarColor: 'INK_BLUE',
+      roleLabel: 'ADMIN',
+      linkedProviders: ['GOOGLE']
+    }));
+    sessionStorage.setItem('qa-profile-snapshot-seeded', mode);
+    location.reload();
+    return;
+  }
 
   const root = document.documentElement;
   const setInput = (input, value) => {
@@ -80,6 +106,7 @@ EXTRA_QA_SCRIPT = r"""
     const systemNotice = document.querySelector('[data-qa-system-mode]');
     const systemRetry = document.querySelector('[data-qa-system-retry]');
     const profileEdit = document.querySelector('[data-qa-profile-edit]');
+    const profileSnapshot = document.querySelector('[data-qa-profile-snapshot]');
     const providerLinks = [...document.querySelectorAll('[data-qa-provider-link]')];
     const socialButtons = [...document.querySelectorAll('[data-qa-social-provider]')];
     const ownerActions = [...document.querySelectorAll('[data-qa-owner-action]')];
@@ -140,6 +167,22 @@ EXTRA_QA_SCRIPT = r"""
     root.dataset.qaSystemRetry = String(Boolean(systemRetry));
     root.dataset.qaCards = String(document.querySelectorAll('article').length);
     root.dataset.qaVoterAfterAuth = String(Boolean(document.querySelector('[data-qa-voter-id]')));
+    root.dataset.qaGuestActions = String(Boolean(document.querySelector('[data-qa-guest-actions]')));
+    root.dataset.qaProfileSnapshot = String(Boolean(profileSnapshot));
+    root.dataset.qaSnapshotAuthoritative = profileSnapshot?.getAttribute('data-qa-authoritative') || '';
+    root.dataset.qaSnapshotMenu = String(Boolean(profileSnapshot?.querySelector('button, a, summary')));
+    try {
+      const storedSnapshot = JSON.parse(localStorage.getItem(snapshotKey) || 'null');
+      root.dataset.qaSnapshotStored = String(Boolean(storedSnapshot));
+      root.dataset.qaSnapshotUserId = storedSnapshot?.userId || '';
+      root.dataset.qaSnapshotSensitive = String(Boolean(
+        storedSnapshot && ['accessToken', 'refreshToken', 'email', 'cookie', 'password'].some(key => key in storedSnapshot)
+      ));
+    } catch {
+      root.dataset.qaSnapshotStored = 'false';
+      root.dataset.qaSnapshotUserId = '';
+      root.dataset.qaSnapshotSensitive = 'true';
+    }
     root.dataset.qaFocusInsideDialog = String(Boolean(dialog && dialog.contains(document.activeElement)));
     root.dataset.qaTouchTargets = String(targets.length);
     root.dataset.qaTouchViolations = String(violations.length);
@@ -168,6 +211,26 @@ EXTRA_QA_SCRIPT = r"""
   const guestAction = index => document.querySelectorAll('[data-qa-guest-actions] button')[index];
   const authTab = index => document.querySelectorAll('[data-qa-auth-tab]')[index];
   const start = () => {
+    if (mode === 'auth-profile-snapshot') {
+      return waitFor(
+        () => Boolean(document.querySelector('[data-qa-profile-snapshot]')),
+        () => setTimeout(() => record('snapshot'), 120)
+      );
+    }
+    if (mode === 'auth-profile-snapshot-success') {
+      return waitFor(
+        () => Boolean(document.querySelector('[data-qa-voter-id]'))
+          && !document.querySelector('[data-qa-profile-snapshot]'),
+        () => setTimeout(() => record('verified'), 120)
+      );
+    }
+    if (mode === 'auth-profile-snapshot-failed') {
+      return waitFor(
+        () => Boolean(document.querySelector('[data-qa-guest-actions]'))
+          && !document.querySelector('[data-qa-profile-snapshot]'),
+        () => setTimeout(() => record('cleared'), 120)
+      );
+    }
     if (mode === 'read-only') {
       return waitFor(
         () => document.querySelector('[data-qa-system-mode="READ_ONLY"]')
@@ -346,7 +409,13 @@ class Handler(base.Handler):
             self._json(200 if path.endswith("login") else 201, self._bootstrap())
             return
         if path == "/api/v1/auth/refresh" and self._authenticated_fixture():
-            self._json(200, self._bootstrap())
+            mode = self._fixture_mode()
+            if mode in ("auth-profile-snapshot-success", "auth-profile-snapshot-failed"):
+                time.sleep(0.4)
+            if mode == "auth-profile-snapshot-failed":
+                self._json(401, {"title": "Expired QA session"})
+            else:
+                self._json(200, self._bootstrap())
             return
         super().do_POST()
 
@@ -356,6 +425,57 @@ class Handler(base.Handler):
         if parsed.path == "/":
             requested_mode = parse_qs(parsed.query).get("qa", [mode])[0]
             self._reset_status_sequence(requested_mode)
+            snapshot_mode = None
+            if requested_mode == "auth-profile-snapshot":
+                snapshot_mode = "auth-profile-snapshot"
+            elif requested_mode == "auth-profile-snapshot-success":
+                snapshot_mode = "auth-profile-snapshot-success"
+            elif requested_mode == "auth-profile-snapshot-failed":
+                snapshot_mode = "auth-profile-snapshot-failed"
+            if snapshot_mode is not None:
+                snapshot = {
+                    "version": 1,
+                    "userId": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+                    "displayName": "Cached Administrator Presentation",
+                    "initials": "CA",
+                    "avatarIcon": "ANALYST",
+                    "avatarColor": "INK_BLUE",
+                    "roleLabel": "ADMIN",
+                    "linkedProviders": ["GOOGLE"],
+                }
+                freeze_refresh = ""
+                if snapshot_mode == "auth-profile-snapshot":
+                    freeze_refresh = """
+                    const originalFetch = window.fetch.bind(window);
+                    window.fetch = (input, init) => String(input).includes('/api/v1/auth/refresh')
+                      ? new Promise(() => {})
+                      : originalFetch(input, init);
+                    """
+                prelude = f"""
+                <script>
+                localStorage.setItem('vote-system.profile-presentation.v1', {base.json.dumps(base.json.dumps(snapshot))});
+                sessionStorage.setItem('qa-profile-snapshot-seeded', {base.json.dumps(snapshot_mode)});
+                {freeze_refresh}
+                </script>
+                """
+                index = base.OUT / "index.html"
+                html = index.read_text(encoding="utf-8")
+                html = html.replace("<head>", f"<head>{prelude}", 1)
+                html = html.replace("</body>", f"{base.QA_SCRIPT}</body>")
+                body = html.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                if snapshot_mode == "auth-profile-snapshot":
+                    self.send_header("Set-Cookie", "qa_mode=auth-profile-snapshot; Path=/; SameSite=Lax")
+                elif snapshot_mode == "auth-profile-snapshot-success":
+                    self.send_header("Set-Cookie", "qa_mode=auth-profile-snapshot-success; Path=/; SameSite=Lax")
+                else:
+                    self.send_header("Set-Cookie", "qa_mode=auth-profile-snapshot-failed; Path=/; SameSite=Lax")
+                self.send_header("Set-Cookie", "qa_auth=1; Path=/; SameSite=Lax")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
         if parsed.path == "/api/v1/system/status":
             system_mode = self._next_system_mode(mode)
 

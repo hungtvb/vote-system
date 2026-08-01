@@ -7,6 +7,9 @@ on:
       - 'frontend/src/shared/api/auth-api.ts'
       - 'frontend/src/shared/api/types.ts'
       - 'frontend/src/shared/auth/session-bootstrap.ts'
+      - 'frontend/src/shared/auth/profile-snapshot.ts'
+      - 'frontend/src/shared/auth/tests/profile-snapshot.test.ts'
+      - 'frontend/src/features/ballots/components/BallotApp.tsx'
       - 'frontend/scripts/ton106_qa_server.py'
       - 'frontend/package*.json'
       - '.github/workflows/auth-bootstrap-qa.yml'
@@ -17,6 +20,9 @@ on:
       - 'frontend/src/shared/api/auth-api.ts'
       - 'frontend/src/shared/api/types.ts'
       - 'frontend/src/shared/auth/session-bootstrap.ts'
+      - 'frontend/src/shared/auth/profile-snapshot.ts'
+      - 'frontend/src/shared/auth/tests/profile-snapshot.test.ts'
+      - 'frontend/src/features/ballots/components/BallotApp.tsx'
       - 'frontend/scripts/ton106_qa_server.py'
       - 'frontend/package*.json'
       - '.github/workflows/auth-bootstrap-qa.yml'
@@ -39,6 +45,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
+      - name: Test frontend models
+        run: npm test
       - name: Build frontend
         run: npm run build
       - name: Verify bootstrap without users-me waterfall
@@ -72,6 +80,41 @@ jobs:
           grep -q 'Alexandria Registry Participant' auth-bootstrap-qa/mobile-auth-bootstrap.html
           ! grep -q 'Unexpected legacy profile request' auth-bootstrap-qa/mobile-auth-bootstrap.html
           ! grep -q 'GET /api/v1/users/me' auth-bootstrap-qa/server.log
+
+          SNAPSHOT_COMMON=(--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --run-all-compositor-stages-before-draw --virtual-time-budget=5000 --window-size=390,844)
+          for scenario in auth-profile-snapshot auth-profile-snapshot-success auth-profile-snapshot-failed; do
+            "$CHROME" "${SNAPSHOT_COMMON[@]}" --screenshot="auth-bootstrap-qa/${scenario}.png" "http://127.0.0.1:4173/?qa=${scenario}"
+            "$CHROME" "${SNAPSHOT_COMMON[@]}" --dump-dom "http://127.0.0.1:4173/?qa=${scenario}" > "auth-bootstrap-qa/${scenario}.html"
+          done
+
+          grep -q 'data-qa-scenario="snapshot"' auth-bootstrap-qa/auth-profile-snapshot.html
+          grep -q 'data-qa-profile-snapshot="true"' auth-bootstrap-qa/auth-profile-snapshot.html
+          grep -q 'data-qa-snapshot-authoritative="false"' auth-bootstrap-qa/auth-profile-snapshot.html
+          grep -q 'data-qa-snapshot-menu="false"' auth-bootstrap-qa/auth-profile-snapshot.html
+          grep -q 'data-qa-voter-after-auth="false"' auth-bootstrap-qa/auth-profile-snapshot.html
+          grep -q 'data-qa-snapshot-stored="true"' auth-bootstrap-qa/auth-profile-snapshot.html
+          grep -q 'data-qa-snapshot-user-id="dddddddd-dddd-dddd-dddd-dddddddddddd"' auth-bootstrap-qa/auth-profile-snapshot.html
+          grep -q 'data-qa-snapshot-sensitive="false"' auth-bootstrap-qa/auth-profile-snapshot.html
+          grep -q 'data-qa-overflow="false"' auth-bootstrap-qa/auth-profile-snapshot.html
+          grep -q 'Cached Administrator Presentation' auth-bootstrap-qa/auth-profile-snapshot.html
+          ! grep -q 'data-qa-admin-link' auth-bootstrap-qa/auth-profile-snapshot.html
+
+          grep -q 'data-qa-scenario="verified"' auth-bootstrap-qa/auth-profile-snapshot-success.html
+          grep -q 'data-qa-profile-snapshot="false"' auth-bootstrap-qa/auth-profile-snapshot-success.html
+          grep -q 'data-qa-voter-after-auth="true"' auth-bootstrap-qa/auth-profile-snapshot-success.html
+          grep -q 'data-qa-snapshot-stored="true"' auth-bootstrap-qa/auth-profile-snapshot-success.html
+          grep -q 'data-qa-snapshot-user-id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"' auth-bootstrap-qa/auth-profile-snapshot-success.html
+          grep -q 'data-qa-snapshot-sensitive="false"' auth-bootstrap-qa/auth-profile-snapshot-success.html
+          grep -q 'data-qa-overflow="false"' auth-bootstrap-qa/auth-profile-snapshot-success.html
+          grep -q 'Alexandria Registry Participant' auth-bootstrap-qa/auth-profile-snapshot-success.html
+
+          grep -q 'data-qa-scenario="cleared"' auth-bootstrap-qa/auth-profile-snapshot-failed.html
+          grep -q 'data-qa-profile-snapshot="false"' auth-bootstrap-qa/auth-profile-snapshot-failed.html
+          grep -q 'data-qa-voter-after-auth="false"' auth-bootstrap-qa/auth-profile-snapshot-failed.html
+          grep -q 'data-qa-guest-actions="true"' auth-bootstrap-qa/auth-profile-snapshot-failed.html
+          grep -q 'data-qa-snapshot-stored="false"' auth-bootstrap-qa/auth-profile-snapshot-failed.html
+          grep -q 'data-qa-snapshot-sensitive="false"' auth-bootstrap-qa/auth-profile-snapshot-failed.html
+          grep -q 'data-qa-overflow="false"' auth-bootstrap-qa/auth-profile-snapshot-failed.html
       - name: Upload bootstrap evidence
         if: always()
         uses: actions/upload-artifact@v4
