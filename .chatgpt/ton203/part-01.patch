@@ -1,0 +1,144 @@
+must be between 1 and 5000");
++        Assert.notNull(lockTtl, "Ranking rebuild lock TTL is required");
++        Assert.notNull(lockRenewInterval, "Ranking rebuild lock renewal interval is required");
++        Assert.isTrue(!lockTtl.isNegative() && !lockTtl.isZero(),
++                "Ranking rebuild lock TTL must be positive");
++        Assert.isTrue(!lockRenewInterval.isNegative() && !lockRenewInterval.isZero(),
++                "Ranking rebuild lock renewal interval must be positive");
++        Assert.isTrue(lockRenewInterval.compareTo(lockTtl) < 0,
++                "Ranking rebuild lock renewal interval must be shorter than the lock TTL");
++    }
++}
+diff --git a/src/main/java/com/hungtvb/votesystem/ranking/RankingRebuildResult.java b/src/main/java/com/hungtvb/votesystem/ranking/RankingRebuildResult.java
+index b08e8b6..59240c8 100644
+--- a/src/main/java/com/hungtvb/votesystem/ranking/RankingRebuildResult.java
++++ b/src/main/java/com/hungtvb/votesystem/ranking/RankingRebuildResult.java
+@@ -8,7 +8,8 @@ public record RankingRebuildResult(
+         RedisRankingRepository.PublishState publishState,
+         RedisRankingRepository.RankingCounts previousCounts,
+         RedisRankingRepository.RankingCounts publishedCounts,
+-        int visiblePostCount,
++        long visiblePostCount,
++        int redisBatchCount,
+         long sourceRevision,
+         Instant publishedAt
+ ) {
+diff --git a/src/main/java/com/hungtvb/votesystem/ranking/RankingService.java b/src/main/java/com/hungtvb/votesystem/ranking/RankingService.java
+index 43d9706..a1b3225 100644
+--- a/src/main/java/com/hungtvb/votesystem/ranking/RankingService.java
++++ b/src/main/java/com/hungtvb/votesystem/ranking/RankingService.java
+@@ -4,9 +4,14 @@ import com.hungtvb.votesystem.common.error.ConflictException;
+ import com.hungtvb.votesystem.post.Post;
+ import com.hungtvb.votesystem.post.PostFilter;
+ import com.hungtvb.votesystem.post.PostRepository;
++import com.hungtvb.votesystem.post.RankingPostProjection;
+ import com.hungtvb.votesystem.post.PostSpecifications;
+ import io.micrometer.core.instrument.Counter;
+ import io.micrometer.core.instrument.MeterRegistry;
++import io.micrometer.core.instrument.Timer;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import org.springframework.beans.factory.annotation.Qualifier;
+ import org.springframework.dao.DataAccessException;
+ import org.springframework.data.domain.Page;
+ import org.springframework.data.domain.PageImpl;
+@@ -14,6 +19,7 @@ import org.springframework.data.domain.PageRequest;
+ import org.springframework.data.domain.Pageable;
+ import org.springframework.data.domain.Sort;
+ import org.springframework.data.jpa.domain.Specification;
++import org.springframework.scheduling.TaskScheduler;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.PlatformTransactionManager;
+ import org.springframework.transaction.support.TransactionTemplate;
+@@ -30,6 +36,8 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Objects;
+ import java.util.UUID;
++import java.util.concurrent.ScheduledFuture;
++import java.util.concurrent.atomic.AtomicBoolean;
+ import java.util.concurrent.atomic.AtomicReference;
+ import java.util.function.Consumer;
+ import java.util.function.Function;
+@@ -37,14 +45,17 @@ import java.util.stream.Collectors;
+ 
+ @Service
+ public class RankingService {
++    private static final Logger log = LoggerFactory.getLogger(RankingService.class);
+     private static final int FILTER_SCAN_CHUNK_SIZE = 200;
+     private static final int MAX_REBUILD_ATTEMPTS = 3;
+-    private static final Duration REBUILD_LOCK_TTL = Duration.ofMinutes(5);
+ 
+     private final RedisRankingRepository rankingRepository;
+     private final PostRepository postRepository;
+     private final RankingRevisionStore revisionStore;
+     private final RankingFormula formula;
++    private final RankingRebuildProperties rebuildProperties;
++    private final TaskScheduler rebuildTaskScheduler;
++    private final MeterRegistry meterRegistry;
+     private final TransactionTemplate transactionTemplate;
+     private final Clock clock = Clock.systemUTC();
+     private final Counter updates;
+@@ -55,17 +66,26 @@ public class RankingService {
+     private final Counter rebuildFailed;
+     private final Counter rebuildRejected;
+     private final Counter rebuildRetried;
++    private final Counter rebuildRowsScanned;
++    private final Counter rebuildRedisBatches;
++    private final Counter lockRenewalSucceeded;
++    private final Counter lockRenewalFailed;
+ 
+     public RankingService(RedisRankingRepository rankingRepository,
+                           PostRepository postRepository,
+                           RankingRevisionStore revisionStore,
+                           RankingFormula formula,
++                          RankingRebuildProperties rebuildProperties,
++                          @Qualifier("rankingRebuildTaskScheduler") TaskScheduler rebuildTaskScheduler,
+                           MeterRegistry meterRegistry,
+                           PlatformTransactionManager transactionManager) {
+         this.rankingRepository = rankingRepository;
+         this.postRepository = postRepository;
+         this.revisionStore = revisionStore;
+         this.formula = formula;
++        this.rebuildProperties = rebuildProperties;
++        this.rebuildTaskScheduler = rebuildTaskScheduler;
++        this.meterRegistry = meterRegistry;
+         this.transactionTemplate = new TransactionTemplate(transactionManager);
+         this.updates = meterRegistry.counter("vote.ranking.operations", "result", "update");
+         this.rebuilds = meterRegistry.counter("vote.ranking.operations", "result", "rebuild");
+@@ -75,6 +95,10 @@ public class RankingService {
+         this.rebuildFailed = meterRegistry.counter("vote.ranking.rebuild", "result", "failed");
+         this.rebuildRejected = meterRegistry.counter("vote.ranking.rebuild", "result", "rejected");
+         this.rebuildRetried = meterRegistry.counter("vote.ranking.rebuild", "result", "retried");
++        this.rebuildRowsScanned = meterRegistry.counter("vote.ranking.rebuild.rows", "result", "scanned");
++        this.rebuildRedisBatches = meterRegistry.counter("vote.ranking.rebuild.redis.batches", "result", "staged");
++        this.lockRenewalSucceeded = meterRegistry.counter("vote.ranking.rebuild.lock.renewals", "result", "succeeded");
++        this.lockRenewalFailed = meterRegistry.counter("vote.ranking.rebuild.lock.renewals", "result", "failed");
+     }
+ 
+     public void apply(RankingChangedEvent event) {
+@@ -145,67 +169,98 @@ public class RankingService {
+     public RankingRebuildResult rebuild(Consumer<RankingRebuildPreview> beforePublish) {
+         Objects.requireNonNull(beforePublish, "beforePublish is required");
+         rebuildRequested.increment();
++        Timer.Sample duration = Timer.start(meterRegistry);
++        Instant startedAt = clock.instant();
++        String outcome = "failed";
++        int retries = 0;
+         String token = UUID.randomUUID().toString();
+-        if (!rankingRepository.tryAcquireRebuildLock(token, REBUILD_LOCK_TTL)) {
+-            rebuildRejected.increment();
+-            throw new ConflictException("A ranking rebuild is already in progress");
+-        }
+ 
+         try {
+-            for (int attempt = 1; attempt <= MAX_REBUILD_ATTEMPTS; attempt++) {
+-                RankingRebuildPreview preview = prepareRebuildAttempt();
+-                AtomicReference<RankingRebuildResult> published = new AtomicReference<>();
+-                try {
+-                    RankingRebuildResult result = transactionTemplate.execute(status -> {
+-                        long currentRevision = revisionStore.lockAndRead();
+-                        if (currentRevision != preview.sourceRevision()) {
+-                            throw new RankingRevisionChangedException();
+-                        }
++            if (!rankingRepository.tryAcquireRebuildLock(token, rebuildProperties.lockTtl())) {
++  
