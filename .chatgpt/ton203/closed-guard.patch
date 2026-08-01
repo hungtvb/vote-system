@@ -1,0 +1,38 @@
+--- a/src/main/java/com/hungtvb/votesystem/ranking/RankingService.java
++++ b/src/main/java/com/hungtvb/votesystem/ranking/RankingService.java
+@@ -455,6 +455,7 @@
+     private final class LockWatchdog implements AutoCloseable {
+         private final String token;
+         private final AtomicBoolean lost = new AtomicBoolean();
++        private final AtomicBoolean closed = new AtomicBoolean();
+         private final AtomicReference<RuntimeException> failure = new AtomicReference<>();
+         private ScheduledFuture<?> renewal;
+ 
+@@ -487,15 +488,15 @@
+         }
+ 
+         private void renew() {
+-            if (lost.get()) return;
++            if (closed.get() || lost.get()) return;
+             try {
+                 if (rankingRepository.renewRebuildLock(token, rebuildProperties.lockTtl())) {
+-                    lockRenewalSucceeded.increment();
++                    if (!closed.get()) lockRenewalSucceeded.increment();
+                     return;
+                 }
+-                markLost(null);
++                if (!closed.get()) markLost(null);
+             } catch (RuntimeException exception) {
+-                markLost(exception);
++                if (!closed.get()) markLost(exception);
+             }
+         }
+ 
+@@ -509,6 +510,7 @@
+ 
+         @Override
+         public void close() {
++            closed.set(true);
+             if (renewal != null) renewal.cancel(false);
+         }
+     }
