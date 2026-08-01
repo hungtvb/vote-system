@@ -22,13 +22,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify and decode exact patch
+      - name: Decode and verify exact patch
         shell: bash
         run: |
           set -euo pipefail
           payload="$GITHUB_WORKSPACE/.chatgpt/ton127/ton127.patch.gz.b64"
           patch="$RUNNER_TEMP/ton127.patch"
-          echo '7b722f26933a8a430a4793c1e03d484bbfcf8cbcaebfefab222c5001fa205901  '"$payload" | sha256sum --check
           base64 --decode "$payload" | gzip --decompress > "$patch"
           echo '87cbaff945ef66a67e5962ed9c4618a203ec6e1ec62126211275c4c63d15496a  '"$patch" | sha256sum --check
 
