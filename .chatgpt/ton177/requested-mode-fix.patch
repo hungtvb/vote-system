@@ -1,0 +1,14 @@
+diff --git a/frontend/scripts/ton106_qa_server.py b/frontend/scripts/ton106_qa_server.py
+index 6ddb833..668039d 100644
+--- a/frontend/scripts/ton106_qa_server.py
++++ b/frontend/scripts/ton106_qa_server.py
+@@ -354,7 +354,8 @@ class Handler(base.Handler):
+         parsed = urlparse(self.path)
+         mode = self._fixture_mode()
+         if parsed.path == "/":
+-            self._reset_status_sequence(mode)
++            requested_mode = parse_qs(parsed.query).get("qa", [mode])[0]
++            self._reset_status_sequence(requested_mode)
+         if parsed.path == "/api/v1/system/status":
+             system_mode = self._next_system_mode(mode)
+ 
