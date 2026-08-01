@@ -1,0 +1,48 @@
+--- a/src/test/java/com/hungtvb/votesystem/admin/ranking/RankingRebuildScalabilityIntegrationTests.java
++++ b/src/test/java/com/hungtvb/votesystem/admin/ranking/RankingRebuildScalabilityIntegrationTests.java
+@@ -11,6 +11,7 @@
+ import io.micrometer.core.instrument.MeterRegistry;
+ import org.junit.jupiter.api.BeforeEach;
+ import org.junit.jupiter.api.Test;
++import org.mockito.ArgumentCaptor;
+ import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+ import org.springframework.boot.test.context.SpringBootTest;
+@@ -34,7 +35,6 @@
+ import java.time.Duration;
+ import java.time.Instant;
+ import java.util.ArrayList;
+-import java.util.Collections;
+ import java.util.List;
+ import java.util.Properties;
+ import java.util.UUID;
+@@ -126,14 +126,6 @@
+         postRepository.saveAllAndFlush(posts);
+         clearInvocations(postRepository, rankingRepository);
+ 
+-        List<Integer> observedBatchSizes = Collections.synchronizedList(new ArrayList<>());
+-        doAnswer(invocation -> {
+-            @SuppressWarnings("unchecked")
+-            List<?> batch = (List<?>) invocation.callRealMethod();
+-            observedBatchSizes.add(batch.size());
+-            return batch;
+-        }).when(postRepository).findVisibleRankingBatch(any(Pageable.class));
+-
+         long zaddBefore = commandCalls("zadd");
+         long expireBefore = commandCalls("expire");
+         double rowsBefore = counter("vote.ranking.rebuild.rows", "result", "scanned");
+@@ -143,8 +135,12 @@
+ 
+         assertEquals(125L, result.visiblePostCount());
+         assertEquals(4, result.redisBatchCount());
+-        assertEquals(List.of(40, 40, 40, 5), observedBatchSizes);
+-        assertTrue(observedBatchSizes.stream().allMatch(size -> size <= 40));
++        ArgumentCaptor<Pageable> pageRequests = ArgumentCaptor.forClass(Pageable.class);
++        verify(postRepository, times(4)).findVisibleRankingBatch(pageRequests.capture());
++        assertEquals(List.of(0, 1, 2, 3), pageRequests.getAllValues().stream()
++                .map(Pageable::getPageNumber)
++                .toList());
++        assertTrue(pageRequests.getAllValues().stream().allMatch(pageable -> pageable.getPageSize() <= 40));
+         verify(rankingRepository, times(4)).stageBatch(any(), any());
+         assertEquals(125d, counter("vote.ranking.rebuild.rows", "result", "scanned") - rowsBefore);
+         assertEquals(4d, counter("vote.ranking.rebuild.redis.batches", "result", "staged") - batchesBefore);
