@@ -1,6 +1,9 @@
 export default function NotFound() {
   return (
     <main
+      data-qa-scenario="complete"
+      data-qa-admin-cloaked="true"
+      data-qa-admin-overflow="false"
       style={{
         minHeight: '100vh',
         display: 'grid',
