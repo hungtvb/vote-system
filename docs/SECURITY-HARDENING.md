@@ -7,7 +7,7 @@ This document describes the security boundaries introduced by the August 2026 ha
 The `production` Spring profile fails startup unless all security-critical configuration is explicit and safe:
 
 - `JWT_SECRET` is at least 32 bytes, is not a committed placeholder, and has reasonable character diversity;
-- `CORS_ALLOWED_ORIGINS` contains only explicit HTTPS origins, with no wildcard or localhost entry;
+- `CORS_ALLOWED_ORIGINS` contains only canonical explicit HTTPS origins, with no wildcard, path, query, credentials, localhost, or loopback entry;
 - the refresh cookie is `Secure`, uses `SameSite=Strict` or `Lax`, and has a `__Secure-` name;
 - the OAuth session cookie is `Secure` and has a `__Secure-` name.
 
@@ -33,6 +33,7 @@ Every user row contains a monotonic `security_version`. Access JWTs contain the 
 
 The version increments on:
 
+- logout with an active refresh session;
 - logout-all;
 - administrator session revocation;
 - suspend or ban;
@@ -40,6 +41,8 @@ The version increments on:
 - promotion to administrator.
 
 A temporary restriction already rotates the version when it is created. Expiry normalization only cleans the stored status and does not rotate the version a second time.
+
+Single logout resolves the account only from an active refresh session. An expired, missing, or already-revoked refresh token cannot increment the version again, preventing repeated invalidation abuse. Other devices keep their refresh sessions and can obtain a token with the new version.
 
 This makes previously issued JWTs unusable immediately. Refresh-session rotation and replay detection continue to operate independently.
 
@@ -54,7 +57,9 @@ POST /api/v1/auth/social/{provider}/start
 POST /api/v1/auth/social/{provider}/link/start
 ```
 
-Requests with an `Origin` header must match the explicit CORS allow-list or the API's own origin. Requests without Origin but marked `Sec-Fetch-Site: cross-site` are rejected. Non-browser clients without either header remain supported.
+Requests with an `Origin` header must match the explicit CORS allow-list or the API origin from the framework-normalized request. The filter does not trust raw `X-Forwarded-Host` or `X-Forwarded-Proto` headers.
+
+Browser requests without Origin are allowed only for `Sec-Fetch-Site: same-origin` or `none`. `same-site`, `cross-site`, and unknown browser contexts are rejected. Non-browser clients without Origin and Fetch Metadata remain supported.
 
 Rejected browser requests return `403` with code `SESSION_ORIGIN_REJECTED`.
 
@@ -78,13 +83,11 @@ Public:
 Administrator only:
 
 ```text
-/actuator/info
-/actuator/metrics
-/actuator/metrics/**
+/actuator/** except health
 /api/v1/admin/**
 ```
 
-Springdoc remains disabled in the production profile.
+This deny-by-default matcher also protects newly exposed Actuator endpoints. Springdoc remains disabled in the production profile.
 
 ## Browser hardening
 
@@ -101,27 +104,33 @@ Vercel responses include:
 
 The static frontend never acts as the authorization boundary. Non-admin visits to `/admin` resolve to neutral not-found UI and do not call administrator APIs; the backend still enforces `ROLE_ADMIN` and current token state.
 
-## Supply-chain controls
+## Supply-chain and CI controls
 
 - Spring Boot is maintained on the latest supported 3.5 patch used by the project;
 - Dependabot covers Maven, npm, GitHub Actions, and Docker;
 - OSV Scanner checks dependencies on pull requests, main, and a weekly schedule;
-- CodeQL analyzes Java/Kotlin and JavaScript/TypeScript.
+- CodeQL analyzes Java/Kotlin and JavaScript/TypeScript;
+- the combined Docker runtime smoke explicitly activates the production profile;
+- runtime-smoke artifacts are scanned to ensure they contain no refresh cookie or JWT.
+
+The runtime smoke uses an ephemeral random JWT secret and temporary response-header storage outside the uploaded artifact directory.
 
 ## Deployment kill-tests
 
 Run these after deploying the backend and frontend:
 
 1. Confirm `/v3/api-docs` and `/swagger-ui/index.html` are unavailable.
-2. Confirm anonymous and USER tokens cannot read `/actuator/metrics`.
-3. Login, retain the access JWT, call logout-all, and confirm the retained JWT receives `401`.
-4. Revoke a user's sessions from admin and confirm their retained JWT receives `401`, even when no refresh session existed.
-5. Send refresh with `Origin: https://attacker.example` and confirm `403 SESSION_ORIGIN_REJECTED`.
-6. Stop or isolate Redis and confirm login returns `503 RATE_LIMIT_UNAVAILABLE` rather than bypassing the limiter.
-7. Verify refresh and OAuth cookies have the expected `__Secure-` names, `HttpOnly`, `Secure`, and SameSite attributes.
-8. Verify Vercel returns CSP, HSTS, frame, referrer, permissions, and content-type headers.
-9. Confirm a guest and a signed-in USER visiting `/admin` reach neutral 404 behavior and produce no `/api/v1/admin/**` requests.
-10. Confirm an ADMIN can still recover the system from maintenance mode.
+2. Confirm anonymous and USER tokens cannot read `/actuator`, `/actuator/info`, or `/actuator/metrics`.
+3. Login, retain the access JWT, call logout, and confirm the retained JWT receives `401`; confirm another device can refresh and remain signed in.
+4. Login again, retain the access JWT, call logout-all, and confirm the retained JWT receives `401` and every refresh session fails.
+5. Revoke a user's sessions from admin and confirm their retained JWT receives `401`, even when no refresh session existed.
+6. Send refresh with `Origin: https://attacker.example` plus forged forwarded headers and confirm `403 SESSION_ORIGIN_REJECTED`.
+7. Send a browser-style refresh with no Origin and `Sec-Fetch-Site: same-site`; confirm `403 SESSION_ORIGIN_REJECTED`.
+8. Stop or isolate Redis and confirm login returns `503 RATE_LIMIT_UNAVAILABLE` rather than bypassing the limiter.
+9. Verify refresh and OAuth cookies have the expected `__Secure-` names, `HttpOnly`, `Secure`, and SameSite attributes.
+10. Verify Vercel returns CSP, HSTS, frame, referrer, permissions, and content-type headers.
+11. Confirm a guest and a signed-in USER visiting `/admin` reach neutral 404 behavior and produce no `/api/v1/admin/**` requests.
+12. Confirm an ADMIN can still recover the system from maintenance mode.
 
 ## Rollout and rollback
 
