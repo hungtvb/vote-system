@@ -1,0 +1,63 @@
+name: Package UI UX Pro Max Skill
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/package-ui-ux-pro-max-skill.yml
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout upstream skill
+        uses: actions/checkout@v4
+        with:
+          repository: nextlevelbuilder/ui-ux-pro-max-skill
+          ref: v2.12.0
+          path: upstream
+          persist-credentials: false
+
+      - name: Build runtime bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_dir="$GITHUB_WORKSPACE/upstream/.claude/skills/ui-ux-pro-max"
+          bundle_dir="$RUNNER_TEMP/ui-ux-pro-max"
+
+          test -f "$source_dir/SKILL.md"
+          test -d "$source_dir/data"
+          test -d "$source_dir/scripts"
+          test -d "$source_dir/references"
+
+          mkdir -p "$bundle_dir"
+          cp -a "$source_dir/." "$bundle_dir/"
+          cp "$GITHUB_WORKSPACE/upstream/LICENSE" "$bundle_dir/LICENSE"
+
+          cat > "$bundle_dir/UPSTREAM.md" <<'EOF'
+          # Upstream source
+
+          - Repository: https://github.com/nextlevelbuilder/ui-ux-pro-max-skill
+          - Release: v2.12.0
+          - Runtime source: `.claude/skills/ui-ux-pro-max`
+          - License: MIT (see `LICENSE`)
+          EOF
+
+          cd "$RUNNER_TEMP"
+          zip -qr ui-ux-pro-max-skill-v2.12.0.zip ui-ux-pro-max
+          sha256sum ui-ux-pro-max-skill-v2.12.0.zip > ui-ux-pro-max-skill-v2.12.0.zip.sha256
+
+      - name: Upload skill bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-ux-pro-max-skill-v2.12.0
+          path: |
+            ${{ runner.temp }}/ui-ux-pro-max-skill-v2.12.0.zip
+            ${{ runner.temp }}/ui-ux-pro-max-skill-v2.12.0.zip.sha256
+          if-no-files-found: error
+          retention-days: 1
