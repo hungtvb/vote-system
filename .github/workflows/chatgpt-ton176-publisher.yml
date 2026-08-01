@@ -7,6 +7,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: chatgpt-ton176-publisher
+  cancel-in-progress: true
+
 jobs:
   publish:
     if: github.head_ref == 'automation/chatgpt-ton176-publish-61c0b8'
@@ -18,10 +22,14 @@ jobs:
       - name: Publish exact TON-176 patch
         env:
           TARGET_BRANCH: hungtvb2020/ton-176-public-frontend-read-only-banner-and-maintenance-screen
+          EXPECTED_PAYLOAD_SIZE: '36632'
+          EXPECTED_PAYLOAD_SHA256: 1bdc44332102251e5c5a371d8019a7ac167510d6cecdef76cc6b3e93ff07353b
           EXPECTED_TREE: 751bb5bbc9a5c0f3b0240797edad8ea30d23a700
         run: |
           set -euo pipefail
           cat .github/ton176-patch/part-* > /tmp/ton176.patch.gz.b64
+          test "$(wc -c < /tmp/ton176.patch.gz.b64)" = "$EXPECTED_PAYLOAD_SIZE"
+          test "$(sha256sum /tmp/ton176.patch.gz.b64 | cut -d' ' -f1)" = "$EXPECTED_PAYLOAD_SHA256"
           base64 --decode /tmp/ton176.patch.gz.b64 | gzip --decompress > /tmp/ton176.patch
           git config user.name "OpenAI ChatGPT"
           git config user.email "chatgpt@openai.com"
