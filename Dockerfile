@@ -17,7 +17,7 @@ COPY src ./src
 COPY --from=frontend-build /workspace/frontend/out ./src/main/resources/static
 RUN mvn --batch-mode --no-transfer-progress -DskipTests package
 
-FROM eclipse-temurin:21-jre-jammy
+FROM eclipse-temurin:25-jre-jammy
 WORKDIR /app
 
 RUN groupadd --system app && useradd --system --gid app --home-dir /app app
