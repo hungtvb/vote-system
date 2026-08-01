@@ -1,0 +1,373 @@
+   border: 2px dashed var(--navy);
+   background: color-mix(in srgb, var(--kraft) 16%, var(--paper));
+   color: var(--navy);
+-  cursor: pointer;
+   list-style: none;
+ }
+ 
++.voterMenu summary {
++  cursor: pointer;
++}
++
++.snapshotIdentity {
++  border-style: dotted;
++  cursor: progress;
++}
++
++.verificationPulse {
++  width: 10px;
++  height: 10px;
++  border: 2px solid var(--muted);
++  border-top-color: var(--seal);
++  border-radius: 50%;
++  animation: verification-pulse .8s linear infinite;
++}
++
++@keyframes verification-pulse {
++  to { transform: rotate(360deg); }
++}
++
+ .voterMenu summary::-webkit-details-marker {
+   display: none;
+ }
+@@ -254,7 +276,8 @@
+     font-size: 9px;
+   }
+ 
+-  .voterMenu summary {
++  .voterMenu summary,
++  .snapshotIdentity {
+     max-width: 160px;
+     grid-template-columns: 34px minmax(0, 1fr) 12px;
+     padding: 5px 6px;
+@@ -303,6 +326,10 @@
+   .chevron {
+     transition: none;
+   }
++
++  .verificationPulse {
++    animation: none;
++  }
+ }
+ 
+ .primaryButton:disabled,
+diff --git a/frontend/src/features/auth/components/VoterMasthead.tsx b/frontend/src/features/auth/components/VoterMasthead.tsx
+index 045c50c..37f69b9 100644
+--- a/frontend/src/features/auth/components/VoterMasthead.tsx
++++ b/frontend/src/features/auth/components/VoterMasthead.tsx
+@@ -6,6 +6,7 @@ import { ProfileDialog } from '@/features/profile/components/ProfileDialog';
+ import { PublicProfileDialog } from '@/features/profile/components/PublicProfileDialog';
+ import { updateActiveUserProfile } from '@/features/auth/hooks/useSession';
+ import type { Session, SocialProvider, UpdateUserProfileRequest, UserProfile } from '@/shared/api/types';
++import type { ProfilePresentationSnapshot } from '@/shared/auth/profile-snapshot';
+ import type { SocialProviderId } from '@/shared/api/social-auth-api';
+ import { useI18n } from '@/shared/i18n/I18nProvider';
+ import {
+@@ -19,6 +20,7 @@ interface VoterMastheadProps {
+   query: string;
+   session: Session | null;
+   profile: UserProfile | null;
++  profileSnapshot: ProfilePresentationSnapshot | null;
+   restoring: boolean;
+   readOnly: boolean;
+   socialProviders?: SocialProviderId[];
+@@ -36,6 +38,7 @@ export function VoterMasthead({
+   query,
+   session,
+   profile,
++  profileSnapshot,
+   restoring,
+   readOnly,
+   socialProviders = [],
+@@ -75,6 +78,7 @@ export function VoterMasthead({
+   }, [readOnly]);
+ 
+   const authenticated = Boolean(session && visibleProfile);
++  const restoringIdentity = restoring && !authenticated ? profileSnapshot : null;
+   const linkedProviders = new Set<SocialProvider>(visibleProfile?.linkedProviders ?? []);
+   const googleEnabled = socialProviders.includes('google');
+   const githubEnabled = socialProviders.includes('github');
+@@ -133,7 +137,25 @@ export function VoterMasthead({
+             <button type="button" aria-pressed={locale === 'en'} title={t('common', 'english')} onClick={() => setLocale('en')}>EN</button>
+           </div>
+ 
+-          {restoring && !authenticated && <span className={styles.restoring} role="status">{t('auth', 'restoring')}</span>}
++          {restoringIdentity ? (
++            <div
++              className={styles.snapshotIdentity}
++              role="status"
++              aria-live="polite"
++              aria-busy="true"
++              data-qa-profile-snapshot
++              data-qa-authoritative="false"
++            >
++              <BallotMark icon={restoringIdentity.avatarIcon} color={restoringIdentity.avatarColor} size="small" />
++              <span className={styles.identityCopy}>
++                <strong>{restoringIdentity.displayName}</strong>
++                <span>{restoringIdentity.roleLabel} · {t('auth', 'restoring')}</span>
++              </span>
++              <span className={styles.verificationPulse} aria-hidden="true" />
++            </div>
++          ) : restoring && !authenticated ? (
++            <span className={styles.restoring} role="status">{t('auth', 'restoring')}</span>
++          ) : null}
+ 
+           {!restoring && !authenticated && (
+             <div className={styles.guestActions} data-qa-guest-actions>
+diff --git a/frontend/src/features/auth/hooks/useSession.ts b/frontend/src/features/auth/hooks/useSession.ts
+index af56832..3887416 100644
+--- a/frontend/src/features/auth/hooks/useSession.ts
++++ b/frontend/src/features/auth/hooks/useSession.ts
+@@ -7,20 +7,29 @@ import { ApiError } from '@/shared/api/transport';
+ import type { Session, UpdateUserProfileRequest, UserProfile } from '@/shared/api/types';
+ import { userApi } from '@/shared/api/user-api';
+ import { resolveAuthProfile, sessionOnly } from '@/shared/auth/session-bootstrap';
++import {
++  clearProfileSnapshot,
++  readProfileSnapshot,
++  snapshotFromProfile,
++  type ProfilePresentationSnapshot,
++  writeProfileSnapshot
++} from '@/shared/auth/profile-snapshot';
+ 
+ interface SessionState {
+   session: Session | null;
+   profile: UserProfile | null;
++  profileSnapshot: ProfilePresentationSnapshot | null;
+   restoring: boolean;
+ }
+ 
+ class SessionTransitionCancelled extends Error {}
+ 
+-const SERVER_STATE: SessionState = { session: null, profile: null, restoring: true };
++const SERVER_STATE: SessionState = { session: null, profile: null, profileSnapshot: null, restoring: true };
+ let state: SessionState = SERVER_STATE;
+ let sessionEpoch = 0;
+ let restorePromise: Promise<void> | null = null;
+ let refreshPromise: Promise<Session> | null = null;
++let snapshotHydrated = false;
+ const listeners = new Set<() => void>();
+ 
+ function subscribe(listener: () => void) {
+@@ -41,9 +50,38 @@ function publish(next: Partial<SessionState>) {
+   for (const listener of listeners) listener();
+ }
+ 
++function browserStorage(): Storage | null {
++  if (typeof window === 'undefined') return null;
++  try {
++    return window.localStorage;
++  } catch {
++    return null;
++  }
++}
++
++function hydrateProfileSnapshotShared() {
++  if (snapshotHydrated) return;
++  snapshotHydrated = true;
++  const storage = browserStorage();
++  if (!storage) return;
++  publish({ profileSnapshot: readProfileSnapshot(storage) });
++}
++
++function replaceProfileSnapshotShared(profile: UserProfile): ProfilePresentationSnapshot {
++  const snapshot = snapshotFromProfile(profile);
++  const storage = browserStorage();
++  if (storage && state.profileSnapshot && state.profileSnapshot.userId !== profile.id) {
++    clearProfileSnapshot(storage);
++  }
++  if (storage && !writeProfileSnapshot(storage, profile)) clearProfileSnapshot(storage);
++  return snapshot;
++}
++
+ function clearSessionShared() {
+   sessionEpoch += 1;
+-  publish({ session: null, profile: null });
++  const storage = browserStorage();
++  if (storage) clearProfileSnapshot(storage);
++  publish({ session: null, profile: null, profileSnapshot: null });
+ }
+ 
+ async function prepareSession(next: Session) {
+@@ -59,7 +97,11 @@ async function prepareAndPublishSession(next: Session, expectedEpoch: number) {
+   const prepared = await prepareSession(next);
+   if (expectedEpoch !== sessionEpoch) throw new SessionTransitionCancelled();
+-  publish({ session: prepared.nextSession, profile: prepared.nextProfile });
++  publish({
++    session: prepared.nextSession,
++    profile: prepared.nextProfile,
++    profileSnapshot: replaceProfileSnapshotShared(prepared.nextProfile)
++  });
+   return prepared;
+ }
+ 
+@@ -119,7 +161,9 @@ async function updateProfileShared(payload: UpdateUserProfileRequest): Promise<U
+   const expectedEpoch = sessionEpoch;
+   const nextProfile = await runAuthorizedShared(activeSession =>
+     userApi.updateCurrent(payload, activeSession.accessToken));
+-  if (expectedEpoch === sessionEpoch) publish({ profile: nextProfile });
++  if (expectedEpoch === sessionEpoch) {
++    publish({ profile: nextProfile, profileSnapshot: replaceProfileSnapshotShared(nextProfile) });
++  }
+   return nextProfile;
+ }
+ 
+@@ -151,6 +195,7 @@ export function useSession() {
+   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+ 
+   useEffect(() => {
++    hydrateProfileSnapshotShared();
+     void ensureSessionRestore();
+   }, []);
+ 
+@@ -165,6 +210,7 @@ export function useSession() {
+   return {
+     session: snapshot.session,
+     profile: snapshot.profile,
++    profileSnapshot: snapshot.profileSnapshot,
+     restoring: snapshot.restoring,
+     saveSession,
+     updateProfile,
+diff --git a/frontend/src/features/ballots/components/BallotApp.tsx b/frontend/src/features/ballots/components/BallotApp.tsx
+index 5a6f27a..62a34e2 100644
+--- a/frontend/src/features/ballots/components/BallotApp.tsx
++++ b/frontend/src/features/ballots/components/BallotApp.tsx
+@@ -54,7 +54,7 @@ export function BallotApp() {
+   const { t, formatNumber } = useI18n();
+   const i18nRef = useRef({ t, formatNumber });
+   i18nRef.current = { t, formatNumber };
+-  const { session, profile, restoring, saveSession, runAuthorized, logout, logoutAll } = useSession();
++  const { session, profile, profileSnapshot, restoring, saveSession, runAuthorized, logout, logoutAll } = useSession();
+   const [systemStatus, setSystemStatus] = useState<PublicSystemStatus | null>(null);
+   const [systemStatusRefreshing, setSystemStatusRefreshing] = useState(false);
+   const [ballots, setBallots] = useState<Ballot[]>([]);
+@@ -469,6 +469,7 @@ export function BallotApp() {
+         query={queryInput}
+         session={session}
+         profile={profile}
++        profileSnapshot={profileSnapshot}
+         restoring={restoring}
+         readOnly={readOnly}
+         socialProviders={socialProviders}
+diff --git a/frontend/src/shared/auth/profile-snapshot.ts b/frontend/src/shared/auth/profile-snapshot.ts
+new file mode 100644
+index 0000000..715a212
+--- /dev/null
++++ b/frontend/src/shared/auth/profile-snapshot.ts
+@@ -0,0 +1,115 @@
++import type { AvatarColor, AvatarIcon, SocialProvider, UserProfile } from '../api/types';
++
++const STORAGE_KEY = 'vote-system.profile-presentation.v1';
++const SNAPSHOT_VERSION = 1 as const;
++const AVATAR_ICONS = new Set<AvatarIcon>([
++  'CITIZEN', 'ADVOCATE', 'THINKER', 'ORGANIZER', 'VOLUNTEER',
++  'CREATOR', 'LEADER', 'ANALYST', 'VISIONARY', 'BUILDER'
++]);
++const AVATAR_COLORS = new Set<AvatarColor>([
++  'NAVY', 'SEAL', 'KRAFT', 'GRAPHITE', 'MOSS', 'INK_BLUE'
++]);
++const ROLES = new Set(['USER', 'ADMIN']);
++const PROVIDERS = new Set<SocialProvider>(['GOOGLE', 'GITHUB']);
++
++export interface ProfilePresentationSnapshot {
++  version: typeof SNAPSHOT_VERSION;
++  userId: string;
++  displayName: string;
++  initials: string;
++  avatarIcon: AvatarIcon;
++  avatarColor: AvatarColor;
++  roleLabel: 'USER' | 'ADMIN';
++  linkedProviders: SocialProvider[];
++}
++
++export interface SnapshotStorage {
++  getItem(key: string): string | null;
++  setItem(key: string, value: string): void;
++  removeItem(key: string): void;
++}
++
++export function snapshotFromProfile(profile: UserProfile): ProfilePresentationSnapshot {
++  return {
++    version: SNAPSHOT_VERSION,
++    userId: profile.id,
++    displayName: profile.displayName,
++    initials: profile.initials,
++    avatarIcon: profile.avatarIcon,
++    avatarColor: profile.avatarColor,
++    roleLabel: ROLES.has(profile.role) ? profile.role : 'USER',
++    linkedProviders: [...new Set(profile.linkedProviders)].filter(provider => PROVIDERS.has(provider))
++  };
++}
++
++export function readProfileSnapshot(storage: SnapshotStorage): ProfilePresentationSnapshot | null {
++  try {
++    const raw = storage.getItem(STORAGE_KEY);
++    if (!raw) return null;
++    const parsed: unknown = JSON.parse(raw);
++    if (!isProfileSnapshot(parsed)) {
++      storage.removeItem(STORAGE_KEY);
++      return null;
++    }
++    return parsed;
++  } catch {
++    try {
++      storage.removeItem(STORAGE_KEY);
++    } catch {
++      // Storage can be unavailable in privacy-restricted browsers. Auth remains authoritative.
++    }
++    return null;
++  }
++}
++
++export function writeProfileSnapshot(
++  storage: SnapshotStorage,
++  profile: UserProfile
++): ProfilePresentationSnapshot | null {
++  const snapshot = snapshotFromProfile(profile);
++  try {
++    storage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
++    return snapshot;
++  } catch {
++    return null;
++  }
++}
++
++export function clearProfileSnapshot(storage: SnapshotStorage): void {
++  try {
++    storage.removeItem(STORAGE_KEY);
++  } catch {
++    // Clearing browser presentation state must never break logout or session invalidation.
++  }
++}
++
++export function profileSnapshotStorageKey(): string {
++  return STORAGE_KEY;
++}
++
++function isProfileSnapshot(value: unknown): value is ProfilePresentationSnapshot {
++  if (!isRecord(value) || value.version !== SNAPSHOT_VERSION) return false;
++  const keys = Object.keys(value).sort();
++  const expectedKeys = [
++    'avatarColor', 'avatarIcon', 'displayName', 'initials',
++    'linkedProviders', 'roleLabel', 'userId', 'version'
++  ];
++  if (keys.length !== expectedKeys.length || keys.some((key, index) => key !== expectedKeys[index])) return false;
++  if (!isBoundedString(value.userId, 1, 64)) return false;
++  if (!isBoundedString(value.displayName, 2, 40)) return false;
++  if (!isBoundedString(value.initials, 1, 8)) return false;
++  if (!AVATAR_ICONS.has(value.avatarIcon as AvatarIcon)) return false;
++  if (!AVATAR_COLORS.has(value.avatarColor as AvatarColor)) return false;
++  if (!ROLES.has(value.roleLabel as string)) return false;
++  if (!Array.isArray(value.linkedProviders) || value.linkedProviders.length > PROVIDERS.size) return false;
++  return value.linkedProviders.every(provider => typeof provider === 'string' && PROVIDERS.has(provider as SocialProvider))
++    && new Set(value.linkedProviders).size === value.linkedProviders.length;
++}
++
++function isRecord(value: unknown): value is Record<string, unknown> {
++  return typeof value === 'object' && value !== null && !Array.isArray(value);
++}
++
++function isBoundedString(value: unknown, min: number, max: number): value is string {
++  return typeof value === 'string' && value.length >= min && value.length <= max;
++}
++diff --git a/fronten
