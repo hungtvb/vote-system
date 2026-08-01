@@ -1,0 +1,184 @@
+diff --git a/.env.example b/.env.example
+index a04de55..4da5421 100644
+--- a/.env.example
++++ b/.env.example
+@@ -10,6 +10,10 @@ VOTE_STREAM_HEARTBEAT_MS=15000
+ VOTE_STREAM_TIMEOUT_MS=1800000
+ VOTE_SIDE_EFFECT_QUEUE_CAPACITY=200
+ VOTE_SIDE_EFFECT_SHUTDOWN_WAIT_SECONDS=10
++# Ranking rebuilds scan PostgreSQL in bounded pages and renew a token-checked Redis lease.
++RANKING_REBUILD_BATCH_SIZE=500
++RANKING_REBUILD_LOCK_TTL=PT5M
++RANKING_REBUILD_LOCK_RENEW_INTERVAL=PT1M
+ RATE_LIMIT_ENABLED=true
+ # Non-authentication operations may fail open when Redis is unavailable.
+ # Login, registration, refresh, and social-login limits always fail closed.
+diff --git a/docs/API.md b/docs/API.md
+index 9ef0caa..f5ccf73 100644
+--- a/docs/API.md
++++ b/docs/API.md
+@@ -272,6 +272,11 @@ vote.operation.total
+ vote.operation.stage
+ vote.side_effect.execution
+ vote.ranking.operations
++vote.ranking.rebuild
++vote.ranking.rebuild.duration
++vote.ranking.rebuild.rows
++vote.ranking.rebuild.redis.batches
++vote.ranking.rebuild.lock.renewals
+ ```
+ 
+ Metric tags and logs must not contain user/ballot IDs, email, cookies, refresh hashes, or raw tokens.
+diff --git a/docs/DEPLOY-VERCEL-RAILWAY.md b/docs/DEPLOY-VERCEL-RAILWAY.md
+index 02c4be6..2c86df0 100644
+--- a/docs/DEPLOY-VERCEL-RAILWAY.md
++++ b/docs/DEPLOY-VERCEL-RAILWAY.md
+@@ -254,6 +254,11 @@ vote.operation.total
+ vote.operation.stage
+ vote.side_effect.execution
+ vote.ranking.operations
++vote.ranking.rebuild
++vote.ranking.rebuild.duration
++vote.ranking.rebuild.rows
++vote.ranking.rebuild.redis.batches
++vote.ranking.rebuild.lock.renewals
+ vote.system.mode.requests
+ hikaricp.*
+ ```
+diff --git a/docs/README.md b/docs/README.md
+index ac9f75b..a984790 100644
+--- a/docs/README.md
++++ b/docs/README.md
+@@ -137,6 +137,11 @@ vote.operation.total
+ vote.operation.stage
+ vote.side_effect.execution
+ vote.ranking.operations
++vote.ranking.rebuild
++vote.ranking.rebuild.duration
++vote.ranking.rebuild.rows
++vote.ranking.rebuild.redis.batches
++vote.ranking.rebuild.lock.renewals
+ ```
+ 
+ `X-Request-ID` is reused only when it matches the safe format; otherwise the backend generates one. Logs and metric tags must never contain user IDs, ballot IDs, emails, cookies, refresh-token hashes, or raw tokens.
+diff --git a/src/main/java/com/hungtvb/votesystem/admin/ranking/AdminRankingService.java b/src/main/java/com/hungtvb/votesystem/admin/ranking/AdminRankingService.java
+index 48be625..ee72f09 100644
+--- a/src/main/java/com/hungtvb/votesystem/admin/ranking/AdminRankingService.java
++++ b/src/main/java/com/hungtvb/votesystem/admin/ranking/AdminRankingService.java
+@@ -40,7 +40,8 @@ public class AdminRankingService {
+         metadata.put("new_hot_count", Long.toString(preview.stagedCounts().hot()));
+         metadata.put("new_day_count", Long.toString(preview.stagedCounts().day()));
+         metadata.put("new_week_count", Long.toString(preview.stagedCounts().week()));
+-        metadata.put("visible_posts", Integer.toString(preview.visiblePostCount()));
++        metadata.put("visible_posts", Long.toString(preview.visiblePostCount()));
++        metadata.put("redis_batches", Integer.toString(preview.redisBatchCount()));
+         metadata.put("source_revision", Long.toString(preview.sourceRevision()));
+         auditLogService.append(new AdminAuditEvent(actorId, AdminAuditAction.ADMIN_REBUILD_RANKING,
+                 AdminAuditTargetType.RANKING, "ALL", reason, metadata));
+diff --git a/src/main/java/com/hungtvb/votesystem/post/PostRepository.java b/src/main/java/com/hungtvb/votesystem/post/PostRepository.java
+index 198bc8b..45e32d9 100644
+--- a/src/main/java/com/hungtvb/votesystem/post/PostRepository.java
++++ b/src/main/java/com/hungtvb/votesystem/post/PostRepository.java
+@@ -17,6 +17,16 @@ import java.util.UUID;
+ public interface PostRepository extends JpaRepository<Post, UUID>, JpaSpecificationExecutor<Post> {
+     Page<Post> findAllByOrderByCreatedAtDesc(Pageable pageable);
+ 
++    @Query("""
++            select post.id as id,
++                   post.voteScore as voteScore,
++                   post.createdAt as createdAt
++              from Post post
++             where post.moderationStatus = com.hungtvb.votesystem.post.ModerationStatus.VISIBLE
++             order by post.id asc
++            """)
++    java.util.List<RankingPostProjection> findVisibleRankingBatch(Pageable pageable);
++
+     Optional<Post> findByIdAndModerationStatus(UUID postId, ModerationStatus moderationStatus);
+ 
+     @Lock(LockModeType.PESSIMISTIC_WRITE)
+diff --git a/src/main/java/com/hungtvb/votesystem/post/RankingPostProjection.java b/src/main/java/com/hungtvb/votesystem/post/RankingPostProjection.java
+new file mode 100644
+index 0000000..782cc20
+--- /dev/null
++++ b/src/main/java/com/hungtvb/votesystem/post/RankingPostProjection.java
+@@ -0,0 +1,16 @@
++package com.hungtvb.votesystem.post;
++
++import java.time.Instant;
++import java.util.UUID;
++
++/**
++ * Lightweight ranking rebuild row. Keeping the projection outside the ranking package
++ * prevents a bounded scan from materializing full ballot entities.
++ */
++public interface RankingPostProjection {
++    UUID getId();
++
++    long getVoteScore();
++
++    Instant getCreatedAt();
++}
+diff --git a/src/main/java/com/hungtvb/votesystem/ranking/RankingRebuildConfiguration.java b/src/main/java/com/hungtvb/votesystem/ranking/RankingRebuildConfiguration.java
+new file mode 100644
+index 0000000..82f90d8
+--- /dev/null
++++ b/src/main/java/com/hungtvb/votesystem/ranking/RankingRebuildConfiguration.java
+@@ -0,0 +1,22 @@
++package com.hungtvb.votesystem.ranking;
++
++import org.springframework.boot.context.properties.EnableConfigurationProperties;
++import org.springframework.context.annotation.Bean;
++import org.springframework.context.annotation.Configuration;
++import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
++
++@Configuration
++@EnableConfigurationProperties(RankingRebuildProperties.class)
++public class RankingRebuildConfiguration {
++
++    @Bean(name = "rankingRebuildTaskScheduler")
++    ThreadPoolTaskScheduler rankingRebuildTaskScheduler() {
++        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
++        scheduler.setPoolSize(1);
++        scheduler.setThreadNamePrefix("ranking-rebuild-lock-");
++        scheduler.setDaemon(true);
++        scheduler.setRemoveOnCancelPolicy(true);
++        scheduler.setWaitForTasksToCompleteOnShutdown(false);
++        return scheduler;
++    }
++}
+diff --git a/src/main/java/com/hungtvb/votesystem/ranking/RankingRebuildPreview.java b/src/main/java/com/hungtvb/votesystem/ranking/RankingRebuildPreview.java
+index 2382aa6..4b3ad23 100644
+--- a/src/main/java/com/hungtvb/votesystem/ranking/RankingRebuildPreview.java
++++ b/src/main/java/com/hungtvb/votesystem/ranking/RankingRebuildPreview.java
+@@ -7,7 +7,8 @@ public record RankingRebuildPreview(
+         RedisRankingRepository.RankingMetadata previousMetadata,
+         RedisRankingRepository.RankingCounts previousCounts,
+         RedisRankingRepository.RankingCounts stagedCounts,
+-        int visiblePostCount,
++        long visiblePostCount,
++        int redisBatchCount,
+         long sourceRevision,
+         Instant preparedAt
+ ) {
+diff --git a/src/main/java/com/hungtvb/votesystem/ranking/RankingRebuildProperties.java b/src/main/java/com/hungtvb/votesystem/ranking/RankingRebuildProperties.java
+new file mode 100644
+index 0000000..26c3297
+--- /dev/null
++++ b/src/main/java/com/hungtvb/votesystem/ranking/RankingRebuildProperties.java
+@@ -0,0 +1,26 @@
++package com.hungtvb.votesystem.ranking;
++
++import org.springframework.boot.context.properties.ConfigurationProperties;
++import org.springframework.util.Assert;
++
++import java.time.Duration;
++
++@ConfigurationProperties("app.ranking.rebuild")
++public record RankingRebuildProperties(
++        int batchSize,
++        Duration lockTtl,
++        Duration lockRenewInterval
++) {
++    public RankingRebuildProperties {
++        Assert.isTrue(batchSize > 0 && batchSize <= 5_000,
++                "Ranking rebuild batch size 
