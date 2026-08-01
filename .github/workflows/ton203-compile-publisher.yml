@@ -1,0 +1,84 @@
+name: TON-203 Compile Publisher
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ton203-compile-publisher.yml
+      - .chatgpt/ton203/**
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout publisher branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reassemble and verify exact patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          parts="$GITHUB_WORKSPACE/.chatgpt/ton203"
+          patch="$RUNNER_TEMP/ton203.patch"
+
+          cat > "$RUNNER_TEMP/parts.sha256" <<'SHA'
+          475f2c19e4ba811bf3e0debfdc3e066be76a02a27ccac2ccf4b09fadee0341e7  part-00.patch
+          7628f7501f8beb4c0f760036bc63e9e1c7c99fac6217ce78bac14d9ab680aaea  part-01.patch
+          eb15a32b8bbb1b497b0c82a4d31b3f489ebd1d1edd4d57b51a3c4b278f6d1259  part-02.patch
+          0968476d4d0ca71a2478d8365d0ed299b2aa6dd2e59e8a3a256349653da86344  part-03.patch
+          e3cfc57fee1873a685de3c70e20177efd34a2d1c97651baa4e109d776b36c233  part-04.patch
+          1eaef05fa52a4eb074091b568f1bd8a3c8b5eb6a6500c2ae3a40097d6fff141c  part-05.patch
+          75920126edfada61a4240e2a7d189706e73f23c980f1c1baa135ce87ea9412d2  part-06.patch
+          SHA
+
+          (
+            cd "$parts"
+            sha256sum --check "$RUNNER_TEMP/parts.sha256"
+            cat part-00.patch part-01.patch part-02.patch part-03.patch part-04.patch part-05.patch part-06.patch > "$patch"
+          )
+          echo 'c83fa01d299dd775775fef29b496ade0aa48cec22526a1e777e5528e3e1d120e  '"$patch" | sha256sum --check
+
+      - name: Apply exact TON-203 source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch="$RUNNER_TEMP/ton203.patch"
+          expected_base='c1fc52a0820c16c1299dbc5417d6a4e41566d673'
+          test "${{ github.event.pull_request.base.sha }}" = "$expected_base"
+          git checkout --detach "$expected_base"
+          git apply --check "$patch"
+          git apply "$patch"
+          git diff --check
+          git add --all
+          test "$(git write-tree)" = '50c391220c900af76723d1041a9a73ae2547cb64'
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Compile backend
+        run: mvn --batch-mode --no-transfer-progress -DskipTests compile
+
+      - name: Run TON-203 focused integration tests
+        run: mvn --batch-mode --no-transfer-progress -Dtest=RankingRebuildScalabilityIntegrationTests test
+
+      - name: Publish task branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'vote-system-automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git commit -m 'TON-203 Scale ranking rebuild batching and lock renewal'
+          git push --force-with-lease=refs/heads/hungtvb2020/ton-203-be-scale-ranking-rebuild-with-batching-pipelining-and-lock:c1fc52a0820c16c1299dbc5417d6a4e41566d673 \
+            origin HEAD:refs/heads/hungtvb2020/ton-203-be-scale-ranking-rebuild-with-batching-pipelining-and-lock
