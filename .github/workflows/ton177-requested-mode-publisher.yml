@@ -1,0 +1,83 @@
+name: TON-177 Requested Mode Publisher
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ton177-requested-mode-publisher.yml
+      - .chatgpt/ton177/requested-mode-fix.patch
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout publisher branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify requested-mode fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_patch="$GITHUB_WORKSPACE/.chatgpt/ton177/requested-mode-fix.patch"
+          patch="$RUNNER_TEMP/requested-mode-fix.patch"
+          expected_head='ce2091d5c1570a1b27a656f8c04d5d487bae28e3'
+
+          echo 'c8fad3bc3eee452fd810225a735aedc7e748f057776b275cf3cf6b3a9fbafcf3  '"$source_patch" | sha256sum --check
+          cp "$source_patch" "$patch"
+          git checkout --detach "$expected_head"
+          git apply --check "$patch"
+          git apply "$patch"
+          git diff --check
+          python3 -m py_compile frontend/scripts/ton106_qa_server.py
+          rm -rf frontend/scripts/__pycache__
+
+          mkdir -p frontend/out
+          printf '<!doctype html><html><body>QA</body></html>\n' > frontend/out/index.html
+          python3 frontend/scripts/ton106_qa_server.py > "$RUNNER_TEMP/server.log" 2>&1 &
+          server_pid=$!
+          cleanup() {
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+            rm -rf frontend/out
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then
+              break
+            fi
+            test "$attempt" -lt 40
+            sleep 0.25
+          done
+
+          for browser in 1 2; do
+            jar="$RUNNER_TEMP/cookies-$browser"
+            curl --fail --silent -c "$jar" 'http://127.0.0.1:4173/?qa=maintenance-retry' >/dev/null
+            first=$(curl --fail --silent -b "$jar" http://127.0.0.1:4173/api/v1/system/status | python3 -c 'import json,sys; print(json.load(sys.stdin)["mode"])')
+            second=$(curl --fail --silent -b "$jar" http://127.0.0.1:4173/api/v1/system/status | python3 -c 'import json,sys; print(json.load(sys.stdin)["mode"])')
+            test "$first" = 'MAINTENANCE'
+            test "$second" = 'NORMAL'
+          done
+
+          cleanup
+          trap - EXIT
+          git add frontend/scripts/ton106_qa_server.py
+          test "$(git write-tree)" = '3024ab28d2c5c4e6f968db2a3a316cc9a318569a'
+
+      - name: Publish task branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'vote-system-automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git commit -m 'fix TON-177 reset retry sequence from requested fixture'
+          git push --force-with-lease=refs/heads/hungtvb2020/ton-177-maintenance-mode-production-recovery-and-regression-qa:ce2091d5c1570a1b27a656f8c04d5d487bae28e3 \
+            origin HEAD:refs/heads/hungtvb2020/ton-177-maintenance-mode-production-recovery-and-regression-qa
