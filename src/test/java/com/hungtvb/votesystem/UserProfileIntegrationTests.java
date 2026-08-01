@@ -1,6 +1,7 @@
 package com.hungtvb.votesystem;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hungtvb.votesystem.security.TokenService;
 import com.hungtvb.votesystem.user.AppUser;
 import com.hungtvb.votesystem.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -9,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -18,6 +20,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -41,7 +44,6 @@ class UserProfileIntegrationTests {
     static void configureInfrastructure(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
         registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.data.redis.url", () -> "redis://" + redis.getHost() + ":" + redis.getMappedPort(6379));
     }
 
@@ -91,7 +93,7 @@ class UserProfileIntegrationTests {
         );
 
         mockMvc.perform(patch("/api/v1/users/me")
-                        .with(jwt().jwt(jwt -> jwt.subject(user.getId().toString())))
+                        .with(currentUserJwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(payload)))
                 .andExpect(status().isOk())
@@ -114,9 +116,16 @@ class UserProfileIntegrationTests {
         );
 
         mockMvc.perform(patch("/api/v1/users/me")
-                        .with(jwt().jwt(jwt -> jwt.subject(user.getId().toString())))
+                        .with(currentUserJwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(payload)))
                 .andExpect(status().isBadRequest());
+    }
+
+    private JwtRequestPostProcessor currentUserJwt() {
+        return jwt().jwt(token -> token
+                .subject(user.getId().toString())
+                .claim(TokenService.ROLES_CLAIM, List.of(user.getRole().name()))
+                .claim(TokenService.SECURITY_VERSION_CLAIM, user.getSecurityVersion()));
     }
 }
