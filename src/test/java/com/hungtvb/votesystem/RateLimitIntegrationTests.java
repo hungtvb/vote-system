@@ -21,6 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @Testcontainers
 @SpringBootTest(properties = {
+        "app.rate-limit.enabled=true",
         "app.rate-limit.register.limit=2",
         "app.rate-limit.register.window=PT1M",
         "app.rate-limit.fail-open=false"
