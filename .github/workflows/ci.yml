@@ -234,6 +234,56 @@ jobs:
           capture reduced-motion 375 812 reduced-motion 3 --force-prefers-reduced-motion=reduce
           grep -q 'data-qa-reduced-motion="true"' visual-qa/reduced-motion.html
           grep -q 'data-qa-reduced-scroll="auto"' visual-qa/reduced-motion.html
+
+          # TON-177 system-mode matrix: public reads remain usable in READ_ONLY.
+          for spec in '1440,900:desktop' '768,1024:tablet' '390,844:390' '375,812:375' '320,568:320'; do
+            size=${spec%%:*}
+            name=${spec##*:}
+            width=${size%%,*}
+            height=${size##*,}
+            capture "read-only-${name}" "$width" "$height" read-only 3
+            file="visual-qa/read-only-${name}.html"
+            grep -q 'data-qa-scenario="complete"' "$file"
+            grep -q 'data-qa-system-mode="READ_ONLY"' "$file"
+            grep -q 'data-qa-create-disabled="true"' "$file"
+            grep -q 'data-qa-register-disabled="true"' "$file"
+            grep -q 'data-qa-login-disabled="false"' "$file"
+            grep -q 'data-qa-vote-options="6"' "$file"
+            grep -q 'data-qa-vote-options-disabled="6"' "$file"
+            grep -q 'data-qa-touch-violations="0"' "$file"
+            grep -q 'A long administrator-authored operating notice verifies wrapping on compact screens.' "$file"
+          done
+
+          capture auth-read-only-mobile 390 844 auth-read-only 3
+          grep -q 'data-qa-scenario="complete"' visual-qa/auth-read-only-mobile.html
+          grep -q 'data-qa-voter-after-auth="true"' visual-qa/auth-read-only-mobile.html
+          grep -q 'data-qa-owner-actions="3"' visual-qa/auth-read-only-mobile.html
+          grep -q 'data-qa-owner-actions-disabled="3"' visual-qa/auth-read-only-mobile.html
+          grep -q 'data-qa-profile-edit-disabled="true"' visual-qa/auth-read-only-mobile.html
+          grep -q 'data-qa-provider-links-disabled="2"' visual-qa/auth-read-only-mobile.html
+          grep -q 'data-qa-touch-violations="0"' visual-qa/auth-read-only-mobile.html
+
+          # MAINTENANCE replaces the public workspace at every supported viewport.
+          for spec in '1440,900:desktop' '768,1024:tablet' '390,844:390' '375,812:375' '320,568:320'; do
+            size=${spec%%:*}
+            name=${spec##*:}
+            width=${size%%,*}
+            height=${size##*,}
+            capture "maintenance-${name}" "$width" "$height" maintenance 0
+            file="visual-qa/maintenance-${name}.html"
+            grep -q 'data-qa-scenario="complete"' "$file"
+            grep -q 'data-qa-system-mode="MAINTENANCE"' "$file"
+            grep -q 'data-qa-system-retry="true"' "$file"
+            grep -q 'data-qa-create-present="false"' "$file"
+            grep -q 'data-qa-touch-violations="0"' "$file"
+            grep -q 'A long administrator-authored operating notice verifies wrapping on compact screens.' "$file"
+          done
+
+          capture maintenance-retry-mobile 390 844 maintenance-retry 3
+          grep -q 'data-qa-scenario="restored"' visual-qa/maintenance-retry-mobile.html
+          grep -q 'data-qa-system-mode=""' visual-qa/maintenance-retry-mobile.html
+          grep -q 'data-qa-create-present="true"' visual-qa/maintenance-retry-mobile.html
+          grep -q 'data-qa-touch-violations="0"' visual-qa/maintenance-retry-mobile.html
       - name: Upload visual QA evidence
         if: always()
         uses: actions/upload-artifact@v4
