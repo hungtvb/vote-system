@@ -63,19 +63,39 @@ jobs:
           npm test
           npm run build
 
-      - name: Publish clean task source
+      - name: Publish allowlisted task source
         shell: bash
         run: |
           set -euo pipefail
           base='1b5a865b1973fd1d7ced76b65ffb28f031a1d14d'
-          rm -rf frontend/.test-dist frontend/scripts/__pycache__
-          git checkout "$base" -- .github/workflows/auth-bootstrap-qa.yml frontend/tsconfig.json
+
+          rm -rf frontend/.test-dist frontend/.next frontend/scripts/__pycache__
+          git restore --source="$base" --staged --worktree \
+            .github/workflows/auth-bootstrap-qa.yml \
+            frontend/tsconfig.json \
+            frontend/next-env.d.ts
+
+          cat > "$RUNNER_TEMP/expected-files" <<'FILES'
+          frontend/scripts/ton106_qa_server.py
+          frontend/src/features/auth/components/VoterMasthead.module.scss
+          frontend/src/features/auth/components/VoterMasthead.tsx
+          frontend/src/features/auth/hooks/useSession.ts
+          frontend/src/features/ballots/components/BallotApp.tsx
+          frontend/src/shared/auth/profile-snapshot.ts
+          frontend/src/shared/auth/tests/profile-snapshot.test.ts
+          FILES
+          sort -o "$RUNNER_TEMP/expected-files" "$RUNNER_TEMP/expected-files"
+          git status --short | awk '{print $2}' | sort > "$RUNNER_TEMP/actual-files"
+          echo 'TON-127 publish allowlist:'
+          cat "$RUNNER_TEMP/actual-files"
+          diff -u "$RUNNER_TEMP/expected-files" "$RUNNER_TEMP/actual-files"
           git diff --check
-          test -z "$(git status --short | grep -E 'frontend/(\.test-dist|scripts/__pycache__)' || true)"
+
           git config user.name 'vote-system-automation'
           git config user.email 'actions@users.noreply.github.com'
-          git add --all
+          xargs -a "$RUNNER_TEMP/expected-files" git add --
           git commit -m 'TON-127 Add safe profile presentation snapshot'
-          test "$(git diff --name-only "$base" HEAD | wc -l)" -eq 7
+          git diff --name-only "$base" HEAD | sort > "$RUNNER_TEMP/committed-files"
+          diff -u "$RUNNER_TEMP/expected-files" "$RUNNER_TEMP/committed-files"
           git push --force-with-lease=refs/heads/hungtvb2020/ton-127-fe-add-safe-profile-snapshot-for-instant-masthead-rendering:$base \
             origin HEAD:refs/heads/hungtvb2020/ton-127-fe-add-safe-profile-snapshot-for-instant-masthead-rendering
