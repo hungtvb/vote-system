@@ -29,18 +29,58 @@ jobs:
           parts_dir="$GITHUB_WORKSPACE/.chatgpt/ton177"
           patch="$RUNNER_TEMP/ton177-source.patch"
 
-          echo 'e200c87790ea27f3ad7202330f73b928f3b02e22ddb979f987cdd751fb8ef39a  part-00.patch' > "$RUNNER_TEMP/parts.sha256"
-          echo 'cecc3ad43c4f2631e110d8196f96c6bd3d8dd1b6d6d940faeb6b585609be413b  part-01.patch' >> "$RUNNER_TEMP/parts.sha256"
-          echo '95726485e247aadc69b53a6404aafcfe502df9067c9b9db35e96f06dd39545ae  part-02.patch' >> "$RUNNER_TEMP/parts.sha256"
-          echo '0a861c08d83801468441982d09d89518f92f242610d87ddf6f313ee68a6d191c  part-03.patch' >> "$RUNNER_TEMP/parts.sha256"
-          echo 'b9c4d72101981298920d97f2e48519c965f2fe1b45af977940aae3e80820668b  part-04.patch' >> "$RUNNER_TEMP/parts.sha256"
-          echo 'eeb207c24819870ac7e9977ab2a4b4459e3a7555458b5cef6b4201b4d1252b64  part-05.patch' >> "$RUNNER_TEMP/parts.sha256"
+          echo 'e200c87790ea27f3ad7202330f73b928f3b02e22ddb979f987cdd751fb8ef39a  part-00.patch' > "$RUNNER_TEMP/raw-parts.sha256"
+          echo 'cecc3ad43c4f2631e110d8196f96c6bd3d8dd1b6d6d940faeb6b585609be413b  part-01.patch' >> "$RUNNER_TEMP/raw-parts.sha256"
+          echo '95726485e247aadc69b53a6404aafcfe502df9067c9b9db35e96f06dd39545ae  part-02.patch' >> "$RUNNER_TEMP/raw-parts.sha256"
+          echo '0a861c08d83801468441982d09d89518f92f242610d87ddf6f313ee68a6d191c  part-03.patch' >> "$RUNNER_TEMP/raw-parts.sha256"
+          echo '34eb305400b5b42ec73fa7746aaa1e1dbc8c477ff98ae3a0282163b96543ab30  part-04.patch' >> "$RUNNER_TEMP/raw-parts.sha256"
+          echo '8c2f2e8cbd3353404dedd9887dffe0f7b21423cf857965cb9b602d6807c6168e  part-05.patch' >> "$RUNNER_TEMP/raw-parts.sha256"
 
           (
             cd "$parts_dir"
-            sha256sum --check "$RUNNER_TEMP/parts.sha256"
-            cat part-00.patch part-01.patch part-02.patch part-03.patch part-04.patch part-05.patch > "$patch"
+            sha256sum --check "$RUNNER_TEMP/raw-parts.sha256"
           )
+
+          python3 - "$parts_dir/part-04.patch" "$RUNNER_TEMP/part-04.patch" '+diff --git a/scripts/ci/runtime-smoke.sh' <<'PY'
+          from pathlib import Path
+          import sys
+
+          source, target, marker = sys.argv[1:]
+          data = Path(source).read_text()
+          offset = data.index(marker)
+          prefix, tail = data[:offset], data[offset:]
+          lines = tail.splitlines(keepends=True)
+          if not lines or any(not line.startswith('+') for line in lines):
+              raise SystemExit('part-04 deterministic normalization boundary is invalid')
+          Path(target).write_text(prefix + ''.join(line[1:] for line in lines))
+          PY
+
+          python3 - "$parts_dir/part-05.patch" "$RUNNER_TEMP/part-05.patch" '+diff --git a/src/test/java/com/hungtvb/votesystem/system/SystemModeEnforcementFilterTests.java' <<'PY'
+          from pathlib import Path
+          import sys
+
+          source, target, marker = sys.argv[1:]
+          data = Path(source).read_text()
+          offset = data.index(marker)
+          prefix, tail = data[:offset], data[offset:]
+          lines = tail.splitlines(keepends=True)
+          if not lines or any(not line.startswith('+') for line in lines):
+              raise SystemExit('part-05 deterministic normalization boundary is invalid')
+          Path(target).write_text(prefix + ''.join(line[1:] for line in lines))
+          PY
+
+          echo 'b9c4d72101981298920d97f2e48519c965f2fe1b45af977940aae3e80820668b  '"$RUNNER_TEMP/part-04.patch" > "$RUNNER_TEMP/fixed-parts.sha256"
+          echo 'eeb207c24819870ac7e9977ab2a4b4459e3a7555458b5cef6b4201b4d1252b64  '"$RUNNER_TEMP/part-05.patch" >> "$RUNNER_TEMP/fixed-parts.sha256"
+          sha256sum --check "$RUNNER_TEMP/fixed-parts.sha256"
+
+          cat \
+            "$parts_dir/part-00.patch" \
+            "$parts_dir/part-01.patch" \
+            "$parts_dir/part-02.patch" \
+            "$parts_dir/part-03.patch" \
+            "$RUNNER_TEMP/part-04.patch" \
+            "$RUNNER_TEMP/part-05.patch" \
+            > "$patch"
 
           echo 'f3731ff077097c5af8c8158f24a0f7f4925223d85f26262a1baa186ece9d9cbc  '"$patch" | sha256sum --check
 
