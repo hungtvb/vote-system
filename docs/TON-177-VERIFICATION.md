@@ -38,6 +38,7 @@ The runtime smoke must prove:
 - MAINTENANCE notice checks at the same viewports;
 - long administrator-authored VI/EN copy without horizontal overflow;
 - retry transition back to NORMAL;
+- isolated stateful fixtures so screenshot and DOM capture replay the same mode transition;
 - keyboard touch-target, reduced-motion, and visual/accessibility baseline checks.
 
 ## Controlled deployed-topology checks
