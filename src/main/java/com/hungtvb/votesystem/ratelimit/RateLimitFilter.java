@@ -43,7 +43,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
 
         String subject = rule.userScoped() ? authenticatedSubject(request) : clientIp(request);
-        RateLimitDecision decision = rateLimiter.check(rule.name(), subject, rule.policy());
+        RateLimitDecision decision;
+        try {
+            decision = rateLimiter.check(rule.name(), subject, rule.policy());
+        } catch (RuntimeException exception) {
+            writeUnavailable(request, response);
+            return;
+        }
         if (decision.allowed()) {
             filterChain.doFilter(request, response);
             return;
@@ -59,6 +65,22 @@ public class RateLimitFilter extends OncePerRequestFilter {
         problem.put("detail", "Rate limit exceeded. Retry after " + decision.retryAfterSeconds() + " seconds");
         problem.put("instance", request.getRequestURI());
         problem.put("timestamp", Instant.now());
+        problem.put("code", "RATE_LIMIT_EXCEEDED");
+        objectMapper.writeValue(response.getOutputStream(), problem);
+    }
+
+    private void writeUnavailable(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        response.setStatus(HttpStatus.SERVICE_UNAVAILABLE.value());
+        response.setHeader(HttpHeaders.RETRY_AFTER, "5");
+        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+        Map<String, Object> problem = new LinkedHashMap<>();
+        problem.put("type", "about:blank");
+        problem.put("title", "Authentication protection unavailable");
+        problem.put("status", HttpStatus.SERVICE_UNAVAILABLE.value());
+        problem.put("detail", "This operation is temporarily unavailable because abuse protection cannot be verified");
+        problem.put("instance", request.getRequestURI());
+        problem.put("timestamp", Instant.now());
+        problem.put("code", "RATE_LIMIT_UNAVAILABLE");
         objectMapper.writeValue(response.getOutputStream(), problem);
     }
 
