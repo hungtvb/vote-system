@@ -26,7 +26,7 @@ BANNED       authenticated access denied
 - future timestamp: temporary restriction;
 - maximum temporary duration: 365 days.
 
-An expired restriction is treated as `ACTIVE` by the centralized access policy. No scheduler is required for correctness. A later authenticated access or moderation mutation may normalize the stored row back to `ACTIVE` and rotate the security version.
+An expired restriction is treated as `ACTIVE` by the centralized access policy. No scheduler is required for correctness. A later moderation mutation may normalize the stored row back to `ACTIVE`. The restriction already rotated the security version when it was created, so expiry normalization does not rotate it again.
 
 ## Administrator API
 
@@ -93,7 +93,7 @@ Each access JWT contains the account role and `security_version`. The request fi
 2. a token version equal to the current database version;
 3. exactly one token role equal to the current database role.
 
-A mismatch receives `401`. This rejects stale tokens after logout-all, explicit administrator revocation, account moderation, role promotion, and temporary-restriction normalization.
+A mismatch receives `401`. This rejects stale tokens after logout-all, explicit administrator revocation, account moderation, and role promotion.
 
 A non-active account receives `401` for:
 
@@ -151,7 +151,7 @@ Integration and focused security coverage include:
 - immediate access-token rejection after logout-all and administrator revoke-sessions;
 - public-profile availability;
 - restore behavior without role mutation;
-- permanent ban and temporary expiry;
+- permanent ban and temporary expiry without redundant version rotation;
 - self-lockout prevention;
 - concurrent administrator cross-restriction;
 - last-active-administrator protection;
