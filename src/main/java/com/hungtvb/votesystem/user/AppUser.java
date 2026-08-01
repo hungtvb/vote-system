@@ -60,6 +60,9 @@ public class AppUser {
     @Column(name = "status_updated_at")
     private Instant statusUpdatedAt;
 
+    @Column(name = "security_version", nullable = false)
+    private long securityVersion;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -79,6 +82,7 @@ public class AppUser {
         this.passwordHash = passwordHash;
         this.role = role;
         this.accountStatus = AccountStatus.ACTIVE;
+        this.securityVersion = 0L;
     }
 
     public static AppUser create(String email, String passwordHash) {
@@ -110,6 +114,7 @@ public class AppUser {
             return false;
         }
         role = Role.ADMIN;
+        revokeAccessTokens();
         return true;
     }
 
@@ -137,6 +142,7 @@ public class AppUser {
         accountStatus = requestedStatus;
         statusUntil = until;
         statusUpdatedAt = now;
+        revokeAccessTokens();
     }
 
     public void restore(Instant now) {
@@ -147,6 +153,7 @@ public class AppUser {
         accountStatus = AccountStatus.ACTIVE;
         statusUntil = null;
         statusUpdatedAt = now;
+        revokeAccessTokens();
     }
 
     public boolean normalizeExpiredRestriction(Instant now) {
@@ -156,9 +163,14 @@ public class AppUser {
             accountStatus = AccountStatus.ACTIVE;
             statusUntil = null;
             statusUpdatedAt = now;
+            revokeAccessTokens();
             return true;
         }
         return false;
+    }
+
+    public void revokeAccessTokens() {
+        securityVersion = Math.incrementExact(securityVersion);
     }
 
     @PrePersist
@@ -188,6 +200,7 @@ public class AppUser {
     public AccountStatus getAccountStatus() { return accountStatus; }
     public Instant getStatusUntil() { return statusUntil; }
     public Instant getStatusUpdatedAt() { return statusUpdatedAt; }
+    public long getSecurityVersion() { return securityVersion; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }
