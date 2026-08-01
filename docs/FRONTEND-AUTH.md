@@ -84,6 +84,7 @@ Non-401 responses are not automatically retried. A 429 or 503 preserves `Retry-A
 
 Each access JWT contains the current database role and a monotonic `security_version`. Every authenticated backend request compares both claims with PostgreSQL. Existing JWTs become invalid immediately after:
 
+- single-session logout backed by an active refresh session;
 - logout-all;
 - administrator revoke-sessions;
 - suspend, ban, or explicit restore;
@@ -117,7 +118,11 @@ Detailed backend contract: [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md).
 
 `LOG OUT` calls `POST /api/v1/auth/logout`; `LOG OUT ALL DEVICES` calls authenticated `POST /api/v1/auth/logout-all`. Local state clears before the network request so network failure cannot leave a stale authenticated UI.
 
-Single-session logout revokes the current refresh cookie. Logout-all and administrator `revoke-sessions` additionally invalidate all existing access JWTs immediately through the database security version. A later request with the retained token receives 401 rather than remaining valid until expiry.
+Single-session logout accepts the current host-only refresh cookie. When that refresh session is active, the backend revokes it and increments the account security version, so every already-issued access JWT becomes stale immediately. Other devices retain their refresh sessions and can transparently obtain a token with the new version; they are not logged out.
+
+A missing, expired, or already-revoked cookie is cleared but cannot increment the security version. This prevents a stolen historical refresh token from repeatedly invalidating a user's current access tokens.
+
+Logout-all and administrator `revoke-sessions` revoke all active refresh sessions and invalidate all existing access JWTs immediately. A later request with a retained token receives 401 rather than remaining valid until expiry.
 
 ## Cookie-origin boundary
 
@@ -130,9 +135,11 @@ POST /api/v1/auth/social/{provider}/start
 POST /api/v1/auth/social/{provider}/link/start
 ```
 
-An explicit Origin must match the configured frontend origin or the API's own origin. A request marked `Sec-Fetch-Site: cross-site` without Origin is rejected. Rejections return `403 SESSION_ORIGIN_REJECTED`.
+An explicit Origin must match the configured frontend origin or the API origin produced by the framework-normalized request. Raw `X-Forwarded-Host` and `X-Forwarded-Proto` headers are never trusted by this filter.
 
-This boundary complements `SameSite`, CORS, and bearer-token authorization. Non-browser clients without Origin or Fetch Metadata remain supported.
+A browser request without Origin is accepted only when Fetch Metadata reports `same-origin` or `none`. `same-site`, `cross-site`, and unknown browser contexts are rejected. Non-browser clients with neither Origin nor Fetch Metadata remain supported. Rejections return `403 SESSION_ORIGIN_REJECTED`.
+
+This boundary complements `SameSite`, CORS, and bearer-token authorization.
 
 ## Deployment
 
@@ -159,9 +166,9 @@ SOCIAL_LOGIN_SUCCESS_URL=https://app.ballotbox.io.vn/
 SOCIAL_LOGIN_FAILURE_URL=https://app.ballotbox.io.vn/
 ```
 
-The production profile enforces secure refresh/OAuth cookies. Refresh uses `SameSite=Strict`; the OAuth session uses `SameSite=Lax` for provider redirects. Credentialed requests use `credentials: include`. Wildcard CORS origins are rejected at startup.
+The production profile enforces secure refresh/OAuth cookies. Refresh uses `SameSite=Strict`; the OAuth session uses `SameSite=Lax` for provider redirects. Credentialed requests use `credentials: include`. Wildcard and non-canonical CORS origins are rejected at startup.
 
-Local development uses `http://localhost:3000` and `http://localhost:8080` with the non-production profile and secure cookie flags disabled. The root combined Docker image remains an optional same-origin/runtime-smoke topology, not active production.
+Local development uses `http://localhost:3000` and `http://localhost:8080` with the non-production profile and secure cookie flags disabled. The root combined Docker image remains an optional same-origin topology; CI explicitly runs it with the production profile and secure cookie settings.
 
 ## Request correlation and metrics
 
@@ -188,6 +195,6 @@ Frontend tests cover:
 - public feed access while restore runs;
 - authenticated reconciliation, protected MINE, and abort forwarding.
 
-Backend and focused security tests cover register/login/refresh bootstrap, rotation/replay/logout, role and security-version validation, cookie-origin rejection, linked providers, immediate restricted-account enforcement, social callback rejection, session revocation, explicit restore, and expiry normalization without redundant version rotation.
+Backend and focused security tests cover register/login/refresh bootstrap, rotation/replay/logout, active-session owner resolution, repeated revoked-cookie protection, role and security-version validation, forwarded-header and missing-Origin rejection, linked providers, immediate restricted-account enforcement, social callback rejection, session revocation, explicit restore, and expiry normalization without redundant version rotation.
 
 See [`SECURITY-HARDENING.md`](SECURITY-HARDENING.md) for deployment kill-tests.
