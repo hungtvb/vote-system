@@ -163,7 +163,6 @@ public class AppUser {
             accountStatus = AccountStatus.ACTIVE;
             statusUntil = null;
             statusUpdatedAt = now;
-            revokeAccessTokens();
             return true;
         }
         return false;
