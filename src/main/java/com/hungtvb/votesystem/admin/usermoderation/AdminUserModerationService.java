@@ -74,7 +74,7 @@ public class AdminUserModerationService {
                 "previous_status", previousStatus.name(),
                 "new_status", AccountStatus.ACTIVE.name(),
                 "previous_until", previousUntil == null ? "permanent" : previousUntil.toString(),
-                "access_tokens_revoked", "true"
+                "active_access_invalidated", "true"
         ));
         return AdminUserModerationResponse.from(user, 0);
     }
@@ -88,7 +88,7 @@ public class AdminUserModerationService {
         appendAudit(actorId, user, AdminAuditAction.ADMIN_REVOKE_SESSIONS, reason, Map.of(
                 "account_status", user.effectiveAccountStatus(Instant.now()).name(),
                 "revoked_sessions", Integer.toString(revokedSessions),
-                "access_tokens_revoked", "true"
+                "active_access_invalidated", "true"
         ));
         return AdminUserModerationResponse.from(user, revokedSessions);
     }
@@ -125,7 +125,7 @@ public class AdminUserModerationService {
         metadata.put("new_status", requestedStatus.name());
         metadata.put("restriction_until", until == null ? "permanent" : until.toString());
         metadata.put("revoked_sessions", Integer.toString(revokedSessions));
-        metadata.put("access_tokens_revoked", "true");
+        metadata.put("active_access_invalidated", "true");
         appendAudit(actorId, user, action, reason, metadata);
         return AdminUserModerationResponse.from(user, revokedSessions);
     }
