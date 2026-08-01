@@ -1,0 +1,136 @@
+              rebuildRejected.increment();
++                outcome = "rejected";
++                throw new ConflictException("A ranking rebuild is already in progress");
++            }
+ 
+-                        beforePublish.accept(preview);
+-                        RedisRankingRepository.PublishState publishState = rankingRepository.publishGeneration(
+-                                preview.generation(), preview.stagedCounts(), token, preview.preparedAt());
+-                        RankingRebuildResult committed = new RankingRebuildResult(
+-                                token,
+-                                preview.generation(),
+-                                publishState,
+-                                preview.previousCounts(),
+-                                preview.stagedCounts(),
+-                                preview.visiblePostCount(),
+-                                preview.sourceRevision(),
+-                                preview.preparedAt()
+-                        );
+-                        published.set(committed);
+-                        return committed;
+-                    });
+-                    if (result == null) {
+-                        throw new IllegalStateException("Ranking rebuild transaction returned no result");
+-                    }
+-                    rankingRepository.releaseRebuildLock(token);
+-                    rebuilds.increment();
+-                    rebuildSucceeded.increment();
+-                    return result;
+-                } catch (RankingRevisionChangedException exception) {
+-                    rankingRepository.discardGeneration(preview.generation());
+-                    if (attempt == MAX_REBUILD_ATTEMPTS) {
+-                        throw new ConflictException("Ranking changed repeatedly during rebuild; retry later");
++            LockWatchdog watchdog = new LockWatchdog(token);
++            try {
++                watchdog.start();
++                for (int attempt = 1; attempt <= MAX_REBUILD_ATTEMPTS; attempt++) {
++                    RankingRebuildPreview preview = null;
++                    AtomicReference<RankingRebuildResult> published = new AtomicReference<>();
++                    try {
++                        watchdog.assertOwned();
++                        preview = prepareRebuildAttempt(watchdog);
++                        RankingRebuildPreview prepared = preview;
++                        RankingRebuildResult result = transactionTemplate.execute(status -> {
++                            watchdog.assertOwned();
++                            long currentRevision = revisionStore.lockAndRead();
++                            if (currentRevision != prepared.sourceRevision()) {
++                                throw new RankingRevisionChangedException();
++                            }
++
++                            beforePublish.accept(prepared);
++                            watchdog.assertOwned();
++                            RedisRankingRepository.PublishState publishState = rankingRepository.publishGeneration(
++                                    prepared.generation(), prepared.stagedCounts(), token, prepared.preparedAt());
++                            RankingRebuildResult committed = new RankingRebuildResult(
++                                    token,
++                                    prepared.generation(),
++                                    publishState,
++                                    prepared.previousCounts(),
++                                    prepared.stagedCounts(),
++                                    prepared.visiblePostCount(),
++                                    prepared.redisBatchCount(),
++                                    prepared.sourceRevision(),
++                                    prepared.preparedAt()
++                            );
++                            published.set(committed);
++                            return committed;
++                        });
++                        if (result == null) {
++                            throw new IllegalStateException("Ranking rebuild transaction returned no result");
++                        }
++                        rebuilds.increment();
++                        rebuildSucceeded.increment();
++                        outcome = "succeeded";
++                        log.info("ranking_rebuild_complete result=succeeded rowsScanned={} redisBatches={} retries={} durationMs={}",
++                                result.visiblePostCount(), result.redisBatchCount(), retries,
++                                Duration.between(startedAt, clock.instant()).toMillis());
++                        return result;
++                    } catch (RankingRevisionChangedException exception) {
++                        if (preview != null) rankingRepository.discardGeneration(preview.generation());
++                        if (attempt == MAX_REBUILD_ATTEMPTS) {
++                            throw new ConflictException("Ranking changed repeatedly during rebuild; retry later");
++                        }
++                        retries += 1;
++                        rebuildRetried.increment();
++                    } catch (RuntimeException exception) {
++                        if (preview != null) {
++                            rollbackPublishedOrDiscard(preview, published.get(), token, exception);
++                        }
++                        throw exception;
+                     }
+-                    rebuildRetried.increment();
+-                } catch (RuntimeException exception) {
+-                    rollbackPublishedOrDiscard(preview, published.get(), token, exception);
+-                    throw exception;
+                 }
++                throw new IllegalStateException("Ranking rebuild retry loop ended unexpectedly");
++            } finally {
++                watchdog.close();
++                safeReleaseRebuildLock(token, watchdog.isLost());
+             }
+-            throw new IllegalStateException("Ranking rebuild retry loop ended unexpectedly");
+         } catch (RuntimeException exception) {
+-            rebuildFailed.increment();
++            if (!"rejected".equals(outcome)) rebuildFailed.increment();
++            log.warn("ranking_rebuild_complete result={} retries={} durationMs={} failure={}",
++                    outcome, retries, Duration.between(startedAt, clock.instant()).toMillis(),
++                    exception.getClass().getSimpleName());
+             throw exception;
+         } finally {
+-            rankingRepository.releaseRebuildLock(token);
++            duration.stop(Timer.builder("vote.ranking.rebuild.duration")
++                    .description("Ranking rebuild duration by bounded outcome")
++                    .tag("result", outcome)
++                    .register(meterRegistry));
+         }
+     }
+ 
+-    private RankingRebuildPreview prepareRebuildAttempt() {
++    private RankingRebuildPreview prepareRebuildAttempt(LockWatchdog watchdog) {
+         long sourceRevision = revisionStore.current();
+         RedisRankingRepository.RankingGeneration generation =
+                 rankingRepository.createGeneration(UUID.randomUUID().toString());
+@@ -213,27 +268,76 @@ public class RankingService {
+             Instant now = clock.instant();
+             RedisRankingRepository.RankingCounts previousCounts = rankingRepository.currentCounts(now);
+             RedisRankingRepository.RankingMetadata previousMetadata = rankingRepository.metadata();
+-            List<Post> visiblePosts = postRepository.findAll(PostSpecifications.publiclyVisible());
+-            for (Post post : visiblePosts) {
+-                rankingRepository.stageUpsert(generation, post.getId(), post.getVoteScore(),
+-                        formula.score(post.getVoteScore(), post.getCreatedAt(), now), post.getCreatedAt(), now);
++            rankingRepository.initializeGeneration(generation);
++
++            long visiblePosts = 0;
++            long expectedDay = 0;
++            long expectedWeek = 0;
++            int redis
