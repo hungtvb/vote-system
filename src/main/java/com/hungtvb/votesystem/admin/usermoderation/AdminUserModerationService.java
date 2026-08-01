@@ -83,8 +83,8 @@ public class AdminUserModerationService {
     public AdminUserModerationResponse revokeSessions(UUID actorId, UUID userId, String reason) {
         requireDifferentAccounts(actorId, userId);
         AppUser user = lockSessionsThenUser(userId);
-        int revokedSessions = refreshSessionService.revokeAll(userId);
         user.revokeAccessTokens();
+        int revokedSessions = refreshSessionService.revokeAll(userId);
         appendAudit(actorId, user, AdminAuditAction.ADMIN_REVOKE_SESSIONS, reason, Map.of(
                 "account_status", user.effectiveAccountStatus(Instant.now()).name(),
                 "revoked_sessions", Integer.toString(revokedSessions),
