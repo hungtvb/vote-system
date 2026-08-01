@@ -55,7 +55,7 @@ refresh cookie       Strict
 OAuth session cookie Lax
 ```
 
-Startup fails when JWT secret, CORS origin, or cookie settings are missing or unsafe. Placeholders, wildcard origins, HTTP origins, localhost origins, non-Secure cookies, and names without `__Secure-` are rejected.
+Startup fails when JWT secret, CORS origin, or cookie settings are missing or unsafe. Placeholders, wildcard origins, non-HTTPS origins, paths, queries, embedded credentials, localhost/loopback origins, non-Secure cookies, and names without `__Secure-` are rejected.
 
 Do not set `PORT`; Railway supplies it and Spring Boot reads `${PORT}`.
 
@@ -115,13 +115,13 @@ Expected public endpoint:
 GET https://api.ballotbox.io.vn/actuator/health
 ```
 
-Administrator-only endpoints:
+Administrator-only boundary:
 
 ```text
-/actuator/info
-/actuator/metrics
-/actuator/metrics/**
+/actuator/** except /actuator/health/**
 ```
+
+This includes `/actuator`, `info`, `metrics`, metric details, and any endpoint exposed later.
 
 Expected unavailable production routes:
 
@@ -185,7 +185,7 @@ Do not validate production through HTTP. HTTP and HTTPS are distinct CORS origin
 - `/actuator/health` returns `UP`.
 - PostgreSQL and Redis health components report `UP`.
 - `/v3/api-docs` and Swagger UI are unavailable.
-- anonymous and USER tokens cannot read `/actuator/metrics`.
+- anonymous and USER tokens cannot read `/actuator`, `/actuator/info`, or `/actuator/metrics`.
 - startup/request logs do not contain springdoc enablement warnings, Hibernate `Session Metrics`, or broad Spring/Hibernate DEBUG traffic.
 - removing or replacing `JWT_SECRET` with a committed placeholder makes startup fail.
 
@@ -195,10 +195,13 @@ Do not validate production through HTTP. HTTP and HTTPS are distinct CORS origin
 - OAuth session cookie name is `__Secure-vote_oauth` and attributes include `HttpOnly`, `Secure`, and `SameSite=Lax`.
 - A hard refresh restores session/profile through one `POST /api/v1/auth/refresh` request.
 - Login, registration, and refresh return `503 RATE_LIMIT_UNAVAILABLE` instead of bypassing abuse protection while Redis is unavailable.
-- A refresh request with `Origin: https://attacker.example` returns `403 SESSION_ORIGIN_REJECTED`.
-- Logout-all invalidates a retained access JWT immediately.
+- A refresh request with `Origin: https://attacker.example` remains rejected even when forged `X-Forwarded-Host/Proto` headers are supplied.
+- A browser-style refresh with no Origin and `Sec-Fetch-Site: same-site` returns `403 SESSION_ORIGIN_REJECTED`.
+- Logout backed by an active refresh session invalidates retained access JWTs immediately; other devices retain refresh sessions and can recover.
+- Reusing an expired or already-revoked logout cookie does not rotate the token version again.
+- Logout-all invalidates a retained access JWT immediately and revokes every active refresh session.
 - Administrator revoke-sessions invalidates retained access JWTs even when the revoked refresh-session count is zero.
-- Suspend, ban, restore, and role promotion invalidate tokens issued before the state change.
+- Suspend, ban, explicit restore, and role promotion invalidate tokens issued before the state change.
 
 ### Frontend and core product
 
@@ -214,6 +217,10 @@ Do not validate production through HTTP. HTTP and HTTPS are distinct CORS origin
 - SSE converges across two tabs observing the same open ballot.
 - Guest and USER visits to `/admin` resolve to neutral 404 UI and do not call `/api/v1/admin/**`.
 - ADMIN access to the workspace and recovery endpoints continues to work.
+
+### CI runtime evidence
+
+The combined-image runtime smoke activates `SPRING_PROFILES_ACTIVE=production`, uses an ephemeral random JWT secret, validates hidden Swagger routes and secure refresh-cookie attributes, and keeps raw cookie/JWT values outside uploaded artifacts. The artifact scan fails if a refresh cookie or JWT pattern is present.
 
 ### Social login
 
