@@ -1,25 +1,25 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { useSession } from '@/features/auth/hooks/useSession';
 import { AdminOperationsWorkspace } from './AdminOperationsWorkspace';
 import polishStyles from './AdminOperationsPolish.module.scss';
 
 export function AdminPageRouter() {
-  const router = useRouter();
   const { session, profile, restoring } = useSession();
+  const isAdmin = Boolean(session && profile?.role === 'ADMIN');
 
   useEffect(() => {
-    if (restoring || (session && profile)) return;
-    router.replace('/');
-  }, [profile, restoring, router, session]);
+    if (!restoring && !isAdmin) {
+      window.location.replace('/404');
+    }
+  }, [isAdmin, restoring]);
 
-  if (restoring || !session || !profile) {
+  if (restoring) {
     return <NeutralRouteLoading />;
   }
 
-  if (profile.role !== 'ADMIN') {
+  if (!isAdmin) {
     return <GenericNotFound />;
   }
 
