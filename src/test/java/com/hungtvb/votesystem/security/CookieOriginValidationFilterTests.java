@@ -36,7 +36,7 @@ class CookieOriginValidationFilterTests {
     }
 
     @Test
-    void forgedForwardedHeadersCannotTurnAttackerOriginIntoSameOrigin() throws Exception {
+    void forgedForwardedHeadersCannotTurnAttackerOriginIntoAllowedOrigin() throws Exception {
         MockHttpServletRequest request = post("/api/v1/auth/refresh");
         request.addHeader("Origin", "https://attacker.example");
         request.addHeader("X-Forwarded-Proto", "https");
@@ -63,7 +63,7 @@ class CookieOriginValidationFilterTests {
     }
 
     @Test
-    void allowsFrameworkNormalizedApiOrigin() throws Exception {
+    void rejectsApiOriginUnlessItIsExplicitlyAllowlisted() throws Exception {
         MockHttpServletRequest request = post("/api/v1/auth/logout");
         request.addHeader("Origin", "https://api.ballotbox.io.vn");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -71,7 +71,8 @@ class CookieOriginValidationFilterTests {
 
         filter.doFilter(request, response, chain);
 
-        verify(chain).doFilter(any(), any());
+        assertThat(response.getStatus()).isEqualTo(403);
+        verifyNoInteractions(chain);
     }
 
     @Test
