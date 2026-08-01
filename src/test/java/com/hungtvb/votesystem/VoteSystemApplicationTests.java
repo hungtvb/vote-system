@@ -129,7 +129,7 @@ class VoteSystemApplicationTests {
     }
 
     @Test
-    void logoutAndLogoutAllRevokeRefreshSessions() throws Exception {
+    void logoutAndLogoutAllRevokeRefreshSessionsAndStaleAccessTokens() throws Exception {
         AuthSession first = registerSession("session-revocation@example.com");
         AuthSession second = loginSession("session-revocation@example.com");
 
@@ -142,12 +142,22 @@ class VoteSystemApplicationTests {
                         .cookie(first.refreshCookie()))
                 .andExpect(status().isUnauthorized());
 
-        mockMvc.perform(post("/api/v1/auth/logout-all")
+        mockMvc.perform(get("/api/v1/users/me")
                         .header("Authorization", "Bearer " + second.accessToken()))
+                .andExpect(status().isUnauthorized());
+
+        MvcResult recoveredSecondResult = mockMvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(second.refreshCookie()))
+                .andExpect(status().isOk())
+                .andReturn();
+        AuthSession recoveredSecond = authSession(recoveredSecondResult);
+
+        mockMvc.perform(post("/api/v1/auth/logout-all")
+                        .header("Authorization", "Bearer " + recoveredSecond.accessToken()))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(post("/api/v1/auth/refresh")
-                        .cookie(second.refreshCookie()))
+                        .cookie(recoveredSecond.refreshCookie()))
                 .andExpect(status().isUnauthorized());
     }
 
