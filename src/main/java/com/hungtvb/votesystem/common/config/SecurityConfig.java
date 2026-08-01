@@ -117,7 +117,7 @@ public class SecurityConfig {
                                 HttpMethod.GET.name()
                         )).permitAll()
                         .requestMatchers("/actuator/health/**").permitAll()
-                        .requestMatchers("/actuator/info", "/actuator/metrics", "/actuator/metrics/**").hasRole("ADMIN")
+                        .requestMatchers("/actuator/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .oauth2Login(oauth2 -> oauth2
