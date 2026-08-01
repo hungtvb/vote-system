@@ -87,7 +87,7 @@ jobs:
           capture_locale vi 'TẠO PHIẾU'
       - name: Upload locale visual evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: locale-visual-qa
           path: frontend/locale-visual-qa/**

@@ -85,7 +85,7 @@ jobs:
           grep -q 'data-qa-focus-inside-dialog="true"' profile-visual-qa/mobile-public-profile-empty-bio.html
       - name: Upload profile visual evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: profile-visual-qa
           path: frontend/profile-visual-qa/**

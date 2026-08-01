@@ -148,7 +148,7 @@ jobs:
           ! grep -q 'admin-ranking refresh #2' admin-workspace-qa/server.log
       - name: Upload admin workspace evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: admin-workspace-qa
           path: frontend/admin-workspace-qa/**
