@@ -54,6 +54,17 @@ class ProductionSecurityValidatorTests {
                 .hasMessageContaining("CORS");
     }
 
+    @Test
+    void rejectsCorsUrlWithPathQueryOrCredentials() {
+        assertThatThrownBy(() -> new ProductionSecurityValidator(
+                jwt("uV9#qL2!xR7@pN4$kM8&dF3*wC6-zA1_B5+sJ0=eH7%tY2!rQ9#nP4@v"),
+                refresh("__Secure-vote_refresh", true, "Strict"),
+                new CorsProperties(List.of("https://user@app.ballotbox.io.vn/path?preview=true")),
+                secureEnvironment()
+        )).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("CORS");
+    }
+
     private JwtProperties jwt(String secret) {
         return new JwtProperties("vote-system", secret, Duration.ofMinutes(15));
     }
