@@ -17,6 +17,16 @@ import java.util.UUID;
 public interface PostRepository extends JpaRepository<Post, UUID>, JpaSpecificationExecutor<Post> {
     Page<Post> findAllByOrderByCreatedAtDesc(Pageable pageable);
 
+    @Query("""
+            select post.id as id,
+                   post.voteScore as voteScore,
+                   post.createdAt as createdAt
+              from Post post
+             where post.moderationStatus = com.hungtvb.votesystem.post.ModerationStatus.VISIBLE
+             order by post.id asc
+            """)
+    java.util.List<RankingPostProjection> findVisibleRankingBatch(Pageable pageable);
+
     Optional<Post> findByIdAndModerationStatus(UUID postId, ModerationStatus moderationStatus);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

@@ -1,6 +1,10 @@
 package com.hungtvb.votesystem.ranking;
 
+import org.springframework.data.redis.core.DefaultTypedTuple;
+import org.springframework.data.redis.core.RedisOperations;
+import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Repository;
 
@@ -24,11 +28,24 @@ public class RedisRankingRepository {
     private static final String REBUILD_LOCK_KEY = "feed:{ranking}:rebuild-lock";
     private static final Duration STAGING_TTL = Duration.ofMinutes(15);
     private static final Duration OLD_GENERATION_TTL = Duration.ofHours(1);
+    private static final String STAGING_SENTINEL = "__ranking_staging__";
 
     private static final DefaultRedisScript<Long> RELEASE_LOCK_SCRIPT = new DefaultRedisScript<>("""
             if redis.call('GET', KEYS[1]) == ARGV[1] then
               return redis.call('DEL', KEYS[1])
             end
+            return 0
+            """, Long.class);
+
+    private static final DefaultRedisScript<Long> RENEW_LOCK_SCRIPT = new DefaultRedisScript<>("""
+            if redis.call('GET', KEYS[1]) == ARGV[1] then
+              return redis.call('PEXPIRE', KEYS[1], tonumber(ARGV[2]))
+            end
+            return 0
+            """, Long.class);
+
+    private static final DefaultRedisScript<Long> OWNS_LOCK_SCRIPT = new DefaultRedisScript<>("""
+            if redis.call('GET', KEYS[1]) == ARGV[1] then return 1 end
             return 0
             """, Long.class);
 
@@ -162,8 +179,20 @@ public class RedisRankingRepository {
         return Boolean.TRUE.equals(redis.hasKey(REBUILD_LOCK_KEY));
     }
 
-    public void releaseRebuildLock(String token) {
-        redis.execute(RELEASE_LOCK_SCRIPT, List.of(REBUILD_LOCK_KEY), token);
+    public boolean renewRebuildLock(String token, Duration ttl) {
+        Long renewed = redis.execute(RENEW_LOCK_SCRIPT, List.of(REBUILD_LOCK_KEY),
+                token, Long.toString(ttl.toMillis()));
+        return renewed != null && renewed == 1L;
+    }
+
+    public boolean ownsRebuildLock(String token) {
+        Long owned = redis.execute(OWNS_LOCK_SCRIPT, List.of(REBUILD_LOCK_KEY), token);
+        return owned != null && owned == 1L;
+    }
+
+    public boolean releaseRebuildLock(String token) {
+        Long released = redis.execute(RELEASE_LOCK_SCRIPT, List.of(REBUILD_LOCK_KEY), token);
+        return released != null && released == 1L;
     }
 
     public RankingGeneration createGeneration(String generationId) {
@@ -175,19 +204,59 @@ public class RedisRankingRepository {
         );
     }
 
-    public void stageUpsert(RankingGeneration generation, UUID postId, long voteScore,
-                            double hotScore, Instant createdAt, Instant now) {
-        String member = postId.toString();
-        redis.opsForZSet().add(generation.hotKey(), member, hotScore);
-        redis.expire(generation.hotKey(), STAGING_TTL);
-        if (isSameUtcDay(createdAt, now)) {
-            redis.opsForZSet().add(generation.dayKey(), member, voteScore);
-            redis.expire(generation.dayKey(), STAGING_TTL);
+    public void initializeGeneration(RankingGeneration generation) {
+        redis.executePipelined(new SessionCallback<>() {
+            @Override
+            @SuppressWarnings({"rawtypes", "unchecked"})
+            public Object execute(RedisOperations operations) {
+                ZSetOperations<String, String> zSet = operations.opsForZSet();
+                for (String key : generation.keys()) {
+                    zSet.add(key, STAGING_SENTINEL, 0d);
+                    operations.expire(key, STAGING_TTL);
+                }
+                return null;
+            }
+        });
+    }
+
+    public void stageBatch(RankingGeneration generation, List<RankingEntry> entries) {
+        if (entries.isEmpty()) return;
+
+        Set<ZSetOperations.TypedTuple<String>> hot = new LinkedHashSet<>();
+        Set<ZSetOperations.TypedTuple<String>> day = new LinkedHashSet<>();
+        Set<ZSetOperations.TypedTuple<String>> week = new LinkedHashSet<>();
+        for (RankingEntry entry : entries) {
+            String member = entry.postId().toString();
+            hot.add(new DefaultTypedTuple<>(member, entry.hotScore()));
+            if (entry.dayEligible()) day.add(new DefaultTypedTuple<>(member, (double) entry.voteScore()));
+            if (entry.weekEligible()) week.add(new DefaultTypedTuple<>(member, (double) entry.voteScore()));
         }
-        if (isSameUtcWeek(createdAt, now)) {
-            redis.opsForZSet().add(generation.weekKey(), member, voteScore);
-            redis.expire(generation.weekKey(), STAGING_TTL);
-        }
+
+        redis.executePipelined(new SessionCallback<>() {
+            @Override
+            @SuppressWarnings({"rawtypes", "unchecked"})
+            public Object execute(RedisOperations operations) {
+                ZSetOperations<String, String> zSet = operations.opsForZSet();
+                zSet.add(generation.hotKey(), hot);
+                if (!day.isEmpty()) zSet.add(generation.dayKey(), day);
+                if (!week.isEmpty()) zSet.add(generation.weekKey(), week);
+                return null;
+            }
+        });
+    }
+
+    public void completeGeneration(RankingGeneration generation) {
+        redis.executePipelined(new SessionCallback<>() {
+            @Override
+            @SuppressWarnings({"rawtypes", "unchecked"})
+            public Object execute(RedisOperations operations) {
+                ZSetOperations<String, String> zSet = operations.opsForZSet();
+                for (String key : generation.keys()) {
+                    zSet.remove(key, STAGING_SENTINEL);
+                }
+                return null;
+            }
+        });
     }
 
     public RankingCounts generationCounts(RankingGeneration generation) {
@@ -322,7 +391,13 @@ public class RedisRankingRepository {
         return value == null ? null : value.toString();
     }
 
-    public record RankingGeneration(String id, String hotKey, String dayKey, String weekKey) {}
+    public record RankingGeneration(String id, String hotKey, String dayKey, String weekKey) {
+        List<String> keys() {
+            return List.of(hotKey, dayKey, weekKey);
+        }
+    }
+    public record RankingEntry(UUID postId, long voteScore, double hotScore,
+                               boolean dayEligible, boolean weekEligible) {}
     public record RankingCounts(long hot, long day, long week) {}
     public record RankingMetadata(String generation, Instant publishedAt, String windowDay, String windowWeek) {
         static RankingMetadata empty() { return new RankingMetadata(null, null, null, null); }

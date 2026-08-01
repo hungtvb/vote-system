@@ -40,7 +40,8 @@ public class AdminRankingService {
         metadata.put("new_hot_count", Long.toString(preview.stagedCounts().hot()));
         metadata.put("new_day_count", Long.toString(preview.stagedCounts().day()));
         metadata.put("new_week_count", Long.toString(preview.stagedCounts().week()));
-        metadata.put("visible_posts", Integer.toString(preview.visiblePostCount()));
+        metadata.put("visible_posts", Long.toString(preview.visiblePostCount()));
+        metadata.put("redis_batches", Integer.toString(preview.redisBatchCount()));
         metadata.put("source_revision", Long.toString(preview.sourceRevision()));
         auditLogService.append(new AdminAuditEvent(actorId, AdminAuditAction.ADMIN_REBUILD_RANKING,
                 AdminAuditTargetType.RANKING, "ALL", reason, metadata));

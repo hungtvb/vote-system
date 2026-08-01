@@ -137,6 +137,11 @@ vote.operation.total
 vote.operation.stage
 vote.side_effect.execution
 vote.ranking.operations
+vote.ranking.rebuild
+vote.ranking.rebuild.duration
+vote.ranking.rebuild.rows
+vote.ranking.rebuild.redis.batches
+vote.ranking.rebuild.lock.renewals
 ```
 
 `X-Request-ID` is reused only when it matches the safe format; otherwise the backend generates one. Logs and metric tags must never contain user IDs, ballot IDs, emails, cookies, refresh-token hashes, or raw tokens.

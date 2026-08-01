@@ -7,7 +7,8 @@ public record RankingRebuildPreview(
         RedisRankingRepository.RankingMetadata previousMetadata,
         RedisRankingRepository.RankingCounts previousCounts,
         RedisRankingRepository.RankingCounts stagedCounts,
-        int visiblePostCount,
+        long visiblePostCount,
+        int redisBatchCount,
         long sourceRevision,
         Instant preparedAt
 ) {

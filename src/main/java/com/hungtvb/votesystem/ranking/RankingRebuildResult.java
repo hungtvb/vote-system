@@ -8,7 +8,8 @@ public record RankingRebuildResult(
         RedisRankingRepository.PublishState publishState,
         RedisRankingRepository.RankingCounts previousCounts,
         RedisRankingRepository.RankingCounts publishedCounts,
-        int visiblePostCount,
+        long visiblePostCount,
+        int redisBatchCount,
         long sourceRevision,
         Instant publishedAt
 ) {
