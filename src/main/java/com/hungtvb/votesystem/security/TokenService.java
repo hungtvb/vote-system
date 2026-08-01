@@ -13,6 +13,9 @@ import java.util.List;
 
 @Service
 public class TokenService {
+    public static final String ROLES_CLAIM = "roles";
+    public static final String SECURITY_VERSION_CLAIM = "security_version";
+
     private final JwtEncoder jwtEncoder;
     private final JwtProperties properties;
 
@@ -28,7 +31,8 @@ public class TokenService {
                 .issuedAt(now)
                 .expiresAt(now.plus(properties.accessTokenTtl()))
                 .subject(user.id().toString())
-                .claim("roles", List.of(user.role().name()));
+                .claim(ROLES_CLAIM, List.of(user.role().name()))
+                .claim(SECURITY_VERSION_CLAIM, user.securityVersion());
         if (user.email() != null) {
             claims.claim("email", user.email());
         }
