@@ -155,6 +155,9 @@ REFRESHED_SESSION=$(curl --fail --silent --show-error \
   -X POST "$BASE_URL/api/v1/auth/refresh")
 printf '%s' "$REFRESHED_SESSION" | grep -q '"accessToken"'
 
+# Capture logs before scanning so the uploaded artifact is covered end-to-end.
+docker logs "$APP_NAME" > "$APP_LOG" 2>&1 || true
+
 # Never persist raw cookies or bearer tokens in uploaded runtime-smoke artifacts.
 ! grep -R -E '__Secure-vote_refresh=|eyJ[A-Za-z0-9_-]+\.' "$ARTIFACT_DIR"
 
