@@ -102,9 +102,8 @@ public class AuthService {
         refreshSessionRepository.findAllActiveByUserIdForUpdate(userId);
         AppUser user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new UnauthorizedException("User account is unavailable"));
-        int revokedSessions = refreshSessionService.revokeAll(userId);
         user.revokeAccessTokens();
-        return revokedSessions;
+        return refreshSessionService.revokeAll(userId);
     }
 
     @Transactional
