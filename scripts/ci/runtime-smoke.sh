@@ -150,10 +150,10 @@ fi
 grep -q 'event:vote-update' "$ARTIFACT_DIR/stream.txt"
 grep -q '"upVotes":1' "$ARTIFACT_DIR/stream.txt"
 
-curl --fail --silent --show-error \
+REFRESHED_SESSION=$(curl --fail --silent --show-error \
   -H "Cookie: ${REFRESH_COOKIE}" \
-  -X POST "$BASE_URL/api/v1/auth/refresh" > "$ARTIFACT_DIR/refreshed-session.json"
-grep -q '"accessToken"' "$ARTIFACT_DIR/refreshed-session.json"
+  -X POST "$BASE_URL/api/v1/auth/refresh")
+printf '%s' "$REFRESHED_SESSION" | grep -q '"accessToken"'
 
 # Never persist raw cookies or bearer tokens in uploaded runtime-smoke artifacts.
 ! grep -R -E '__Secure-vote_refresh=|eyJ[A-Za-z0-9_-]+\.' "$ARTIFACT_DIR"
