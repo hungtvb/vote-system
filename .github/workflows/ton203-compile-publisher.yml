@@ -30,6 +30,7 @@ jobs:
           patch="$RUNNER_TEMP/ton203.patch"
           test_fix="$RUNNER_TEMP/ton203-test-fix.patch"
           captor_fix="$RUNNER_TEMP/ton203-page-captor-fix.patch"
+          closed_guard="$RUNNER_TEMP/ton203-closed-guard.patch"
 
           cat > "$RUNNER_TEMP/parts.sha256" <<'SHA'
           475f2c19e4ba811bf3e0debfdc3e066be76a02a27ccac2ccf4b09fadee0341e7  part-00.patch
@@ -48,9 +49,11 @@ jobs:
           )
           cp "$parts/test-fix.patch" "$test_fix"
           cp "$parts/page-captor-fix.patch" "$captor_fix"
+          cp "$parts/closed-guard.patch" "$closed_guard"
           echo 'c83fa01d299dd775775fef29b496ade0aa48cec22526a1e777e5528e3e1d120e  '"$patch" | sha256sum --check
           echo '8eed4af4a58d0553ef3972f60deda933fdd4c8d4fbe4e940d3e91990ad3befd2  '"$test_fix" | sha256sum --check
           echo '40b8256f300a6f9bb7b2c74af8ecf7153fab5b1fc7a070745f05c858ff2d806e  '"$captor_fix" | sha256sum --check
+          echo '505affac654880fc5c088ca6af17b32f51dc7938325d9abb2548840958f208f4  '"$closed_guard" | sha256sum --check
 
       - name: Apply exact TON-203 source tree
         shell: bash
@@ -59,6 +62,7 @@ jobs:
           patch="$RUNNER_TEMP/ton203.patch"
           test_fix="$RUNNER_TEMP/ton203-test-fix.patch"
           captor_fix="$RUNNER_TEMP/ton203-page-captor-fix.patch"
+          closed_guard="$RUNNER_TEMP/ton203-closed-guard.patch"
           expected_base='c1fc52a0820c16c1299dbc5417d6a4e41566d673'
           test "${{ github.event.pull_request.base.sha }}" = "$expected_base"
           git checkout --detach "$expected_base"
@@ -114,9 +118,11 @@ jobs:
           path.write_text(source)
           PY
 
+          git apply --check "$closed_guard"
+          git apply "$closed_guard"
           git diff --check
           git add --all
-          test "$(git write-tree)" = '52cda0e2681b04c42e1ee6e7ffc1749579764f54'
+          test "$(git write-tree)" = '1196f27fb15077f489a399847a7f80922b026323'
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -137,6 +143,6 @@ jobs:
           set -euo pipefail
           git config user.name 'vote-system-automation'
           git config user.email 'actions@users.noreply.github.com'
-          git commit -m 'TON-203 Scale ranking rebuild batching and lock renewal'
-          git push --force-with-lease=refs/heads/hungtvb2020/ton-203-be-scale-ranking-rebuild-with-batching-pipelining-and-lock:c1fc52a0820c16c1299dbc5417d6a4e41566d673 \
+          git commit -m 'TON-203 Guard closed ranking lock watchdog'
+          git push --force-with-lease=refs/heads/hungtvb2020/ton-203-be-scale-ranking-rebuild-with-batching-pipelining-and-lock:1c80b7f0cd9ecb586df58d6a13a8c193c93faa35 \
             origin HEAD:refs/heads/hungtvb2020/ton-203-be-scale-ranking-rebuild-with-batching-pipelining-and-lock
