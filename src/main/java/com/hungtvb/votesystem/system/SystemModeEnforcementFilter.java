@@ -32,12 +32,15 @@ public class SystemModeEnforcementFilter extends OncePerRequestFilter {
 
     private final SystemStatusService systemStatusService;
     private final ObjectMapper objectMapper;
+    private final SystemModeMetrics metrics;
     private final SystemModeRequestPolicy policy = new SystemModeRequestPolicy();
 
     public SystemModeEnforcementFilter(SystemStatusService systemStatusService,
-                                       ObjectMapper objectMapper) {
+                                       ObjectMapper objectMapper,
+                                       SystemModeMetrics metrics) {
         this.systemStatusService = systemStatusService;
         this.objectMapper = objectMapper;
+        this.metrics = metrics;
     }
 
     @Override
@@ -92,6 +95,7 @@ public class SystemModeEnforcementFilter extends OncePerRequestFilter {
                               SystemMode mode,
                               Rejection rejection) throws IOException {
         Instant now = Instant.now();
+        metrics.recordRejection(rejection.code(), mode, request.getMethod(), request.getRequestURI());
         response.setStatus(HttpStatus.SERVICE_UNAVAILABLE.value());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());

@@ -254,6 +254,7 @@ vote.operation.total
 vote.operation.stage
 vote.side_effect.execution
 vote.ranking.operations
+vote.system.mode.requests
 hikaricp.*
 ```
 
@@ -272,6 +273,8 @@ outcome=<2xx|4xx|5xx|timeout|error>
 ```
 
 SSE duration is recorded when the async connection completes. With low traffic, a long-lived stream can dominate platform percentiles; compare route-level metrics before changing SQL, pool size, region, or compute tier.
+
+`vote.system.mode.requests` records only bounded result/status/code/mode/method/route-family tags for requests rejected by the operating-mode boundary. It never uses a raw request path or entity identifier as a tag.
 
 Logs and metric tags must never include user IDs, ballot IDs, email, cookies, provider tokens, refresh-token hashes, or raw tokens.
 

@@ -347,8 +347,8 @@ class Handler(base.Handler):
 
             self._json(200, {
                 "mode": system_mode,
-                "messageVi": "Thông báo vận hành do quản trị viên cung cấp.\nVui lòng quay lại sau.",
-                "messageEn": "Administrator-authored operating notice.\nPlease check again later.",
+                "messageVi": "Thông báo vận hành dài do quản trị viên cung cấp để xác minh khả năng xuống dòng trên màn hình nhỏ.\nDữ liệu này phải được giữ nguyên, không bị cắt hoặc gây tràn ngang.",
+                "messageEn": "A long administrator-authored operating notice verifies wrapping on compact screens.\nThis content must remain unchanged, readable, and free from horizontal overflow.",
                 "estimatedEndAt": "2027-08-01T08:30:00Z" if system_mode != "NORMAL" else None,
                 "updatedAt": "2026-08-01T07:00:00Z",
             })
