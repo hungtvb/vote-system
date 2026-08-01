@@ -86,9 +86,10 @@ Each access JWT contains the current database role and a monotonic `security_ver
 
 - logout-all;
 - administrator revoke-sessions;
-- suspend, ban, or restore;
-- temporary-restriction normalization;
+- suspend, ban, or explicit restore;
 - promotion to administrator.
+
+A temporary restriction already invalidates tokens when the restriction is created. Its later expiry does not rotate the version again.
 
 The frontend does not inspect or persist this version. It treats the resulting 401 through the standard one-refresh retry path. Because the same operation also revokes refresh sessions or changes the account version, refresh fails and local session/profile state is cleared.
 
@@ -187,6 +188,6 @@ Frontend tests cover:
 - public feed access while restore runs;
 - authenticated reconciliation, protected MINE, and abort forwarding.
 
-Backend and focused security tests cover register/login/refresh bootstrap, rotation/replay/logout, role and security-version validation, cookie-origin rejection, linked providers, immediate restricted-account enforcement, social callback rejection, session revocation, and restore.
+Backend and focused security tests cover register/login/refresh bootstrap, rotation/replay/logout, role and security-version validation, cookie-origin rejection, linked providers, immediate restricted-account enforcement, social callback rejection, session revocation, explicit restore, and expiry normalization without redundant version rotation.
 
 See [`SECURITY-HARDENING.md`](SECURITY-HARDENING.md) for deployment kill-tests.
