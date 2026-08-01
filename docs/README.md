@@ -91,7 +91,7 @@ Access tokens remain in React memory. Refresh tokens remain in path-scoped `Http
 
 Each access JWT carries the current role and `security_version`. PostgreSQL is checked after bearer-token authentication for every request carrying a Vote System JWT. The token role and version must exactly match the current user row, and the account must be active. Active-session logout, logout-all, administrator revoke-sessions, suspend/ban, explicit restore, and role promotion invalidate previously issued JWTs immediately. A missing, expired, or already-revoked logout cookie cannot rotate the version repeatedly. Temporary restriction expiry does not rotate the version a second time.
 
-Cookie-authenticated refresh/logout/social-start requests validate browser Origin and Fetch Metadata. Explicit Origin values must match the configured frontend or framework-normalized API origin. Raw forwarded headers are not trusted. Browser POSTs without Origin are accepted only for `same-origin` or `none`; same-site and cross-site contexts are rejected with `SESSION_ORIGIN_REJECTED`. See [`FRONTEND-AUTH.md`](FRONTEND-AUTH.md), [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md), and [`SECURITY-HARDENING.md`](SECURITY-HARDENING.md).
+Cookie-authenticated refresh/logout/social-start requests validate browser Origin and Fetch Metadata. Every explicit Origin must match `CORS_ALLOWED_ORIGINS` exactly; request host and proxy metadata never create implicit trust. Browser POSTs without Origin are accepted only for `same-origin` or `none`; same-site and cross-site contexts are rejected with `SESSION_ORIGIN_REJECTED`. See [`FRONTEND-AUTH.md`](FRONTEND-AUTH.md), [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md), and [`SECURITY-HARDENING.md`](SECURITY-HARDENING.md).
 
 ### Internationalization
 
@@ -148,7 +148,7 @@ The repository runs:
 - backend unit/integration and production-container smoke tests;
 - frontend unit/build/visual QA;
 - administrator workspace QA;
-- CodeQL for Java/Kotlin and JavaScript/TypeScript;
+- GitHub CodeQL Default Setup for repository code scanning;
 - OSV dependency scanning;
 - weekly Dependabot updates for Maven, npm, GitHub Actions, and Docker.
 
