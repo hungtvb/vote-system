@@ -135,7 +135,7 @@ POST /api/v1/auth/social/{provider}/start
 POST /api/v1/auth/social/{provider}/link/start
 ```
 
-An explicit Origin must match the configured frontend origin or the API origin produced by the framework-normalized request. Raw `X-Forwarded-Host` and `X-Forwarded-Proto` headers are never trusted by this filter.
+Every explicit Origin must match an entry in `CORS_ALLOWED_ORIGINS` exactly. The filter does not derive trust from the API host, request host, proxy metadata, `X-Forwarded-Host`, or `X-Forwarded-Proto`. A combined same-origin deployment must add that browser origin explicitly to the allow-list.
 
 A browser request without Origin is accepted only when Fetch Metadata reports `same-origin` or `none`. `same-site`, `cross-site`, and unknown browser contexts are rejected. Non-browser clients with neither Origin nor Fetch Metadata remain supported. Rejections return `403 SESSION_ORIGIN_REJECTED`.
 
@@ -168,7 +168,7 @@ SOCIAL_LOGIN_FAILURE_URL=https://app.ballotbox.io.vn/
 
 The production profile enforces secure refresh/OAuth cookies. Refresh uses `SameSite=Strict`; the OAuth session uses `SameSite=Lax` for provider redirects. Credentialed requests use `credentials: include`. Wildcard and non-canonical CORS origins are rejected at startup.
 
-Local development uses `http://localhost:3000` and `http://localhost:8080` with the non-production profile and secure cookie flags disabled. The root combined Docker image remains an optional same-origin topology; CI explicitly runs it with the production profile and secure cookie settings.
+Local development uses `http://localhost:3000` and `http://localhost:8080` with the non-production profile and secure cookie flags disabled. The root combined Docker image remains an optional same-origin topology; its browser origin must be added explicitly when used interactively. CI runs the combined image with the production profile and uses non-browser requests without Origin.
 
 ## Request correlation and metrics
 
@@ -195,6 +195,6 @@ Frontend tests cover:
 - public feed access while restore runs;
 - authenticated reconciliation, protected MINE, and abort forwarding.
 
-Backend and focused security tests cover register/login/refresh bootstrap, rotation/replay/logout, active-session owner resolution, repeated revoked-cookie protection, role and security-version validation, forwarded-header and missing-Origin rejection, linked providers, immediate restricted-account enforcement, social callback rejection, session revocation, explicit restore, and expiry normalization without redundant version rotation.
+Backend and focused security tests cover register/login/refresh bootstrap, rotation/replay/logout, active-session owner resolution, repeated revoked-cookie protection, role and security-version validation, exact allow-list matching, forwarded-header irrelevance, missing-Origin rejection, linked providers, immediate restricted-account enforcement, social callback rejection, session revocation, explicit restore, and expiry normalization without redundant version rotation.
 
 See [`SECURITY-HARDENING.md`](SECURITY-HARDENING.md) for deployment kill-tests.
