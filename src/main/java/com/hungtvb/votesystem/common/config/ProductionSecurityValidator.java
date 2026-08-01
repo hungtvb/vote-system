@@ -69,13 +69,21 @@ public class ProductionSecurityValidator {
                 throw new IllegalStateException("Production CORS origin is invalid", exception);
             }
             String host = uri.getHost();
-            if (!"https".equalsIgnoreCase(uri.getScheme())
+            if (origin == null
+                    || !origin.equals(origin.strip())
+                    || !"https".equalsIgnoreCase(uri.getScheme())
                     || host == null
                     || host.isBlank()
                     || origin.contains("*")
+                    || uri.getRawUserInfo() != null
+                    || uri.getRawQuery() != null
+                    || uri.getRawFragment() != null
+                    || (uri.getRawPath() != null && !uri.getRawPath().isEmpty())
                     || "localhost".equalsIgnoreCase(host)
+                    || "0.0.0.0".equals(host)
+                    || "::1".equals(host)
                     || host.startsWith("127.")) {
-                throw new IllegalStateException("Production CORS origins must be explicit HTTPS origins");
+                throw new IllegalStateException("Production CORS origins must be canonical explicit HTTPS origins");
             }
         }
     }
