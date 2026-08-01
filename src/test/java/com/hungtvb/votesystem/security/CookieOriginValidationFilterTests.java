@@ -18,7 +18,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 class CookieOriginValidationFilterTests {
     private final CookieOriginValidationFilter filter = new CookieOriginValidationFilter(
             new CorsProperties(List.of("https://app.ballotbox.io.vn")),
-            new ObjectMapper()
+            new ObjectMapper().findAndRegisterModules()
     );
 
     @Test
