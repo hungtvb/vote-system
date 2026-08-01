@@ -39,6 +39,7 @@ The runtime smoke must prove:
 - long administrator-authored VI/EN copy without horizontal overflow;
 - retry transition back to NORMAL;
 - isolated stateful fixtures so screenshot and DOM capture replay the same mode transition;
+- fixture root requests reset from the explicit `qa` query before the browser cookie exists, preventing stale state between independent Chromium processes;
 - keyboard touch-target, reduced-motion, and visual/accessibility baseline checks.
 
 ## Controlled deployed-topology checks
