@@ -1,0 +1,75 @@
+name: TON-127 Profile Snapshot Publisher
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ton127-profile-snapshot-publisher.yml
+      - .chatgpt/ton127/**
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout publisher branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify and decode exact patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$GITHUB_WORKSPACE/.chatgpt/ton127/ton127.patch.gz.b64"
+          patch="$RUNNER_TEMP/ton127.patch"
+          echo 'de7343cf14816fb39f901079e547afe2a3368ad79d23c919809e93c2930c4d1b  '"$payload" | sha256sum --check
+          base64 --decode "$payload" | gzip --decompress > "$patch"
+          echo 'c4fb22256f54c46c72de5d09f1ca9071a81b50a63e64eddc53cc314276b3b510  '"$patch" | sha256sum --check
+
+      - name: Apply TON-127 on exact main base
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_base='1b5a865b1973fd1d7ced76b65ffb28f031a1d14d'
+          test "${{ github.event.pull_request.base.sha }}" = "$expected_base"
+          git checkout --detach "$expected_base"
+          git apply --check "$RUNNER_TEMP/ton127.patch"
+          git apply "$RUNNER_TEMP/ton127.patch"
+          git diff --check
+          python3 -m py_compile frontend/scripts/ton106_qa_server.py
+          python3 - <<'PY'
+          import yaml
+          from pathlib import Path
+          yaml.safe_load(Path('.github/workflows/auth-bootstrap-qa.yml').read_text())
+          PY
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Verify frontend
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+          npm run build
+
+      - name: Publish task branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'vote-system-automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add --all
+          git commit -m 'TON-127 Add safe profile presentation snapshot'
+          git push --force-with-lease=refs/heads/hungtvb2020/ton-127-fe-add-safe-profile-snapshot-for-instant-masthead-rendering:1b5a865b1973fd1d7ced76b65ffb28f031a1d14d \
+            origin HEAD:refs/heads/hungtvb2020/ton-127-fe-add-safe-profile-snapshot-for-instant-masthead-rendering
