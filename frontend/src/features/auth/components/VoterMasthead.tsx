@@ -6,6 +6,7 @@ import { ProfileDialog } from '@/features/profile/components/ProfileDialog';
 import { PublicProfileDialog } from '@/features/profile/components/PublicProfileDialog';
 import { updateActiveUserProfile } from '@/features/auth/hooks/useSession';
 import type { Session, SocialProvider, UpdateUserProfileRequest, UserProfile } from '@/shared/api/types';
+import type { ProfilePresentationSnapshot } from '@/shared/auth/profile-snapshot';
 import type { SocialProviderId } from '@/shared/api/social-auth-api';
 import { useI18n } from '@/shared/i18n/I18nProvider';
 import {
@@ -19,6 +20,7 @@ interface VoterMastheadProps {
   query: string;
   session: Session | null;
   profile: UserProfile | null;
+  profileSnapshot: ProfilePresentationSnapshot | null;
   restoring: boolean;
   readOnly: boolean;
   socialProviders?: SocialProviderId[];
@@ -36,6 +38,7 @@ export function VoterMasthead({
   query,
   session,
   profile,
+  profileSnapshot,
   restoring,
   readOnly,
   socialProviders = [],
@@ -75,6 +78,7 @@ export function VoterMasthead({
   }, [readOnly]);
 
   const authenticated = Boolean(session && visibleProfile);
+  const restoringIdentity = restoring && !authenticated ? profileSnapshot : null;
   const linkedProviders = new Set<SocialProvider>(visibleProfile?.linkedProviders ?? []);
   const googleEnabled = socialProviders.includes('google');
   const githubEnabled = socialProviders.includes('github');
@@ -133,7 +137,25 @@ export function VoterMasthead({
             <button type="button" aria-pressed={locale === 'en'} title={t('common', 'english')} onClick={() => setLocale('en')}>EN</button>
           </div>
 
-          {restoring && !authenticated && <span className={styles.restoring} role="status">{t('auth', 'restoring')}</span>}
+          {restoringIdentity ? (
+            <div
+              className={styles.snapshotIdentity}
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+              data-qa-profile-snapshot
+              data-qa-authoritative="false"
+            >
+              <BallotMark icon={restoringIdentity.avatarIcon} color={restoringIdentity.avatarColor} size="small" />
+              <span className={styles.identityCopy}>
+                <strong>{restoringIdentity.displayName}</strong>
+                <span>{restoringIdentity.roleLabel} · {t('auth', 'restoring')}</span>
+              </span>
+              <span className={styles.verificationPulse} aria-hidden="true" />
+            </div>
+          ) : restoring && !authenticated ? (
+            <span className={styles.restoring} role="status">{t('auth', 'restoring')}</span>
+          ) : null}
 
           {!restoring && !authenticated && (
             <div className={styles.guestActions} data-qa-guest-actions>
