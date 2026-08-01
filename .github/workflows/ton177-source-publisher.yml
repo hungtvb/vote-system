@@ -97,10 +97,6 @@ jobs:
           git apply "$patch"
           git diff --check
 
-          rebuilt="$RUNNER_TEMP/rebuilt.patch"
-          git diff --binary -- . ':(exclude).github/workflows/ci.yml' > "$rebuilt"
-          echo 'f3731ff077097c5af8c8158f24a0f7f4925223d85f26262a1baa186ece9d9cbc  '"$rebuilt" | sha256sum --check
-
           git add --all
           test "$(git write-tree)" = '7b4d49fbcf7d84763ef6d190990316b7d2defae4'
 
