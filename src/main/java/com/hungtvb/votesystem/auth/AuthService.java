@@ -5,6 +5,7 @@ import com.hungtvb.votesystem.auth.dto.LoginRequest;
 import com.hungtvb.votesystem.auth.dto.RegisterRequest;
 import com.hungtvb.votesystem.auth.metrics.AuthRestoreMetrics;
 import com.hungtvb.votesystem.auth.session.RefreshGrant;
+import com.hungtvb.votesystem.auth.session.RefreshSessionRepository;
 import com.hungtvb.votesystem.auth.session.RefreshSessionService;
 import com.hungtvb.votesystem.auth.social.UserIdentity;
 import com.hungtvb.votesystem.auth.social.UserIdentityRepository;
@@ -33,6 +34,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final TokenService tokenService;
+    private final RefreshSessionRepository refreshSessionRepository;
     private final RefreshSessionService refreshSessionService;
     private final AccountAccessPolicy accountAccessPolicy;
     private final AuthRestoreMetrics metrics;
@@ -42,6 +44,7 @@ public class AuthService {
                        PasswordEncoder passwordEncoder,
                        AuthenticationManager authenticationManager,
                        TokenService tokenService,
+                       RefreshSessionRepository refreshSessionRepository,
                        RefreshSessionService refreshSessionService,
                        AccountAccessPolicy accountAccessPolicy,
                        AuthRestoreMetrics metrics) {
@@ -50,6 +53,7 @@ public class AuthService {
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.tokenService = tokenService;
+        this.refreshSessionRepository = refreshSessionRepository;
         this.refreshSessionService = refreshSessionService;
         this.accountAccessPolicy = accountAccessPolicy;
         this.metrics = metrics;
@@ -88,8 +92,14 @@ public class AuthService {
         refreshSessionService.revoke(refreshToken);
     }
 
+    @Transactional
     public int logoutAll(UUID userId) {
-        return refreshSessionService.revokeAll(userId);
+        refreshSessionRepository.findAllActiveByUserIdForUpdate(userId);
+        AppUser user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new UnauthorizedException("User account is unavailable"));
+        int revokedSessions = refreshSessionService.revokeAll(userId);
+        user.revokeAccessTokens();
+        return revokedSessions;
     }
 
     @Transactional
