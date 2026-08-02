@@ -28,7 +28,12 @@ jobs:
           set -euo pipefail
           base='0c8a2d154c2069140a996d38877e25dee9cd489a'
           patch="$RUNNER_TEMP/ton141.patch"
-          base64 --decode .chatgpt/ton141/patch.gz.b64 | gzip --decompress > "$patch"
+          cat \
+            .chatgpt/ton141/chunk-00.b64 \
+            .chatgpt/ton141/chunk-01.b64 \
+            .chatgpt/ton141/chunk-02.b64 \
+            .chatgpt/ton141/chunk-03.b64 \
+            | base64 --decode | gzip --decompress > "$patch"
           echo 'e6c7205efb54dde5ada20d95bee54929a81693fdf54bbb3e3dfe5bb1afa0c074  '"$patch" | sha256sum --check
           test "${{ github.event.pull_request.base.sha }}" = "$base"
           git checkout --detach "$base"
@@ -78,8 +83,14 @@ jobs:
               'src/main/java/com/hungtvb/votesystem/auth/session/',
               'src/test/java/com/hungtvb/votesystem/auth/session/',
           )
-          paths = subprocess.check_output(['git', 'diff', '--name-only', '0c8a2d154c2069140a996d38877e25dee9cd489a'], text=True).splitlines()
-          unexpected = [path for path in paths if path not in allowed_exact and not path.startswith(allowed_prefixes)]
+          paths = subprocess.check_output(
+              ['git', 'diff', '--name-only', '0c8a2d154c2069140a996d38877e25dee9cd489a'],
+              text=True,
+          ).splitlines()
+          unexpected = [
+              path for path in paths
+              if path not in allowed_exact and not path.startswith(allowed_prefixes)
+          ]
           if unexpected:
               raise SystemExit('Unexpected TON-141 paths: ' + ', '.join(unexpected))
           if len(paths) != 29:
