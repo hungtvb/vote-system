@@ -1,0 +1,103 @@
+name: TON-140 Moderation Workflow Publisher
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/ton140-publisher.yml'
+      - '.chatgpt/ton140/**'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout publisher branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reassemble and verify exact patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          parts="$GITHUB_WORKSPACE/.chatgpt/ton140"
+          patch="$RUNNER_TEMP/ton140.patch"
+          cat "$parts/chunk-00.b64" "$parts/chunk-01.b64" "$parts/chunk-02.b64" "$parts/chunk-03.b64" "$parts/chunk-04.b64" \
+            | base64 --decode | gzip --decompress > "$patch"
+          echo '301f8c064164125909b612a2ff76dfe3c50a4dbd6c546b29c3227163d5cc51af  '"$patch" | sha256sum --check
+
+      - name: Apply TON-140 on exact main base
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_base='3169430279091d7503f83c388b03ab7b079ca0ce'
+          test "${{ github.event.pull_request.base.sha }}" = "$expected_base"
+          git checkout --detach "$expected_base"
+          git apply --check "$RUNNER_TEMP/ton140.patch"
+          git apply "$RUNNER_TEMP/ton140.patch"
+          git diff --check
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Compile backend
+        run: mvn -q -DskipTests compile
+
+      - name: Run focused moderation and rate-limit tests
+        run: mvn -q -Dtest=ModerationCaseIntegrationTests,RedisSlidingWindowRateLimiterSecurityTests test
+
+      - name: Publish allowlisted task source
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='3169430279091d7503f83c388b03ab7b079ca0ce'
+          task_branch='hungtvb2020/ton-140-be-unified-reports-and-moderation-case-workflow'
+          git diff --check
+          python3 - <<'PY'
+          import subprocess
+
+          allowed_exact = {
+              '.env.example',
+              'src/main/java/com/hungtvb/votesystem/admin/audit/AdminAuditAction.java',
+              'src/main/java/com/hungtvb/votesystem/admin/audit/AdminAuditTargetType.java',
+              'src/main/java/com/hungtvb/votesystem/security/RateLimitFilter.java',
+              'src/main/java/com/hungtvb/votesystem/security/RateLimitProperties.java',
+              'src/main/resources/application.yml',
+              'src/main/resources/db/migration/V16__add_reports_and_moderation_cases.sql',
+              'src/test/java/com/hungtvb/votesystem/moderation/ModerationCaseIntegrationTests.java',
+              'src/test/java/com/hungtvb/votesystem/security/RedisSlidingWindowRateLimiterSecurityTests.java',
+          }
+          allowed_prefixes = (
+              'src/main/java/com/hungtvb/votesystem/moderation/',
+          )
+          paths = subprocess.check_output(
+              ['git', 'diff', '--name-only', '3169430279091d7503f83c388b03ab7b079ca0ce'],
+              text=True,
+          ).splitlines()
+          unexpected = [
+              path for path in paths
+              if path not in allowed_exact and not path.startswith(allowed_prefixes)
+          ]
+          if unexpected:
+              raise SystemExit('Unexpected TON-140 paths: ' + ', '.join(unexpected))
+          if not paths:
+              raise SystemExit('TON-140 patch is empty')
+          PY
+          git config user.name 'vote-system-automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add --all
+          git commit -m 'TON-140 Add unified moderation case workflow'
+          git fetch origin "refs/heads/$task_branch:refs/remotes/origin/$task_branch"
+          expected_task=$(git rev-parse "refs/remotes/origin/$task_branch")
+          git push --force-with-lease="refs/heads/$task_branch:$expected_task" \
+            origin "HEAD:refs/heads/$task_branch"
