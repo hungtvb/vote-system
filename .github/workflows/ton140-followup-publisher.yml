@@ -43,10 +43,18 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Compile and run focused moderation tests
+      - name: Compile and diagnose user suspension idempotency
+        shell: bash
         run: |
+          set -o pipefail
           mvn -q -DskipTests compile
-          mvn -q -Dtest=ModerationCaseIntegrationTests test
+          status=0
+          mvn -Dtest='ModerationCaseIntegrationTests#userSuspensionResolutionIsAuditedAndIdempotentAcrossDatabaseTimestampPrecision' test || status=$?
+          find target/surefire-reports -maxdepth 1 -type f -name '*.txt' -print -exec cat {} \; || true
+          exit "$status"
+
+      - name: Run complete focused moderation suite
+        run: mvn -q -Dtest=ModerationCaseIntegrationTests test
 
       - name: Publish verified fix
         shell: bash
