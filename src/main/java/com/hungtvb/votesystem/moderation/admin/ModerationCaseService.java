@@ -33,6 +33,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -146,8 +147,9 @@ public class ModerationCaseService {
     public ModerationCaseResponse resolve(UUID actorId, UUID caseId, ResolveModerationCaseRequest request) {
         ModerationCase moderationCase = lock(caseId);
         String reason = normalizeReason(request.reason());
-        validateResolutionRequest(moderationCase, request);
-        if (moderationCase.isSameResolution(request.action(), reason, request.until())) {
+        Instant until = normalizeUntil(request.until());
+        validateResolutionRequest(moderationCase, request.action(), until);
+        if (moderationCase.isSameResolution(request.action(), reason, until)) {
             return ModerationCaseResponse.from(moderationCase);
         }
         ModerationCaseStatus previousStatus = moderationCase.getStatus();
@@ -161,15 +163,25 @@ public class ModerationCaseService {
                 moderationCase.getTargetId(),
                 request.action(),
                 reason,
-                request.until()
+                until
         );
+
+        // Some target adapters execute bulk updates with clearAutomatically=true.
+        // Reacquire the locked case before applying the workflow transition so a
+        // cleared persistence context cannot leave the target action committed
+        // while the case and reports remain open.
+        moderationCase = lock(caseId);
+        if (moderationCase.getStatus() != ModerationCaseStatus.IN_REVIEW) {
+            throw new ConflictException("Moderation case changed while applying the resolution action");
+        }
+
         Instant now = Instant.now();
-        moderationCase.resolve(request.action(), reason, request.until(), now);
+        moderationCase.resolve(request.action(), reason, until, now);
         reportRepository.closeOpenReports(caseId, ReportStatus.RESOLVED, now);
 
         Map<String, String> metadata = baseMetadata(moderationCase, previousStatus);
         metadata.put("resolution_action", request.action().name());
-        metadata.put("resolution_until", request.until() == null ? "not_set" : request.until().toString());
+        metadata.put("resolution_until", until == null ? "not_set" : until.toString());
         appendAudit(actorId, AdminAuditAction.ADMIN_RESOLVE_MODERATION_CASE,
                 moderationCase, reason, metadata);
         return ModerationCaseResponse.from(moderationCase);
@@ -247,19 +259,24 @@ public class ModerationCaseService {
     }
 
     private void validateResolutionRequest(ModerationCase moderationCase,
-                                           ResolveModerationCaseRequest request) {
+                                           ModerationResolutionAction action,
+                                           Instant until) {
         if (moderationCase.getTargetValidationStatus() != TargetValidationStatus.VERIFIED) {
             throw new ConflictException("Moderation target validation is deferred");
         }
-        if (request.action().targetType() != moderationCase.getTargetType()) {
+        if (action.targetType() != moderationCase.getTargetType()) {
             throw new InvalidRequestException("Resolution action is incompatible with the moderation target");
         }
-        if (moderationCase.getTargetType() == ModerationTargetType.BALLOT && request.until() != null) {
+        if (moderationCase.getTargetType() == ModerationTargetType.BALLOT && until != null) {
             throw new InvalidRequestException("Ballot moderation actions do not accept an expiry");
         }
-        if (request.action() == ModerationResolutionAction.RESTORE_USER && request.until() != null) {
+        if (action == ModerationResolutionAction.RESTORE_USER && until != null) {
             throw new InvalidRequestException("Restore user does not accept an expiry");
         }
+    }
+
+    private Instant normalizeUntil(Instant until) {
+        return until == null ? null : until.truncatedTo(ChronoUnit.MICROS);
     }
 
     private String normalizeReason(String rawReason) {

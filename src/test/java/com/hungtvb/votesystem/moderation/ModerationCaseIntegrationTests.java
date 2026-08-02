@@ -269,6 +269,48 @@ class ModerationCaseIntegrationTests {
     }
 
     @Test
+    void userSuspensionResolutionIsAuditedAndIdempotentAcrossDatabaseTimestampPrecision() throws Exception {
+        AuthSession reporter = register("case-user-reporter@example.com");
+        AuthSession target = register("case-user-target@example.com");
+        AuthSession admin = admin("case-user-admin@example.com");
+        JsonNode report = json(mockMvc.perform(post("/api/v1/reports")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(reporter.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reportPayload("USER", target.userId(), "HARASSMENT",
+                                "Repeated targeted harassment across ballots")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.targetValidationStatus").value("VERIFIED"))
+                .andReturn());
+        UUID caseId = UUID.fromString(report.get("caseId").asText());
+        advanceToReview(admin, caseId);
+
+        Instant until = Instant.now().plusSeconds(86_400).plusNanos(789);
+        String resolution = resolvePayload("SUSPEND_USER", "Confirmed abusive conduct", until);
+        mockMvc.perform(post("/api/v1/admin/moderation-cases/{caseId}/resolve", caseId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(admin.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(resolution))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RESOLVED"))
+                .andExpect(jsonPath("$.resolutionAction").value("SUSPEND_USER"));
+
+        assertEquals("SUSPENDED", scalar("select account_status from users where id = ?", String.class, target.userId()));
+        assertEquals("RESOLVED", scalar("select status from moderation_cases where id = ?", String.class, caseId));
+        assertEquals("RESOLVED", scalar("select status from reports where case_id = ?", String.class, caseId));
+        assertEquals(1L, auditCount(caseId, "ADMIN_RESOLVE_MODERATION_CASE"));
+        assertEquals(1L, auditCount(target.userId(), "ADMIN_SUSPEND_USER"));
+
+        mockMvc.perform(post("/api/v1/admin/moderation-cases/{caseId}/resolve", caseId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(admin.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(resolution))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RESOLVED"));
+        assertEquals(1L, auditCount(caseId, "ADMIN_RESOLVE_MODERATION_CASE"));
+        assertEquals(1L, auditCount(target.userId(), "ADMIN_SUSPEND_USER"));
+    }
+
+    @Test
     void targetActionFailureRollsBackCaseResolutionAndReportClosure() throws Exception {
         AuthSession reporter = register("case-rollback-reporter@example.com");
         AuthSession admin = admin("case-rollback-admin@example.com");
