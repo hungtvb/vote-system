@@ -1,0 +1,63 @@
+name: TON-140 Timestamp Idempotency Publisher
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/ton140-followup-publisher.yml'
+      - '.chatgpt/ton140-followup.patch.gz.b64'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout publisher branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decode and apply exact follow-up patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='024ce7c93bd130eaa0e7a43dfdb763cd138cbf96'
+          patch="$RUNNER_TEMP/ton140-followup.patch"
+          base64 --decode .chatgpt/ton140-followup.patch.gz.b64 | gzip --decompress > "$patch"
+          echo '317eaddaf44d5ee326e9416aa7a2dd33271b627a24139c0a94bb194151702d74  '"$patch" | sha256sum --check
+          git checkout --detach "$base"
+          git apply --check "$patch"
+          git apply "$patch"
+          git diff --check
+          test "$(git diff --name-only | sort | tr '\n' ' ')" = "src/main/java/com/hungtvb/votesystem/moderation/admin/ModerationCaseService.java src/test/java/com/hungtvb/votesystem/moderation/ModerationCaseIntegrationTests.java "
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Compile and run focused moderation tests
+        run: |
+          mvn -q -DskipTests compile
+          mvn -q -Dtest=ModerationCaseIntegrationTests test
+
+      - name: Publish verified fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='024ce7c93bd130eaa0e7a43dfdb763cd138cbf96'
+          task_branch='hungtvb2020/ton-140-be-unified-reports-and-moderation-case-workflow'
+          git config user.name 'vote-system-automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/main/java/com/hungtvb/votesystem/moderation/admin/ModerationCaseService.java \
+                  src/test/java/com/hungtvb/votesystem/moderation/ModerationCaseIntegrationTests.java
+          git commit -m 'TON-140 Preserve timed resolution idempotency'
+          git push --force-with-lease="refs/heads/$task_branch:$base" \
+            origin "HEAD:refs/heads/$task_branch"
