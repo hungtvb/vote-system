@@ -6,8 +6,7 @@ on:
       - main
     paths:
       - '.github/workflows/ton140-followup-publisher.yml'
-      - '.chatgpt/ton140-followup.patch.gz.b64'
-      - '.chatgpt/ton140-reacquire.patch.gz.b64'
+      - '.chatgpt/ton140-combined.patch.gz.b64'
 
 permissions:
   contents: write
@@ -23,25 +22,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Apply exact idempotency and persistence-context fixes
+      - name: Apply exact combined atomicity patch
         shell: bash
         run: |
           set -euo pipefail
           base='024ce7c93bd130eaa0e7a43dfdb763cd138cbf96'
-          followup="$RUNNER_TEMP/ton140-followup.patch"
-          reacquire="$RUNNER_TEMP/ton140-reacquire.patch"
-
-          base64 --decode .chatgpt/ton140-followup.patch.gz.b64 | gzip --decompress > "$followup"
-          echo '317eaddaf44d5ee326e9416aa7a2dd33271b627a24139c0a94bb194151702d74  '"$followup" | sha256sum --check
-
-          base64 --decode .chatgpt/ton140-reacquire.patch.gz.b64 | gzip --decompress > "$reacquire"
-          echo '8368fd6abbf47034ebdeffafc928fefda046a2b0a75031d069c82c678e49f9a1  '"$reacquire" | sha256sum --check
-
+          patch="$RUNNER_TEMP/ton140-combined.patch"
+          base64 --decode .chatgpt/ton140-combined.patch.gz.b64 | gzip --decompress > "$patch"
+          echo '597f82f6f34c21c3caf0363daeacf0bce9328667442980dae1a2ced32b437801  '"$patch" | sha256sum --check
           git checkout --detach "$base"
-          git apply --check "$followup"
-          git apply "$followup"
-          git apply --check "$reacquire"
-          git apply "$reacquire"
+          git apply --check "$patch"
+          git apply "$patch"
           git diff --check
           test "$(git diff --name-only | sort | tr '\n' ' ')" = "src/main/java/com/hungtvb/votesystem/moderation/admin/ModerationCaseService.java src/test/java/com/hungtvb/votesystem/moderation/ModerationCaseIntegrationTests.java "
 
