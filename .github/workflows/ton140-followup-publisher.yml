@@ -1,4 +1,4 @@
-name: TON-140 Timestamp Idempotency Publisher
+name: TON-140 Resolution Atomicity Publisher
 
 on:
   pull_request:
@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/ton140-followup-publisher.yml'
       - '.chatgpt/ton140-followup.patch.gz.b64'
+      - '.chatgpt/ton140-reacquire.patch.gz.b64'
 
 permissions:
   contents: write
@@ -22,17 +23,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Decode and apply exact follow-up patch
+      - name: Apply exact idempotency and persistence-context fixes
         shell: bash
         run: |
           set -euo pipefail
           base='024ce7c93bd130eaa0e7a43dfdb763cd138cbf96'
-          patch="$RUNNER_TEMP/ton140-followup.patch"
-          base64 --decode .chatgpt/ton140-followup.patch.gz.b64 | gzip --decompress > "$patch"
-          echo '317eaddaf44d5ee326e9416aa7a2dd33271b627a24139c0a94bb194151702d74  '"$patch" | sha256sum --check
+          followup="$RUNNER_TEMP/ton140-followup.patch"
+          reacquire="$RUNNER_TEMP/ton140-reacquire.patch"
+
+          base64 --decode .chatgpt/ton140-followup.patch.gz.b64 | gzip --decompress > "$followup"
+          echo '317eaddaf44d5ee326e9416aa7a2dd33271b627a24139c0a94bb194151702d74  '"$followup" | sha256sum --check
+
+          base64 --decode .chatgpt/ton140-reacquire.patch.gz.b64 | gzip --decompress > "$reacquire"
+          echo '8368fd6abbf47034ebdeffafc928fefda046a2b0a75031d069c82c678e49f9a1  '"$reacquire" | sha256sum --check
+
           git checkout --detach "$base"
-          git apply --check "$patch"
-          git apply "$patch"
+          git apply --check "$followup"
+          git apply "$followup"
+          git apply --check "$reacquire"
+          git apply "$reacquire"
           git diff --check
           test "$(git diff --name-only | sort | tr '\n' ' ')" = "src/main/java/com/hungtvb/votesystem/moderation/admin/ModerationCaseService.java src/test/java/com/hungtvb/votesystem/moderation/ModerationCaseIntegrationTests.java "
 
@@ -43,15 +52,10 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Compile and diagnose user suspension idempotency
-        shell: bash
+      - name: Compile and run user suspension atomicity test
         run: |
-          set -o pipefail
           mvn -q -DskipTests compile
-          status=0
-          mvn -Dtest='ModerationCaseIntegrationTests#userSuspensionResolutionIsAuditedAndIdempotentAcrossDatabaseTimestampPrecision' test || status=$?
-          find target/surefire-reports -maxdepth 1 -type f -name '*.txt' -print -exec cat {} \; || true
-          exit "$status"
+          mvn -q -Dtest='ModerationCaseIntegrationTests#userSuspensionResolutionIsAuditedAndIdempotentAcrossDatabaseTimestampPrecision' test
 
       - name: Run complete focused moderation suite
         run: mvn -q -Dtest=ModerationCaseIntegrationTests test
@@ -66,6 +70,6 @@ jobs:
           git config user.email 'actions@users.noreply.github.com'
           git add src/main/java/com/hungtvb/votesystem/moderation/admin/ModerationCaseService.java \
                   src/test/java/com/hungtvb/votesystem/moderation/ModerationCaseIntegrationTests.java
-          git commit -m 'TON-140 Preserve timed resolution idempotency'
+          git commit -m 'TON-140 Preserve moderation resolution atomicity'
           git push --force-with-lease="refs/heads/$task_branch:$base" \
             origin "HEAD:refs/heads/$task_branch"
