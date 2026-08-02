@@ -1,0 +1,93 @@
+name: TON-141 Session Security Publisher
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/ton141-publisher.yml'
+      - '.chatgpt/ton141/**'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout publisher branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decode and apply exact TON-141 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='0c8a2d154c2069140a996d38877e25dee9cd489a'
+          patch="$RUNNER_TEMP/ton141.patch"
+          base64 --decode .chatgpt/ton141/patch.gz.b64 | gzip --decompress > "$patch"
+          echo 'e6c7205efb54dde5ada20d95bee54929a81693fdf54bbb3e3dfe5bb1afa0c074  '"$patch" | sha256sum --check
+          test "${{ github.event.pull_request.base.sha }}" = "$base"
+          git checkout --detach "$base"
+          git apply --check "$patch"
+          git apply "$patch"
+          git diff --check
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Compile backend
+        run: mvn -q -DskipTests compile
+
+      - name: Run focused session-security tests
+        run: >-
+          mvn -q
+          -Dtest=SessionClientMetadataFactoryTests,SessionManagementIntegrationTests,RefreshSessionServiceLogoutTests,VoteSystemApplicationTests,UserRestrictionRefreshConcurrencyIntegrationTests,AdminUserModerationIntegrationTests,RedisSlidingWindowRateLimiterSecurityTests
+          test
+
+      - name: Publish allowlisted task source
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='0c8a2d154c2069140a996d38877e25dee9cd489a'
+          task_branch='hungtvb2020/ton-141-be-session-device-and-account-security-management'
+          python3 - <<'PY'
+          import subprocess
+
+          allowed_exact = {
+              '.env.example',
+              'src/main/java/com/hungtvb/votesystem/admin/usermoderation/AdminUserModerationService.java',
+              'src/main/java/com/hungtvb/votesystem/auth/AuthController.java',
+              'src/main/java/com/hungtvb/votesystem/auth/AuthService.java',
+              'src/main/java/com/hungtvb/votesystem/auth/social/SocialAuthenticationSuccessHandler.java',
+              'src/main/java/com/hungtvb/votesystem/ratelimit/RateLimitFilter.java',
+              'src/main/java/com/hungtvb/votesystem/ratelimit/RateLimitProperties.java',
+              'src/main/java/com/hungtvb/votesystem/security/TokenService.java',
+              'src/main/resources/application.yml',
+              'src/main/resources/db/migration/V17__add_session_device_security_management.sql',
+              'src/test/java/com/hungtvb/votesystem/ratelimit/RedisSlidingWindowRateLimiterSecurityTests.java',
+          }
+          allowed_prefixes = (
+              'src/main/java/com/hungtvb/votesystem/auth/session/',
+              'src/test/java/com/hungtvb/votesystem/auth/session/',
+          )
+          paths = subprocess.check_output(['git', 'diff', '--name-only', '0c8a2d154c2069140a996d38877e25dee9cd489a'], text=True).splitlines()
+          unexpected = [path for path in paths if path not in allowed_exact and not path.startswith(allowed_prefixes)]
+          if unexpected:
+              raise SystemExit('Unexpected TON-141 paths: ' + ', '.join(unexpected))
+          if len(paths) != 29:
+              raise SystemExit(f'Expected 29 TON-141 files, found {len(paths)}')
+          PY
+          git config user.name 'vote-system-automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add --all
+          git commit -m 'TON-141 Add session and device security management'
+          git push --force-with-lease="refs/heads/$task_branch:$base" \
+            origin "HEAD:refs/heads/$task_branch"
