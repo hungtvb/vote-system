@@ -1,10 +1,15 @@
 -- Vote System data is owned by the Spring backend. Supabase browser roles must
--- not access these application and Flyway tables through PostgREST.
+-- not access application tables through PostgREST.
+--
+-- flyway_schema_history is intentionally not altered here. Flyway holds its
+-- migration lock around that table while this script runs; its Supabase-specific
+-- RLS hardening lives in supabase/migrations/20260802054537_lock_vote_system_data_api.sql.
+SET LOCAL lock_timeout = '10s';
+
 DO $$
 DECLARE
     target_table TEXT;
     protected_tables CONSTANT TEXT[] := ARRAY[
-        'flyway_schema_history',
         'users',
         'posts',
         'votes',
@@ -33,7 +38,6 @@ BEGIN
 END
 $$;
 
-ALTER TABLE public.flyway_schema_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.votes ENABLE ROW LEVEL SECURITY;
