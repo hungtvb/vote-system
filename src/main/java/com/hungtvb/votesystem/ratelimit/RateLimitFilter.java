@@ -112,6 +112,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if ("PATCH".equals(method) && "/api/v1/users/me".equals(path)) {
             return new Rule("profile-update", properties.profileUpdate(), true);
         }
+        if ("POST".equals(method) && "/api/v1/reports".equals(path)) {
+            return new Rule("report-create", properties.reportCreate(), true);
+        }
         return null;
     }
 
