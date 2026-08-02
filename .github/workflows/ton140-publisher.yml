@@ -70,12 +70,12 @@ jobs:
               '.env.example',
               'src/main/java/com/hungtvb/votesystem/admin/audit/AdminAuditAction.java',
               'src/main/java/com/hungtvb/votesystem/admin/audit/AdminAuditTargetType.java',
-              'src/main/java/com/hungtvb/votesystem/security/RateLimitFilter.java',
-              'src/main/java/com/hungtvb/votesystem/security/RateLimitProperties.java',
+              'src/main/java/com/hungtvb/votesystem/ratelimit/RateLimitFilter.java',
+              'src/main/java/com/hungtvb/votesystem/ratelimit/RateLimitProperties.java',
               'src/main/resources/application.yml',
               'src/main/resources/db/migration/V16__add_reports_and_moderation_cases.sql',
               'src/test/java/com/hungtvb/votesystem/moderation/ModerationCaseIntegrationTests.java',
-              'src/test/java/com/hungtvb/votesystem/security/RedisSlidingWindowRateLimiterSecurityTests.java',
+              'src/test/java/com/hungtvb/votesystem/ratelimit/RedisSlidingWindowRateLimiterSecurityTests.java',
           }
           allowed_prefixes = (
               'src/main/java/com/hungtvb/votesystem/moderation/',
