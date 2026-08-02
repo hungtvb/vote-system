@@ -9,7 +9,13 @@ public enum AdminAuditAction {
     ADMIN_RESTORE_USER(AdminAuditTargetType.USER),
     ADMIN_REVOKE_SESSIONS(AdminAuditTargetType.USER),
     ADMIN_REBUILD_RANKING(AdminAuditTargetType.RANKING),
-    SYSTEM_MODE_CHANGED(AdminAuditTargetType.SYSTEM);
+    SYSTEM_MODE_CHANGED(AdminAuditTargetType.SYSTEM),
+    ADMIN_ASSIGN_MODERATION_CASE(AdminAuditTargetType.MODERATION_CASE),
+    ADMIN_TRIAGE_MODERATION_CASE(AdminAuditTargetType.MODERATION_CASE),
+    ADMIN_REVIEW_MODERATION_CASE(AdminAuditTargetType.MODERATION_CASE),
+    ADMIN_RESOLVE_MODERATION_CASE(AdminAuditTargetType.MODERATION_CASE),
+    ADMIN_REJECT_MODERATION_CASE(AdminAuditTargetType.MODERATION_CASE),
+    ADMIN_REOPEN_MODERATION_CASE(AdminAuditTargetType.MODERATION_CASE);
 
     private final AdminAuditTargetType targetType;
 

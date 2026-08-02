@@ -4,5 +4,6 @@ public enum AdminAuditTargetType {
     POST,
     USER,
     RANKING,
-    SYSTEM
+    SYSTEM,
+    MODERATION_CASE
 }

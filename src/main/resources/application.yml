@@ -119,6 +119,9 @@ app:
     profile-update:
       limit: ${RATE_LIMIT_PROFILE_UPDATE_LIMIT:10}
       window: ${RATE_LIMIT_PROFILE_UPDATE_WINDOW:PT1H}
+    report-create:
+      limit: ${RATE_LIMIT_REPORT_CREATE_LIMIT:10}
+      window: ${RATE_LIMIT_REPORT_CREATE_WINDOW:PT1H}
   security:
     admin-bootstrap:
       enabled: ${ADMIN_BOOTSTRAP_ENABLED:false}

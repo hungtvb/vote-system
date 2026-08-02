@@ -14,7 +14,8 @@ public record RateLimitProperties(
         Policy socialStart,
         Policy createPost,
         Policy vote,
-        Policy profileUpdate
+        Policy profileUpdate,
+        Policy reportCreate
 ) {
     public record Policy(int limit, Duration window) {
     }
