@@ -23,6 +23,8 @@ class SystemModeRequestPolicyTests {
         assertEquals(ALLOW, policy.evaluate(SystemMode.READ_ONLY, "HEAD", "/api/v1/posts/ballot-id"));
         assertEquals(REJECT_READ_ONLY, policy.evaluate(SystemMode.READ_ONLY, "POST", "/api/v1/posts"));
         assertEquals(REJECT_READ_ONLY, policy.evaluate(SystemMode.READ_ONLY, "PUT", "/api/v1/posts/ballot-id/vote"));
+        assertEquals(REJECT_READ_ONLY, policy.evaluate(SystemMode.READ_ONLY, "POST", "/api/v1/posts/ballot-id/comments"));
+        assertEquals(REJECT_READ_ONLY, policy.evaluate(SystemMode.READ_ONLY, "PATCH", "/api/v1/comments/comment-id"));
         assertEquals(REJECT_READ_ONLY, policy.evaluate(SystemMode.READ_ONLY, "POST", "/api/v1/auth/register"));
         assertEquals(ALLOW, policy.evaluate(SystemMode.READ_ONLY, "POST", "/api/v1/auth/login"));
     }

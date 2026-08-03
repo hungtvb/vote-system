@@ -125,6 +125,12 @@ app:
     session-management:
       limit: ${RATE_LIMIT_SESSION_MANAGEMENT_LIMIT:10}
       window: ${RATE_LIMIT_SESSION_MANAGEMENT_WINDOW:PT1M}
+    comment-create:
+      limit: ${RATE_LIMIT_COMMENT_CREATE_LIMIT:20}
+      window: ${RATE_LIMIT_COMMENT_CREATE_WINDOW:PT10M}
+    comment-edit:
+      limit: ${RATE_LIMIT_COMMENT_EDIT_LIMIT:30}
+      window: ${RATE_LIMIT_COMMENT_EDIT_WINDOW:PT10M}
   security:
     admin-bootstrap:
       enabled: ${ADMIN_BOOTSTRAP_ENABLED:false}

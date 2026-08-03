@@ -16,7 +16,9 @@ public record RateLimitProperties(
         Policy vote,
         Policy profileUpdate,
         Policy reportCreate,
-        Policy sessionManagement
+        Policy sessionManagement,
+        Policy commentCreate,
+        Policy commentEdit
 ) {
     public record Policy(int limit, Duration window) {
     }

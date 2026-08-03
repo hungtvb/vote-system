@@ -168,16 +168,16 @@ Completed M4 foundations include i18n, profiles, Ballot Marks, admin authorizati
 Current sequence:
 
 ```text
-TON-177  Production recovery and lockout QA
+TON-110  Comments foundation: replies, ownership, cursor pagination
      ↓
-TON-140  Unified reports and moderation cases
-     ↓
-TON-110/111  Comments, replies, voting, and moderation
+TON-111  Comment voting and audited moderation actions
      ↓
 TON-112/113/114  Notifications, transactional outbox, and realtime delivery
      ↓
 TON-115  Constrained direct messaging
 ```
+
+The P0 identity/access/moderation roadmap is complete. TON-110 is the first M5 Community implementation and activates authoritative COMMENT report validation while leaving administrator comment actions to TON-111.
 
 ## Documentation maintenance
 
