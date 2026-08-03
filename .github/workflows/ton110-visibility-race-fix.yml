@@ -31,11 +31,11 @@ jobs:
           trimmed="$RUNNER_TEMP/visibility-race-fix.patch.gz.b64"
           patch="$RUNNER_TEMP/visibility-race-fix.patch"
 
-          test "$(wc -c < "$encoded")" -ge 1396
-          head -c 1396 "$encoded" > "$trimmed"
-          echo '4fe1c1941eaeef1653520197206e01bbb71d495523ab5632cd1f37b69a43f485  '"$trimmed" | sha256sum --check
+          test "$(wc -c < "$encoded")" -ge 4608
+          head -c 4608 "$encoded" > "$trimmed"
+          echo '545b0e144216140b26debcbfff4004ffa4719c11cdbe414ede42dc72e8e83055  '"$trimmed" | sha256sum --check
           base64 --decode "$trimmed" | gzip --decompress > "$patch"
-          echo '6a4cbe65d1344364c96e125954076ec1af4352f3f9e7cd884c5b9b6f43facda3  '"$patch" | sha256sum --check
+          echo '48e80a4eed6772c3dd76e0548c9bd095f7ba179f1e2d239b78e578de71500c50  '"$patch" | sha256sum --check
           test "${{ github.event.pull_request.base.sha }}" = '65a8b05ab462d80240a7376b081ea81cc20a1fa7'
 
           git checkout --detach "$base"
@@ -70,15 +70,35 @@ jobs:
           set -euo pipefail
           base='bfebe1c44c23770f12e32bf300c839efe46f9883'
           task_branch='hungtvb2020/ton-110-comments-foundation-replies-ownership-and-pagination'
-          changed="$(git diff --name-only "$base" | sort)"
-          expected="$(printf '%s\n' \
-            'src/main/java/com/hungtvb/votesystem/comment/CommentRepository.java' \
-            'src/test/java/com/hungtvb/votesystem/comment/CommentIntegrationTests.java' | sort)"
-          test "$changed" = "$expected"
+          python3 - <<'PY'
+          import subprocess
+
+          expected = {
+              'docs/verification/TON-110-comments-foundation.md',
+              'src/main/java/com/hungtvb/votesystem/comment/CommentReadRepository.java',
+              'src/main/java/com/hungtvb/votesystem/comment/CommentRepository.java',
+              'src/main/java/com/hungtvb/votesystem/comment/CommentService.java',
+              'src/test/java/com/hungtvb/votesystem/comment/CommentIntegrationTests.java',
+          }
+          tracked = subprocess.check_output(
+              ['git', 'diff', '--name-only', 'bfebe1c44c23770f12e32bf300c839efe46f9883'],
+              text=True,
+          ).splitlines()
+          untracked = subprocess.check_output(
+              ['git', 'ls-files', '--others', '--exclude-standard'],
+              text=True,
+          ).splitlines()
+          paths = set(tracked) | set(untracked)
+          if paths != expected:
+              raise SystemExit(
+                  f'TON-110 repair allowlist mismatch; missing={sorted(expected - paths)}; '
+                  f'unexpected={sorted(paths - expected)}'
+              )
+          PY
 
           git config user.name 'vote-system-automation'
           git config user.email 'actions@users.noreply.github.com'
           git add --all
-          git commit -m 'TON-110 Prevent hidden-ballot comment disclosure race'
+          git commit -m 'TON-110 Make hidden-ballot comment reads DB authoritative'
           git push --force-with-lease="refs/heads/$task_branch:$base" \
             origin "HEAD:refs/heads/$task_branch"
