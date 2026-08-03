@@ -53,7 +53,55 @@ jobs:
       - name: Compile backend
         run: mvn -q -DskipTests compile
 
-      - name: Run visibility regression
+      - name: Run isolated visibility regression
+        id: regression
+        shell: bash
+        run: |
+          set +e
+          rm -rf target/surefire-reports
+          mvn -DtrimStackTrace=false \
+            -Dtest='CommentIntegrationTests#repositoryCursorQueryCannotExposeCommentsAfterBallotBecomesHidden' \
+            test > "$RUNNER_TEMP/ton110-maven-output.txt" 2>&1
+          status=$?
+          printf '%s' "$status" > "$RUNNER_TEMP/ton110-test-status"
+          {
+            echo '=== Maven output ==='
+            cat "$RUNNER_TEMP/ton110-maven-output.txt"
+            echo
+            echo '=== Surefire text reports ==='
+            find target/surefire-reports -maxdepth 1 -type f -name '*.txt' \
+              -print -exec cat {} \; 2>/dev/null || true
+            echo
+            echo '=== Surefire XML failure/error snippets ==='
+            grep -R -n -E '<failure|<error|AssertionFailedError|expected:|actual:' \
+              target/surefire-reports 2>/dev/null || true
+          } > "$RUNNER_TEMP/ton110-visibility-diagnostics.txt"
+          exit 0
+
+      - name: Upload visibility diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ton110-visibility-diagnostics
+          path: |
+            ${{ runner.temp }}/ton110-visibility-diagnostics.txt
+            ${{ runner.temp }}/ton110-maven-output.txt
+            ${{ runner.temp }}/ton110-test-status
+            target/surefire-reports/**
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Require isolated visibility regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(cat "$RUNNER_TEMP/ton110-test-status")"
+          if [ "$status" -ne 0 ]; then
+            cat "$RUNNER_TEMP/ton110-visibility-diagnostics.txt"
+            exit "$status"
+          fi
+
+      - name: Run full comment integration suite
         shell: bash
         run: |
           set -euo pipefail
