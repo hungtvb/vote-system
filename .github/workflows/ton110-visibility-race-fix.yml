@@ -1,0 +1,84 @@
+name: TON-110 Visibility Race Fix
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/ton110-visibility-race-fix.yml'
+      - '.chatgpt/ton110/visibility-race-fix.patch.gz.b64'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply exact visibility repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='bfebe1c44c23770f12e32bf300c839efe46f9883'
+          encoded='.chatgpt/ton110/visibility-race-fix.patch.gz.b64'
+          trimmed="$RUNNER_TEMP/visibility-race-fix.patch.gz.b64"
+          patch="$RUNNER_TEMP/visibility-race-fix.patch"
+
+          test "$(wc -c < "$encoded")" -ge 1336
+          head -c 1336 "$encoded" > "$trimmed"
+          echo 'ed1e0ee1cca51f4912329961c8455c2e13543da397244ed56419a94e77828106  '"$trimmed" | sha256sum --check
+          base64 --decode "$trimmed" | gzip --decompress > "$patch"
+          echo 'd0810fa6b3818d48be74de6000c3e732cfb5b465c7491c37257c629f999c6072  '"$patch" | sha256sum --check
+          test "${{ github.event.pull_request.base.sha }}" = '65a8b05ab462d80240a7376b081ea81cc20a1fa7'
+
+          git checkout --detach "$base"
+          git apply --check "$patch"
+          git apply "$patch"
+          git diff --check
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Compile backend
+        run: mvn -q -DskipTests compile
+
+      - name: Run visibility regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf target/surefire-reports
+          if ! mvn -q -Dtest=CommentIntegrationTests test; then
+            find target/surefire-reports -maxdepth 1 -type f -name '*.txt' \
+              -print -exec cat {} \; || true
+            exit 1
+          fi
+
+      - name: Publish exact repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='bfebe1c44c23770f12e32bf300c839efe46f9883'
+          task_branch='hungtvb2020/ton-110-comments-foundation-replies-ownership-and-pagination'
+          changed="$(git diff --name-only "$base" | sort)"
+          expected="$(printf '%s\n' \
+            'src/main/java/com/hungtvb/votesystem/comment/CommentRepository.java' \
+            'src/test/java/com/hungtvb/votesystem/comment/CommentIntegrationTests.java' | sort)"
+          test "$changed" = "$expected"
+
+          git config user.name 'vote-system-automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add --all
+          git commit -m 'TON-110 Prevent hidden-ballot comment disclosure race'
+          git push --force-with-lease="refs/heads/$task_branch:$base" \
+            origin "HEAD:refs/heads/$task_branch"
