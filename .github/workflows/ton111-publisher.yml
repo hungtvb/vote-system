@@ -1,0 +1,178 @@
+name: TON-111 Comment Voting Publisher
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/ton111-publisher.yml'
+      - '.chatgpt/ton111/**'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout publisher branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decode and apply exact TON-111 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='5537ca776e136255c7298ef5211e625b4023fbe8'
+          encoded="$RUNNER_TEMP/ton111.patch.gz.b64"
+          patch="$RUNNER_TEMP/ton111.patch"
+          : > "$encoded"
+
+          append_chunk() {
+            local path="$1"
+            local size="$2"
+            local expected_sha="$3"
+            local trimmed="$RUNNER_TEMP/$(basename "$path").trimmed"
+            local actual
+            actual="$(wc -c < "$path")"
+            test "$actual" -ge "$size"
+            head -c "$size" "$path" > "$trimmed"
+            echo "$expected_sha  $trimmed" | sha256sum --check
+            cat "$trimmed" >> "$encoded"
+          }
+
+          append_chunk .chatgpt/ton111/chunk-00.b64 4000 75e4fc1d4e58550c991cde35e7bb601eb56542fdaf1d0284b9ceeb0460c7c05b
+          append_chunk .chatgpt/ton111/chunk-01.b64 4000 6daeb4adcdff45dd55d5b817bfc122da51bfaeb23f16c860aa7b0fb474a859fe
+          append_chunk .chatgpt/ton111/chunk-02.b64 4000 c79d56957bd2ca58d7751560464caca0533371322ac37851b6b8cb85cfd3d314
+          append_chunk .chatgpt/ton111/chunk-03.b64 4000 8a5c00ef54bcd3f792289e35b727859ab31970aa3cfb2c8244effd077b6dc2de
+          append_chunk .chatgpt/ton111/chunk-04.b64 4000 524a2aaa24ea0fdc46b7dd9eb90380b905e8cab14fdc4c9941e047c85c01b740
+          append_chunk .chatgpt/ton111/chunk-05.b64 1884 16b7b2c2df304fa22d91e4173d4f38c5ddef2fc63c625062c12e328321eec90e
+          test "$(wc -c < "$encoded")" -eq 21884
+          echo '424cd90da635a0d13e328d39153cd5eaa667458b018a880caa350a07d590e952  '"$encoded" | sha256sum --check
+
+          base64 --decode "$encoded" | gzip --decompress > "$patch"
+          echo '709a575b53fda379d0c77b30ccb098d373ceeaa63e387454e876404a50e4d755  '"$patch" | sha256sum --check
+          test "${{ github.event.pull_request.base.sha }}" = "$base"
+
+          git checkout --detach "$base"
+          git apply --check "$patch"
+          git apply "$patch"
+          git diff --check
+
+      - name: Upload decoded TON-111 patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: ton111-decoded-patch
+          path: ${{ runner.temp }}/ton111.patch
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Compile backend
+        run: mvn -q -DskipTests compile
+
+      - name: Run focused comment voting and moderation tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          tests=(
+            CommentVoteIntegrationTests
+            AdminCommentModerationIntegrationTests
+            CommentIntegrationTests
+            CommentRateLimitIntegrationTests
+            ModerationCaseIntegrationTests
+            RedisSlidingWindowRateLimiterSecurityTests
+            SystemModeRequestPolicyTests
+            VoteSystemApplicationTests
+          )
+          for test_class in "${tests[@]}"; do
+            echo "::group::${test_class}"
+            rm -rf target/surefire-reports
+            if ! mvn -q -Dtest="${test_class}" test; then
+              echo "::error::Focused test failed: ${test_class}"
+              find target/surefire-reports -maxdepth 1 -type f -name '*.txt' \
+                -print -exec cat {} \; || true
+              echo "::endgroup::"
+              exit 1
+            fi
+            echo "::endgroup::"
+          done
+
+      - name: Publish allowlisted task source
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='5537ca776e136255c7298ef5211e625b4023fbe8'
+          task_branch='hungtvb2020/ton-111-comment-voting-and-moderation-workflow'
+          python3 - <<'PY'
+          import subprocess
+
+          expected = {
+              '.env.example',
+              'docs/ADMIN.md',
+              'docs/API.md',
+              'docs/MODERATION.md',
+              'docs/README.md',
+              'docs/verification/TON-111-comment-voting-moderation.md',
+              'src/main/java/com/hungtvb/votesystem/admin/audit/AdminAuditAction.java',
+              'src/main/java/com/hungtvb/votesystem/admin/audit/AdminAuditTargetType.java',
+              'src/main/java/com/hungtvb/votesystem/admin/moderation/AdminCommentModerationController.java',
+              'src/main/java/com/hungtvb/votesystem/admin/moderation/AdminCommentModerationService.java',
+              'src/main/java/com/hungtvb/votesystem/admin/moderation/dto/AdminCommentModerationResponse.java',
+              'src/main/java/com/hungtvb/votesystem/comment/Comment.java',
+              'src/main/java/com/hungtvb/votesystem/comment/CommentService.java',
+              'src/main/java/com/hungtvb/votesystem/comment/CommentVote.java',
+              'src/main/java/com/hungtvb/votesystem/comment/CommentVoteController.java',
+              'src/main/java/com/hungtvb/votesystem/comment/CommentVoteRepository.java',
+              'src/main/java/com/hungtvb/votesystem/comment/CommentVoteService.java',
+              'src/main/java/com/hungtvb/votesystem/comment/dto/CommentResponse.java',
+              'src/main/java/com/hungtvb/votesystem/comment/dto/CommentVoteResponse.java',
+              'src/main/java/com/hungtvb/votesystem/moderation/ModerationResolutionAction.java',
+              'src/main/java/com/hungtvb/votesystem/moderation/ModerationTargetService.java',
+              'src/main/java/com/hungtvb/votesystem/moderation/admin/ModerationCaseService.java',
+              'src/main/java/com/hungtvb/votesystem/post/PostRepository.java',
+              'src/main/java/com/hungtvb/votesystem/ratelimit/RateLimitFilter.java',
+              'src/main/java/com/hungtvb/votesystem/ratelimit/RateLimitProperties.java',
+              'src/main/resources/application.yml',
+              'src/main/resources/db/migration/V19__add_comment_votes_and_moderation.sql',
+              'src/test/java/com/hungtvb/votesystem/admin/moderation/AdminCommentModerationIntegrationTests.java',
+              'src/test/java/com/hungtvb/votesystem/comment/CommentRateLimitIntegrationTests.java',
+              'src/test/java/com/hungtvb/votesystem/comment/CommentVoteIntegrationTests.java',
+              'src/test/java/com/hungtvb/votesystem/moderation/ModerationCaseIntegrationTests.java',
+              'src/test/java/com/hungtvb/votesystem/ratelimit/RedisSlidingWindowRateLimiterSecurityTests.java',
+              'src/test/java/com/hungtvb/votesystem/system/SystemModeRequestPolicyTests.java',
+          }
+          tracked = subprocess.check_output(
+              ['git', 'diff', '--name-only', '5537ca776e136255c7298ef5211e625b4023fbe8'],
+              text=True,
+          ).splitlines()
+          untracked = subprocess.check_output(
+              ['git', 'ls-files', '--others', '--exclude-standard'],
+              text=True,
+          ).splitlines()
+          paths = set(tracked) | set(untracked)
+          missing = sorted(expected - paths)
+          unexpected = sorted(paths - expected)
+          if missing or unexpected:
+              raise SystemExit(
+                  f'TON-111 allowlist mismatch; missing={missing}; unexpected={unexpected}'
+              )
+          if len(paths) != 33:
+              raise SystemExit(f'Expected 33 TON-111 files, found {len(paths)}')
+          PY
+
+          git config user.name 'vote-system-automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add --all
+          git commit -m 'TON-111 Add comment voting and moderation workflow'
+          git push --force-with-lease="refs/heads/$task_branch:$base" \
+            origin "HEAD:refs/heads/$task_branch"
