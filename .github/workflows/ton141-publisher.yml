@@ -54,6 +54,14 @@ jobs:
           git apply "$patch"
           git diff --check
 
+      - name: Upload decoded TON-141 patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: ton141-decoded-patch
+          path: ${{ runner.temp }}/ton141.patch
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
