@@ -132,10 +132,18 @@ jobs:
               'src/main/java/com/hungtvb/votesystem/auth/session/',
               'src/test/java/com/hungtvb/votesystem/auth/session/',
           )
-          paths = subprocess.check_output(
+          tracked = subprocess.check_output(
               ['git', 'diff', '--name-only', '0c8a2d154c2069140a996d38877e25dee9cd489a'],
               text=True,
           ).splitlines()
+          untracked = subprocess.check_output(
+              ['git', 'ls-files', '--others', '--exclude-standard'],
+              text=True,
+          ).splitlines()
+          paths = sorted(set(tracked + untracked))
+          print(f'TON-141 allowlist: {len(tracked)} tracked + {len(untracked)} untracked = {len(paths)} total')
+          for path in paths:
+              print(path)
           unexpected = [
               path for path in paths
               if path not in allowed_exact and not path.startswith(allowed_prefixes)
