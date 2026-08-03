@@ -3,6 +3,7 @@ package com.hungtvb.votesystem.auth.social;
 import com.hungtvb.votesystem.auth.AuthService;
 import com.hungtvb.votesystem.auth.IssuedAuthSession;
 import com.hungtvb.votesystem.auth.RefreshTokenCookie;
+import com.hungtvb.votesystem.auth.session.SessionClientMetadataFactory;
 import com.hungtvb.votesystem.common.error.UnauthorizedException;
 import com.hungtvb.votesystem.user.AppUser;
 import jakarta.servlet.ServletException;
@@ -22,15 +23,18 @@ public class SocialAuthenticationSuccessHandler implements AuthenticationSuccess
     private final AuthService authService;
     private final RefreshTokenCookie refreshTokenCookie;
     private final SocialRedirects redirects;
+    private final SessionClientMetadataFactory sessionMetadataFactory;
 
     public SocialAuthenticationSuccessHandler(SocialLoginService socialLoginService,
                                                AuthService authService,
                                                RefreshTokenCookie refreshTokenCookie,
-                                               SocialRedirects redirects) {
+                                               SocialRedirects redirects,
+                                               SessionClientMetadataFactory sessionMetadataFactory) {
         this.socialLoginService = socialLoginService;
         this.authService = authService;
         this.refreshTokenCookie = refreshTokenCookie;
         this.redirects = redirects;
+        this.sessionMetadataFactory = sessionMetadataFactory;
     }
 
     @Override
@@ -50,7 +54,8 @@ public class SocialAuthenticationSuccessHandler implements AuthenticationSuccess
         try {
             SocialProfile profile = SocialProfileFactory.from(provider, oauthToken.getPrincipal());
             AppUser user = socialLoginService.complete(profile, context);
-            IssuedAuthSession session = authService.issueSession(user);
+            IssuedAuthSession session = authService.issueSession(
+                    user, sessionMetadataFactory.social(provider, request));
             refreshTokenCookie.write(response, session.refreshToken());
             clearOAuthSession(request);
             response.sendRedirect(redirects.success(provider, context.intent()));
