@@ -27,13 +27,26 @@ jobs:
         run: |
           set -euo pipefail
           base='0c8a2d154c2069140a996d38877e25dee9cd489a'
+          encoded="$RUNNER_TEMP/ton141.patch.gz.b64"
           patch="$RUNNER_TEMP/ton141.patch"
-          cat \
-            .chatgpt/ton141/chunk-00.b64 \
-            .chatgpt/ton141/chunk-01.b64 \
-            .chatgpt/ton141/chunk-02.b64 \
-            .chatgpt/ton141/chunk-03.b64 \
-            | base64 --decode | gzip --decompress > "$patch"
+          : > "$encoded"
+
+          trim_chunk() {
+            local path="$1"
+            local size="$2"
+            local actual
+            actual="$(wc -c < "$path")"
+            test "$actual" -ge "$size"
+            head -c "$size" "$path" >> "$encoded"
+          }
+
+          trim_chunk .chatgpt/ton141/chunk-00.b64 5000
+          trim_chunk .chatgpt/ton141/chunk-01.b64 5000
+          trim_chunk .chatgpt/ton141/chunk-02.b64 5000
+          trim_chunk .chatgpt/ton141/chunk-03.b64 3444
+          test "$(wc -c < "$encoded")" -eq 18444
+
+          base64 --decode "$encoded" | gzip --decompress > "$patch"
           echo 'e6c7205efb54dde5ada20d95bee54929a81693fdf54bbb3e3dfe5bb1afa0c074  '"$patch" | sha256sum --check
           test "${{ github.event.pull_request.base.sha }}" = "$base"
           git checkout --detach "$base"
