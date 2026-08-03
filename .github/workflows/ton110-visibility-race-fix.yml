@@ -31,11 +31,11 @@ jobs:
           trimmed="$RUNNER_TEMP/visibility-race-fix.patch.gz.b64"
           patch="$RUNNER_TEMP/visibility-race-fix.patch"
 
-          test "$(wc -c < "$encoded")" -ge 4608
-          head -c 4608 "$encoded" > "$trimmed"
-          echo '545b0e144216140b26debcbfff4004ffa4719c11cdbe414ede42dc72e8e83055  '"$trimmed" | sha256sum --check
+          test "$(wc -c < "$encoded")" -ge 2160
+          head -c 2160 "$encoded" > "$trimmed"
+          echo '49bafb0462e6d72585182777754db7ad1687b26fa3526ef6c44193bee1af0601  '"$trimmed" | sha256sum --check
           base64 --decode "$trimmed" | gzip --decompress > "$patch"
-          echo '48e80a4eed6772c3dd76e0548c9bd095f7ba179f1e2d239b78e578de71500c50  '"$patch" | sha256sum --check
+          echo '8868867be3c429198bc983183dc0ddc09c0e35b55706a7a26181945da4bb8099  '"$patch" | sha256sum --check
           test "${{ github.event.pull_request.base.sha }}" = '65a8b05ab462d80240a7376b081ea81cc20a1fa7'
 
           git checkout --detach "$base"
@@ -123,9 +123,7 @@ jobs:
 
           expected = {
               'docs/verification/TON-110-comments-foundation.md',
-              'src/main/java/com/hungtvb/votesystem/comment/CommentReadRepository.java',
               'src/main/java/com/hungtvb/votesystem/comment/CommentRepository.java',
-              'src/main/java/com/hungtvb/votesystem/comment/CommentService.java',
               'src/test/java/com/hungtvb/votesystem/comment/CommentIntegrationTests.java',
           }
           tracked = subprocess.check_output(
@@ -147,6 +145,6 @@ jobs:
           git config user.name 'vote-system-automation'
           git config user.email 'actions@users.noreply.github.com'
           git add --all
-          git commit -m 'TON-110 Make hidden-ballot comment reads DB authoritative'
+          git commit -m 'TON-110 Prevent hidden-ballot comment disclosure race'
           git push --force-with-lease="refs/heads/$task_branch:$base" \
             origin "HEAD:refs/heads/$task_branch"
