@@ -29,7 +29,7 @@ jobs:
           base='0c8a2d154c2069140a996d38877e25dee9cd489a'
           encoded="$RUNNER_TEMP/ton141.patch.gz.b64"
           patch="$RUNNER_TEMP/ton141.patch"
-          rotation_fix="$RUNNER_TEMP/ton141-rotation-order-fix.patch"
+          rotation_fix="$RUNNER_TEMP/ton141-session-race-fix.patch"
           : > "$encoded"
 
           trim_chunk() {
@@ -51,7 +51,7 @@ jobs:
           echo 'e6c7205efb54dde5ada20d95bee54929a81693fdf54bbb3e3dfe5bb1afa0c074  '"$patch" | sha256sum --check
           base64 --decode .chatgpt/ton141/rotation-order-fix.patch.gz.b64 \
             | gzip --decompress > "$rotation_fix"
-          echo 'aaf5c72ac79e2595496cb0e0c2896ef64710c8df7cdc63deaf853eed609264ad  '"$rotation_fix" \
+          echo 'f0e59ff08f03696202504fc513fd1299f8d20bc5b94ce6f6ca7d4f3b40edc2d4  '"$rotation_fix" \
             | sha256sum --check
 
           test "${{ github.event.pull_request.base.sha }}" = "$base"
