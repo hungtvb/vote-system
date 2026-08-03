@@ -15,6 +15,7 @@ import java.util.List;
 public class TokenService {
     public static final String ROLES_CLAIM = "roles";
     public static final String SECURITY_VERSION_CLAIM = "security_version";
+    public static final String SESSION_FAMILY_CLAIM = "session_family_id";
 
     private final JwtEncoder jwtEncoder;
     private final JwtProperties properties;
@@ -25,6 +26,10 @@ public class TokenService {
     }
 
     public String issue(AuthenticatedUser user) {
+        return issue(user, null);
+    }
+
+    public String issue(AuthenticatedUser user, java.util.UUID sessionFamilyId) {
         Instant now = Instant.now();
         JwtClaimsSet.Builder claims = JwtClaimsSet.builder()
                 .issuer(properties.issuer())
@@ -33,6 +38,9 @@ public class TokenService {
                 .subject(user.id().toString())
                 .claim(ROLES_CLAIM, List.of(user.role().name()))
                 .claim(SECURITY_VERSION_CLAIM, user.securityVersion());
+        if (sessionFamilyId != null) {
+            claims.claim(SESSION_FAMILY_CLAIM, sessionFamilyId.toString());
+        }
         if (user.email() != null) {
             claims.claim("email", user.email());
         }

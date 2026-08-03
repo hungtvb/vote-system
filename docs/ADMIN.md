@@ -183,7 +183,7 @@ Safeguards:
 - administrators cannot suspend, ban, or revoke sessions for their own current account;
 - the last effective active administrator cannot be restricted;
 - a PostgreSQL advisory transaction lock serializes concurrent administrator-count decisions;
-- refresh and moderation use `refresh sessions -> user` lock order to avoid deadlocks;
+- refresh, user-driven revocation, and moderation use `user -> refresh sessions` lock order to avoid deadlocks and stale-session resurrection;
 - repeated/incompatible actions return `409` without duplicate audit rows.
 
 Public profile and historical content remain available anonymously. Detailed contract: [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md).

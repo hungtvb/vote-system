@@ -6,6 +6,7 @@ import com.hungtvb.votesystem.auth.dto.RegisterRequest;
 import com.hungtvb.votesystem.auth.metrics.AuthRestoreMetrics;
 import com.hungtvb.votesystem.auth.session.RefreshGrant;
 import com.hungtvb.votesystem.auth.session.RefreshSessionRepository;
+import com.hungtvb.votesystem.auth.session.SessionClientMetadata;
 import com.hungtvb.votesystem.auth.session.RefreshSessionService;
 import com.hungtvb.votesystem.auth.social.UserIdentity;
 import com.hungtvb.votesystem.auth.social.UserIdentityRepository;
@@ -60,7 +61,7 @@ public class AuthService {
     }
 
     @Transactional
-    public IssuedAuthSession register(RegisterRequest request) {
+    public IssuedAuthSession register(RegisterRequest request, SessionClientMetadata metadata) {
         String email = normalizeEmail(request.email());
         if (userRepository.existsByEmail(email)) {
             throw new ConflictException("Email is already registered");
@@ -69,18 +70,18 @@ public class AuthService {
         AppUser saved = userRepository.saveAndFlush(
                 AppUser.create(email, request.displayName(), passwordEncoder.encode(request.password()))
         );
-        return issueSessionWithinTransaction(saved, false);
+        return issueSessionWithinTransaction(saved, metadata, false);
     }
 
     @Transactional
-    public IssuedAuthSession login(LoginRequest request) {
+    public IssuedAuthSession login(LoginRequest request, SessionClientMetadata metadata) {
         var authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(normalizeEmail(request.email()), request.password())
         );
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
         AppUser user = userRepository.findByIdForUpdate(principal.id())
                 .orElseThrow(() -> new UnauthorizedException("User account is unavailable"));
-        return issueSessionWithinTransaction(user, false);
+        return issueSessionWithinTransaction(user, metadata, false);
     }
 
     @Transactional(noRollbackFor = UnauthorizedException.class)
@@ -99,7 +100,6 @@ public class AuthService {
 
     @Transactional
     public int logoutAll(UUID userId) {
-        refreshSessionRepository.findAllActiveByUserIdForUpdate(userId);
         AppUser user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new UnauthorizedException("User account is unavailable"));
         user.revokeAccessTokens();
@@ -107,15 +107,17 @@ public class AuthService {
     }
 
     @Transactional
-    public IssuedAuthSession issueSession(AppUser user) {
+    public IssuedAuthSession issueSession(AppUser user, SessionClientMetadata metadata) {
         AppUser lockedUser = userRepository.findByIdForUpdate(user.getId())
                 .orElseThrow(() -> new UnauthorizedException("User account is unavailable"));
-        return issueSessionWithinTransaction(lockedUser, false);
+        return issueSessionWithinTransaction(lockedUser, metadata, false);
     }
 
-    private IssuedAuthSession issueSessionWithinTransaction(AppUser user, boolean measureRefresh) {
+    private IssuedAuthSession issueSessionWithinTransaction(AppUser user,
+                                                            SessionClientMetadata metadata,
+                                                            boolean measureRefresh) {
         accountAccessPolicy.requireActive(user);
-        return response(refreshSessionService.issue(user), measureRefresh);
+        return response(refreshSessionService.issue(user, metadata), measureRefresh);
     }
 
     private IssuedAuthSession response(RefreshGrant grant, boolean measureRefresh) {
@@ -133,9 +135,9 @@ public class AuthService {
                 ? metrics.timeStage(
                         AuthRestoreMetrics.OPERATION_REFRESH,
                         "jwt_issue",
-                        () -> tokenService.issue(authenticatedUser)
+                        () -> tokenService.issue(authenticatedUser, grant.sessionFamilyId())
                 )
-                : tokenService.issue(authenticatedUser);
+                : tokenService.issue(authenticatedUser, grant.sessionFamilyId());
         UserProfileResponse profile = UserProfileResponse.from(user, identities);
         AuthResponse response = new AuthResponse(
                 "Bearer",

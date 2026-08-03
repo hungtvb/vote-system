@@ -131,8 +131,9 @@ public class AdminUserModerationService {
     }
 
     private AppUser lockSessionsThenUser(UUID userId) {
+        AppUser user = lockUser(userId);
         refreshSessionRepository.findAllActiveByUserIdForUpdate(userId);
-        return lockUser(userId);
+        return user;
     }
 
     private AppUser lockUser(UUID userId) {

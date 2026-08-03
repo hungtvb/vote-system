@@ -5,6 +5,7 @@ import com.hungtvb.votesystem.auth.dto.LoginRequest;
 import com.hungtvb.votesystem.auth.dto.RegisterRequest;
 import com.hungtvb.votesystem.auth.metrics.AuthRestoreMetrics;
 import com.hungtvb.votesystem.auth.session.RefreshSessionFailureException;
+import com.hungtvb.votesystem.auth.session.SessionClientMetadataFactory;
 import com.hungtvb.votesystem.observability.RequestLatencyLoggingFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -31,24 +32,31 @@ public class AuthController {
     private final AuthService authService;
     private final RefreshTokenCookie refreshTokenCookie;
     private final AuthRestoreMetrics metrics;
+    private final SessionClientMetadataFactory sessionMetadataFactory;
 
     public AuthController(AuthService authService,
                           RefreshTokenCookie refreshTokenCookie,
-                          AuthRestoreMetrics metrics) {
+                          AuthRestoreMetrics metrics,
+                          SessionClientMetadataFactory sessionMetadataFactory) {
         this.authService = authService;
         this.refreshTokenCookie = refreshTokenCookie;
         this.metrics = metrics;
+        this.sessionMetadataFactory = sessionMetadataFactory;
     }
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    AuthResponse register(@Valid @RequestBody RegisterRequest request, HttpServletResponse response) {
-        return writeSession(authService.register(request), response);
+    AuthResponse register(@Valid @RequestBody RegisterRequest request,
+                          HttpServletRequest httpRequest,
+                          HttpServletResponse response) {
+        return writeSession(authService.register(request, sessionMetadataFactory.password(httpRequest)), response);
     }
 
     @PostMapping("/login")
-    AuthResponse login(@Valid @RequestBody LoginRequest request, HttpServletResponse response) {
-        return writeSession(authService.login(request), response);
+    AuthResponse login(@Valid @RequestBody LoginRequest request,
+                       HttpServletRequest httpRequest,
+                       HttpServletResponse response) {
+        return writeSession(authService.login(request, sessionMetadataFactory.password(httpRequest)), response);
     }
 
     @PostMapping("/refresh")

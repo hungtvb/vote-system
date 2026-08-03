@@ -122,6 +122,9 @@ app:
     report-create:
       limit: ${RATE_LIMIT_REPORT_CREATE_LIMIT:10}
       window: ${RATE_LIMIT_REPORT_CREATE_WINDOW:PT1H}
+    session-management:
+      limit: ${RATE_LIMIT_SESSION_MANAGEMENT_LIMIT:10}
+      window: ${RATE_LIMIT_SESSION_MANAGEMENT_WINDOW:PT1M}
   security:
     admin-bootstrap:
       enabled: ${ADMIN_BOOTSTRAP_ENABLED:false}

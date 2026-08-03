@@ -30,9 +30,14 @@ POST /api/v1/auth/login
 POST /api/v1/auth/refresh
 POST /api/v1/auth/logout
 POST /api/v1/auth/logout-all
+GET    /api/v1/auth/sessions
+DELETE /api/v1/auth/sessions/{sessionId}
+DELETE /api/v1/auth/sessions/others
 ```
 
-Register, login, and refresh return the JWT session plus private profile. The refresh token is never returned in JSON.
+Register, login, and refresh return the JWT session plus private profile. The refresh token is never returned in JSON. Each issued access JWT may carry a non-secret `session_family_id` claim so the authenticated user can identify the current refresh-session family; authorization remains based on the user, role, account status, and `security_version`, not on this claim.
+
+The session list is private to the authenticated user. It exposes only the stable family ID, created/last-used/expiry timestamps, provider, a coarse allowlisted client label, and whether the family is current. It never exposes refresh tokens, token hashes, fingerprints, IP addresses, or raw user-agent values. Revoking one family cannot target the current family through this endpoint; `DELETE /others` preserves the current family. Revocation is authoritative on the next refresh, while already-issued access JWTs remain bounded by their short TTL.
 
 ```json
 {
@@ -216,7 +221,7 @@ Safeguards:
 - no self suspend/ban/revoke-session;
 - no restriction of the last effective active administrator;
 - concurrent admin decisions serialized with PostgreSQL advisory locking;
-- refresh and moderation share `refresh sessions -> user` lock order.
+- refresh, user-driven revocation, and moderation share `user -> refresh sessions` lock order.
 
 Explicit `revoke-sessions` leaves account status/role unchanged. Existing access JWTs remain valid until expiry, but refresh cookies become unusable. See [`ACCOUNT-MODERATION.md`](ACCOUNT-MODERATION.md).
 
@@ -249,6 +254,7 @@ User responses exclude credential, provider-subject, session/token, IP, and raw 
 | Create ballot | 10/hour | user |
 | Vote | 30/minute | user |
 | Profile update | 10/hour | user |
+| Session revocation | 10/minute | user |
 
 Redis Lua implements atomic sliding windows. Rejection returns `429` plus `Retry-After`. Default infrastructure-error behavior is fail-open; account-status PostgreSQL enforcement is separate and does not fail open.
 
