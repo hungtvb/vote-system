@@ -31,11 +31,11 @@ jobs:
           trimmed="$RUNNER_TEMP/visibility-race-fix.patch.gz.b64"
           patch="$RUNNER_TEMP/visibility-race-fix.patch"
 
-          test "$(wc -c < "$encoded")" -ge 1336
-          head -c 1336 "$encoded" > "$trimmed"
-          echo 'ed1e0ee1cca51f4912329961c8455c2e13543da397244ed56419a94e77828106  '"$trimmed" | sha256sum --check
+          test "$(wc -c < "$encoded")" -ge 1396
+          head -c 1396 "$encoded" > "$trimmed"
+          echo '4fe1c1941eaeef1653520197206e01bbb71d495523ab5632cd1f37b69a43f485  '"$trimmed" | sha256sum --check
           base64 --decode "$trimmed" | gzip --decompress > "$patch"
-          echo 'd0810fa6b3818d48be74de6000c3e732cfb5b465c7491c37257c629f999c6072  '"$patch" | sha256sum --check
+          echo '6a4cbe65d1344364c96e125954076ec1af4352f3f9e7cd884c5b9b6f43facda3  '"$patch" | sha256sum --check
           test "${{ github.event.pull_request.base.sha }}" = '65a8b05ab462d80240a7376b081ea81cc20a1fa7'
 
           git checkout --detach "$base"
