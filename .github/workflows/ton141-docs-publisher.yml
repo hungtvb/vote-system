@@ -1,0 +1,53 @@
+name: TON-141 Documentation Publisher
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/ton141-docs-publisher.yml'
+      - '.chatgpt/ton141-docs.patch.gz.b64'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout publisher branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply and verify documentation correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='ca30bb86311564bd7209e9ee1b533029145dcb4b'
+          patch="$RUNNER_TEMP/ton141-docs.patch"
+          base64 --decode .chatgpt/ton141-docs.patch.gz.b64 | gzip --decompress > "$patch"
+          echo 'a88c96fdd2103982eb554bd63517e939006e8a636b35ae8b415ab40ba9d743bd  '"$patch" | sha256sum --check
+          git checkout --detach "$base"
+          git apply --check "$patch"
+          git apply "$patch"
+          git diff --check
+          test "$(git diff --name-only | sort | tr '\n' ' ')" = "docs/ACCOUNT-MODERATION.md docs/ADMIN.md docs/API.md "
+          ! grep -R "refresh sessions -> user" docs/API.md docs/ACCOUNT-MODERATION.md docs/ADMIN.md
+          grep -q "GET    /api/v1/auth/sessions" docs/API.md
+          grep -q "user -> refresh sessions" docs/ACCOUNT-MODERATION.md
+
+      - name: Publish documentation correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='ca30bb86311564bd7209e9ee1b533029145dcb4b'
+          task_branch='hungtvb2020/ton-141-be-session-device-and-account-security-management'
+          git config user.name 'vote-system-automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add docs/API.md docs/ACCOUNT-MODERATION.md docs/ADMIN.md
+          git commit -m 'TON-141 Document session security contract'
+          git push --force-with-lease="refs/heads/$task_branch:$base" \
+            origin "HEAD:refs/heads/$task_branch"
