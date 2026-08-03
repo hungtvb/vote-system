@@ -137,6 +137,34 @@ Title maximum is 200, content 20,000, category 50, and threshold 50–100. Only 
 
 Feeds accept `LATEST`, `HOT`, `TOP_DAY`, `TOP_WEEK`, and authenticated `MINE`, plus query/category/status/page/size filters. Every result is PostgreSQL-checked for `VISIBLE`; stale Redis IDs cannot expose or inflate pages with hidden/deleted ballots. Redis failure degrades ranked feeds to visible latest-first PostgreSQL results.
 
+## Comments and replies
+
+Comments are public reads under a publicly visible ballot and authenticated writes:
+
+```http
+GET    /api/v1/posts/{postId}/comments?limit=20&afterCreatedAt=...&afterId=...
+POST   /api/v1/posts/{postId}/comments
+PATCH  /api/v1/comments/{commentId}
+DELETE /api/v1/comments/{commentId}
+```
+
+Create payload:
+
+```json
+{
+  "body": "A bounded discussion argument",
+  "parentId": null
+}
+```
+
+`parentId` may reference only a visible top-level comment on the same ballot, so reply depth is exactly one level. Body text is trimmed, required, and limited to 2,000 characters.
+
+Public ordering is `createdAt ASC, id ASC`. Cursor fields must be supplied together and remain stable when newer comments arrive. Responses batch-load privacy-safe author summaries containing display name, initials, and Ballot Mark. Removed or moderated rows remain safe tombstones with `body` omitted; previous text is never exposed publicly.
+
+Authors may edit or remove only their own visible comments. Author removal is idempotent and decrements the ballot's visible `commentCount` under the same ballot lock used by comment creation. Closed ballots may still be discussed, but hidden/deleted ballots expose neither comments nor mutation existence.
+
+COMMENT reports now validate against an existing visible comment and visible ballot, and self-reporting is rejected. Comment-specific administrator hide/restore/remove actions remain owned by TON-111.
+
 ## Voting and realtime
 
 ```http
@@ -254,6 +282,8 @@ User responses exclude credential, provider-subject, session/token, IP, and raw 
 | Create ballot | 10/hour | user |
 | Vote | 30/minute | user |
 | Profile update | 10/hour | user |
+| Comment create | 20/10 minutes | user |
+| Comment edit | 30/10 minutes | user |
 | Session revocation | 10/minute | user |
 
 Redis Lua implements atomic sliding windows. Rejection returns `429` plus `Retry-After`. Default infrastructure-error behavior is fail-open; account-status PostgreSQL enforcement is separate and does not fail open.

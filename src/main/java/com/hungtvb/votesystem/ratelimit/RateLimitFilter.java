@@ -115,6 +115,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if ("POST".equals(method) && "/api/v1/reports".equals(path)) {
             return new Rule("report-create", properties.reportCreate(), true);
         }
+        if ("POST".equals(method) && path.matches("/api/v1/posts/[0-9a-fA-F-]+/comments")) {
+            return new Rule("comment-create", properties.commentCreate(), true);
+        }
+        if ("PATCH".equals(method) && path.matches("/api/v1/comments/[0-9a-fA-F-]+")) {
+            return new Rule("comment-edit", properties.commentEdit(), true);
+        }
         if ("DELETE".equals(method) && path.matches("/api/v1/auth/sessions(?:/others|/[0-9a-fA-F-]+)")) {
             return new Rule("session-management", properties.sessionManagement(), true);
         }

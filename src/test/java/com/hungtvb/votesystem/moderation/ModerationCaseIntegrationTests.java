@@ -332,8 +332,9 @@ class ModerationCaseIntegrationTests {
     }
 
     @Test
-    void rejectedCaseCanBeReopenedAndAcceptAnotherReportWhileCommentTargetsStayDeferred() throws Exception {
+    void rejectedCaseCanBeReopenedAndCommentReportsBecomeVerified() throws Exception {
         AuthSession reporter = register("case-reopen-reporter@example.com");
+        AuthSession commenter = register("case-reopen-commenter@example.com");
         AuthSession admin = admin("case-reopen-admin@example.com");
         UUID postId = createPost(reporter.accessToken(), "Reopen case", "Second report", "GENERAL");
         UUID caseId = createReport(reporter, postId, "SPAM", "First report");
@@ -362,21 +363,19 @@ class ModerationCaseIntegrationTests {
         assertEquals(caseId.toString(), second.get("caseId").asText());
         assertEquals(2, scalar("select report_count from moderation_cases where id = ?", Integer.class, caseId));
 
-        JsonNode deferred = json(mockMvc.perform(post("/api/v1/reports")
+        UUID commentId = createComment(commenter.accessToken(), postId, "Reportable discussion comment");
+        mockMvc.perform(post("/api/v1/reports")
                         .header(HttpHeaders.AUTHORIZATION, bearer(reporter.accessToken()))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(reportPayload("COMMENT", UUID.randomUUID(), "HARASSMENT", "Comment target pending module")))
+                        .content(reportPayload("COMMENT", commentId, "HARASSMENT", "Comment-specific evidence")))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.targetValidationStatus").value("DEFERRED"))
-                .andReturn());
-        UUID deferredCaseId = UUID.fromString(deferred.get("caseId").asText());
-        advanceToReview(admin, deferredCaseId);
-        mockMvc.perform(post("/api/v1/admin/moderation-cases/{caseId}/resolve", deferredCaseId)
-                        .header(HttpHeaders.AUTHORIZATION, bearer(admin.accessToken()))
+                .andExpect(jsonPath("$.targetValidationStatus").value("VERIFIED"));
+        mockMvc.perform(post("/api/v1/reports")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(commenter.accessToken()))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(resolvePayload("HIDE_BALLOT", "Cannot resolve unverified comment", null)))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.detail").value("Moderation target validation is deferred"));
+                        .content(reportPayload("COMMENT", commentId, "SPAM", "Self-report should fail")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Users cannot report their own comment"));
     }
 
     private void advanceToReview(AuthSession admin, UUID caseId) throws Exception {
@@ -451,6 +450,16 @@ class ModerationCaseIntegrationTests {
         return UUID.fromString(json(result).get("id").asText());
     }
 
+    private UUID createComment(String token, UUID postId, String body) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/posts/{postId}/comments", postId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new CommentPayload(body, null))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return UUID.fromString(json(result).get("id").asText());
+    }
+
     private String reportPayload(String targetType,
                                  UUID targetId,
                                  String reasonCode,
@@ -497,6 +506,9 @@ class ModerationCaseIntegrationTests {
     }
 
     private record ReportPayload(String targetType, UUID targetId, String reasonCode, String evidenceText) {
+    }
+
+    private record CommentPayload(String body, UUID parentId) {
     }
 
     private record ReasonPayload(String reason) {

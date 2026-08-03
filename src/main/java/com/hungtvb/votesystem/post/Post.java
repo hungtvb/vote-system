@@ -71,6 +71,9 @@ public class Post {
     @Column(name = "down_votes", nullable = false)
     private long downVotes;
 
+    @Column(name = "comment_count", nullable = false)
+    private long commentCount;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -95,6 +98,7 @@ public class Post {
         this.voteScore = 0;
         this.upVotes = 0;
         this.downVotes = 0;
+        this.commentCount = 0;
     }
 
     public static Post create(UUID authorId, String title, String content, String category,
@@ -154,6 +158,17 @@ public class Post {
         return moderationStatus == ModerationStatus.VISIBLE;
     }
 
+    public void incrementCommentCount() {
+        commentCount = Math.incrementExact(commentCount);
+    }
+
+    public void decrementCommentCount() {
+        if (commentCount <= 0) {
+            throw new IllegalStateException("Comment count cannot become negative");
+        }
+        commentCount--;
+    }
+
     public boolean acceptsVotes(Instant now) {
         return isPubliclyVisible() && isOpen() && (closesAt == null || now.isBefore(closesAt));
     }
@@ -190,6 +205,7 @@ public class Post {
     public long getUpVotes() { return upVotes; }
     public long getDownVotes() { return downVotes; }
     public long getTotalVotes() { return upVotes + downVotes; }
+    public long getCommentCount() { return commentCount; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

@@ -1,6 +1,6 @@
 # Ballot moderation
 
-This document describes the administrator ballot-moderation contract introduced by TON-195. It is separate from the report/case workflow planned in TON-140 and from user-account enforcement planned in TON-196.
+This document describes the implemented administrator ballot-moderation contract and its boundary with the unified report/case workflow. User-account enforcement is documented separately.
 
 ## Separate state machines
 
@@ -156,3 +156,15 @@ The backend regression suite covers:
 - preservation of ballot and vote rows after administrator soft-delete;
 - audit/state rollback when audit validation fails;
 - concurrent moderation producing one transition and one audit record.
+
+
+## Comment-report boundary
+
+TON-110 introduces the comment domain and changes new `COMMENT` reports from deferred validation to authoritative validation:
+
+- the comment must exist;
+- the comment and its ballot must both be publicly visible;
+- an author cannot report their own comment;
+- removed author tombstones and future hidden/deleted comments are not reportable.
+
+A valid comment report creates or joins the same unified moderation-case workflow used by ballots and users with `targetValidationStatus=VERIFIED`. TON-110 intentionally does not add administrator comment actions. Hide, restore, remove, audit integration, and comment-vote moderation remain the scope of TON-111. Until then, a comment case may be triaged or rejected but cannot be resolved through a mismatched ballot/user action.

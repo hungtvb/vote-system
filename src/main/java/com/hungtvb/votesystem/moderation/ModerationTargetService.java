@@ -2,6 +2,8 @@ package com.hungtvb.votesystem.moderation;
 
 import com.hungtvb.votesystem.admin.moderation.AdminPostModerationService;
 import com.hungtvb.votesystem.admin.usermoderation.AdminUserModerationService;
+import com.hungtvb.votesystem.comment.Comment;
+import com.hungtvb.votesystem.comment.CommentRepository;
 import com.hungtvb.votesystem.common.error.InvalidRequestException;
 import com.hungtvb.votesystem.common.error.ResourceNotFoundException;
 import com.hungtvb.votesystem.post.ModerationStatus;
@@ -16,15 +18,18 @@ import java.util.UUID;
 public class ModerationTargetService {
     private final PostRepository postRepository;
     private final UserRepository userRepository;
+    private final CommentRepository commentRepository;
     private final AdminPostModerationService postModerationService;
     private final AdminUserModerationService userModerationService;
 
     public ModerationTargetService(PostRepository postRepository,
                                    UserRepository userRepository,
+                                   CommentRepository commentRepository,
                                    AdminPostModerationService postModerationService,
                                    AdminUserModerationService userModerationService) {
         this.postRepository = postRepository;
         this.userRepository = userRepository;
+        this.commentRepository = commentRepository;
         this.postModerationService = postModerationService;
         this.userModerationService = userModerationService;
     }
@@ -47,7 +52,14 @@ public class ModerationTargetService {
                 }
                 yield TargetValidationStatus.VERIFIED;
             }
-            case COMMENT -> TargetValidationStatus.DEFERRED;
+            case COMMENT -> {
+                Comment comment = commentRepository.findReportableById(targetId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Comment not found"));
+                if (comment.getAuthorId().equals(reporterId)) {
+                    throw new InvalidRequestException("Users cannot report their own comment");
+                }
+                yield TargetValidationStatus.VERIFIED;
+            }
         };
     }
 
