@@ -65,10 +65,30 @@ jobs:
         run: mvn -q -DskipTests compile
 
       - name: Run focused session-security tests
-        run: >-
-          mvn -q
-          -Dtest=SessionClientMetadataFactoryTests,SessionManagementIntegrationTests,RefreshSessionServiceLogoutTests,VoteSystemApplicationTests,UserRestrictionRefreshConcurrencyIntegrationTests,AdminUserModerationIntegrationTests,RedisSlidingWindowRateLimiterSecurityTests
-          test
+        shell: bash
+        run: |
+          set -euo pipefail
+          tests=(
+            SessionClientMetadataFactoryTests
+            SessionManagementIntegrationTests
+            RefreshSessionServiceLogoutTests
+            VoteSystemApplicationTests
+            UserRestrictionRefreshConcurrencyIntegrationTests
+            AdminUserModerationIntegrationTests
+            RedisSlidingWindowRateLimiterSecurityTests
+          )
+          for test_class in "${tests[@]}"; do
+            echo "::group::${test_class}"
+            rm -rf target/surefire-reports
+            if ! mvn -q -Dtest="${test_class}" test; then
+              echo "::error::Focused test failed: ${test_class}"
+              find target/surefire-reports -maxdepth 1 -type f -name '*.txt' \
+                -print -exec cat {} \; || true
+              echo "::endgroup::"
+              exit 1
+            fi
+            echo "::endgroup::"
+          done
 
       - name: Publish allowlisted task source
         shell: bash
