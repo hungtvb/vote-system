@@ -1,0 +1,168 @@
+name: TON-110 Comments Publisher
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/ton110-publisher.yml'
+      - '.chatgpt/ton110/**'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout publisher branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decode and apply exact TON-110 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='65a8b05ab462d80240a7376b081ea81cc20a1fa7'
+          encoded="$RUNNER_TEMP/ton110.patch.gz.b64"
+          patch="$RUNNER_TEMP/ton110.patch"
+          : > "$encoded"
+
+          append_chunk() {
+            local path="$1"
+            local size="$2"
+            local expected_sha="$3"
+            local trimmed="$RUNNER_TEMP/$(basename "$path").trimmed"
+            local actual
+            actual="$(wc -c < "$path")"
+            test "$actual" -ge "$size"
+            head -c "$size" "$path" > "$trimmed"
+            echo "$expected_sha  $trimmed" | sha256sum --check
+            cat "$trimmed" >> "$encoded"
+          }
+
+          append_chunk .chatgpt/ton110/chunk-00.b64 4000 352d6375647d8cd2dc3da49210ce3c4f904a8212a5311c6bce58984eba3b210b
+          append_chunk .chatgpt/ton110/chunk-01.b64 4000 5dfec33c7daea3ff2d2667543aa7160d2bd65acf797f3b6e20a4bc680868eb0c
+          append_chunk .chatgpt/ton110/chunk-02.b64 4000 2bd6b1dccec609ca8925ca14161d2fa38f6ea91e9489b56f68b0fb4c9d7f2340
+          append_chunk .chatgpt/ton110/chunk-03.b64 4000 be5c6adab38f2105a3608c5791b16db44379d9b4ea813e41f09f985d0355000a
+          append_chunk .chatgpt/ton110/chunk-04.b64 4000 094739a699bd7ed21499b553eccffd0490335442f620597902471e4678b859f4
+          append_chunk .chatgpt/ton110/chunk-05.b64 240 2695f0ea3492097be4e16681fa060f4990d5f3fda2fd0f627077cdee555ea101
+          test "$(wc -c < "$encoded")" -eq 20240
+
+          base64 --decode "$encoded" | gzip --decompress > "$patch"
+          echo 'ea2146942c672187770aba926f6e9d77b8f45ebc77d757307f173a225eca40fb  '"$patch" | sha256sum --check
+          test "${{ github.event.pull_request.base.sha }}" = "$base"
+
+          git checkout --detach "$base"
+          git apply --check "$patch"
+          git apply "$patch"
+          git diff --check
+
+      - name: Upload decoded TON-110 patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: ton110-decoded-patch
+          path: ${{ runner.temp }}/ton110.patch
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Compile backend
+        run: mvn -q -DskipTests compile
+
+      - name: Run focused comment-foundation tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          tests=(
+            CommentIntegrationTests
+            CommentRateLimitIntegrationTests
+            ModerationCaseIntegrationTests
+            RedisSlidingWindowRateLimiterSecurityTests
+            SystemModeRequestPolicyTests
+            VoteSystemApplicationTests
+          )
+          for test_class in "${tests[@]}"; do
+            echo "::group::${test_class}"
+            rm -rf target/surefire-reports
+            if ! mvn -q -Dtest="${test_class}" test; then
+              echo "::error::Focused test failed: ${test_class}"
+              find target/surefire-reports -maxdepth 1 -type f -name '*.txt' \
+                -print -exec cat {} \; || true
+              echo "::endgroup::"
+              exit 1
+            fi
+            echo "::endgroup::"
+          done
+
+      - name: Publish allowlisted task source
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='65a8b05ab462d80240a7376b081ea81cc20a1fa7'
+          task_branch='hungtvb2020/ton-110-comments-foundation-replies-ownership-and-pagination'
+          python3 - <<'PY'
+          import subprocess
+
+          expected = {
+              '.env.example',
+              'docs/API.md',
+              'docs/MODERATION.md',
+              'docs/README.md',
+              'docs/verification/TON-110-comments-foundation.md',
+              'src/main/java/com/hungtvb/votesystem/comment/Comment.java',
+              'src/main/java/com/hungtvb/votesystem/comment/CommentController.java',
+              'src/main/java/com/hungtvb/votesystem/comment/CommentModerationStatus.java',
+              'src/main/java/com/hungtvb/votesystem/comment/CommentRepository.java',
+              'src/main/java/com/hungtvb/votesystem/comment/CommentService.java',
+              'src/main/java/com/hungtvb/votesystem/comment/dto/CommentPageResponse.java',
+              'src/main/java/com/hungtvb/votesystem/comment/dto/CommentResponse.java',
+              'src/main/java/com/hungtvb/votesystem/comment/dto/CreateCommentRequest.java',
+              'src/main/java/com/hungtvb/votesystem/comment/dto/UpdateCommentRequest.java',
+              'src/main/java/com/hungtvb/votesystem/moderation/ModerationTargetService.java',
+              'src/main/java/com/hungtvb/votesystem/post/Post.java',
+              'src/main/java/com/hungtvb/votesystem/post/dto/PostResponse.java',
+              'src/main/java/com/hungtvb/votesystem/ratelimit/RateLimitFilter.java',
+              'src/main/java/com/hungtvb/votesystem/ratelimit/RateLimitProperties.java',
+              'src/main/resources/application.yml',
+              'src/main/resources/db/migration/V18__add_comments_foundation.sql',
+              'src/test/java/com/hungtvb/votesystem/comment/CommentIntegrationTests.java',
+              'src/test/java/com/hungtvb/votesystem/comment/CommentRateLimitIntegrationTests.java',
+              'src/test/java/com/hungtvb/votesystem/moderation/ModerationCaseIntegrationTests.java',
+              'src/test/java/com/hungtvb/votesystem/ratelimit/RedisSlidingWindowRateLimiterSecurityTests.java',
+              'src/test/java/com/hungtvb/votesystem/system/SystemModeRequestPolicyTests.java',
+          }
+          tracked = subprocess.check_output(
+              ['git', 'diff', '--name-only', '65a8b05ab462d80240a7376b081ea81cc20a1fa7'],
+              text=True,
+          ).splitlines()
+          untracked = subprocess.check_output(
+              ['git', 'ls-files', '--others', '--exclude-standard'],
+              text=True,
+          ).splitlines()
+          paths = set(tracked) | set(untracked)
+          missing = sorted(expected - paths)
+          unexpected = sorted(paths - expected)
+          if missing or unexpected:
+              raise SystemExit(
+                  f'TON-110 allowlist mismatch; missing={missing}; unexpected={unexpected}'
+              )
+          if len(paths) != 26:
+              raise SystemExit(f'Expected 26 TON-110 files, found {len(paths)}')
+          PY
+
+          git config user.name 'vote-system-automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add --all
+          git commit -m 'TON-110 Add comments foundation'
+          git push --force-with-lease="refs/heads/$task_branch:$base" \
+            origin "HEAD:refs/heads/$task_branch"
