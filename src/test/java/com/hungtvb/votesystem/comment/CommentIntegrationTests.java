@@ -8,6 +8,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -61,6 +62,7 @@ class CommentIntegrationTests {
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
     @Autowired JdbcTemplate jdbcTemplate;
+    @Autowired CommentRepository commentRepository;
 
     @Test
     void guestsReadOneLevelRepliesWithBallotMarkAndAuthoritativeCommentCount() throws Exception {
@@ -203,6 +205,30 @@ class CommentIntegrationTests {
                 "select count(*) from comments where post_id = ?", Long.class, postId));
         assertEquals((long) workers, jdbcTemplate.queryForObject(
                 "select comment_count from posts where id = ?", Long.class, postId));
+    }
+
+    @Test
+    void repositoryCursorQueryCannotExposeCommentsAfterBallotBecomesHidden() throws Exception {
+        AuthSession author = register("comment-hidden-race@example.com", "Hidden Author");
+        UUID postId = createPost(author, "Hidden comments");
+        createComment(author, postId, "Must not leak after hide", null);
+
+        int updated = jdbcTemplate.update("""
+                update posts
+                   set moderation_status = 'HIDDEN',
+                       moderation_updated_at = now()
+                 where id = cast(? as uuid)
+                """, postId.toString());
+        assertEquals(1, updated);
+        assertEquals("HIDDEN", jdbcTemplate.queryForObject(
+                "select moderation_status from posts where id = cast(? as uuid)",
+                String.class,
+                postId.toString()));
+
+        assertTrue(commentRepository.findPage(
+                postId, null, null, PageRequest.of(0, 10)).isEmpty());
+        mockMvc.perform(get("/api/v1/posts/{postId}/comments", postId))
+                .andExpect(status().isNotFound());
     }
 
     @Test

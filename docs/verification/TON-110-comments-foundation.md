@@ -5,7 +5,7 @@
 - Guests can read comments for a publicly visible ballot.
 - Authenticated users can create top-level comments or one-level replies.
 - Authors alone can edit or remove their comments.
-- Public pagination uses the stable ascending `(created_at, id)` cursor.
+- Public pagination uses the stable ascending `(created_at, id)` cursor and joins the visible ballot in the same SQL statement, so a concurrent hide cannot expose comment bodies.
 - Comment author summaries reuse the privacy-safe display name, initials, avatar icon, and avatar color contract.
 - Removed/moderated rows return a tombstone with no previous body.
 - Ballot responses expose a visible `commentCount` updated transactionally with comment creation/removal.

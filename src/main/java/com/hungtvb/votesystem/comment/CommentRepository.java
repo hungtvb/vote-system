@@ -23,7 +23,9 @@ public interface CommentRepository extends JpaRepository<Comment, UUID> {
     @Query(value = """
             select comment.*
               from comments comment
+              join posts post on post.id = comment.post_id
              where comment.post_id = :postId
+               and post.moderation_status = 'VISIBLE'
                and (
                     cast(:afterCreatedAt as timestamptz) is null
                     or comment.created_at > :afterCreatedAt
