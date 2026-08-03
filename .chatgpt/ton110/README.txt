@@ -1,0 +1,1 @@
+Temporary deterministic publisher payload for TON-110. Do not merge this branch. The workflow reconstructs an exact SHA-256-verified patch, compiles and runs focused integration/security tests, enforces a 26-file allowlist, and only then updates the real TON-110 branch with force-with-lease.
