@@ -27,7 +27,8 @@ jobs:
         run: |
           set -euo pipefail
           cat > /tmp/payload.sha256 <<'EOF'
-          cdb89b6e63425ea39b029d5cbb3825a82a14b90b5f6fa9802fb95f8333464678  .github/ton113-payload/chunk-00-0-0
+          ed1ca359e88d96f97c054578f461f37c9d6fdcabfc20d2f491dc8356ecc5d422  .github/ton113-payload/chunk-00-0-0-0
+          df09a8058a4225e982f5902cb444ef03bbd8ec8421ff6d18111ce1144c4a8485  .github/ton113-payload/chunk-00-0-0-1
           af60dc5eee0e1ed76d84cdb25e243ab0e072e6af31d338fd1609436e4889b397  .github/ton113-payload/chunk-00-0-1
           c32bb25e0a5cb28ae6faf960809b6573c725592ef025ad41f36f1b133e8403ac  .github/ton113-payload/chunk-00-1
           2693abf49aee16204dce2cc3fdd29c86e2acc65379f25e760facf69c2cfe5e7e  .github/ton113-payload/chunk-00-2
@@ -52,7 +53,8 @@ jobs:
           EOF
           sha256sum -c /tmp/payload.sha256
           cat \
-            .github/ton113-payload/chunk-00-0-{0,1} \
+            .github/ton113-payload/chunk-00-0-0-{0,1} \
+            .github/ton113-payload/chunk-00-0-1 \
             .github/ton113-payload/chunk-00-{1,2,3} \
             .github/ton113-payload/chunk-{01,02,03,04} \
             .github/ton113-payload/chunk-05-{0,1,2,3} \
