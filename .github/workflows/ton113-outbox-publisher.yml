@@ -1,0 +1,115 @@
+name: TON-113 Outbox Publisher
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - .github/workflows/ton113-outbox-publisher.yml
+      - .github/ton113-payload/**
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-publish:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Reconstruct patch and diagnostics
+        shell: bash
+        run: |
+          set -u
+          cat \
+            .github/ton113-payload/chunk-00-0-0-{0,1} \
+            .github/ton113-payload/chunk-00-0-1 \
+            .github/ton113-payload/chunk-00-{1,2,3} \
+            .github/ton113-payload/chunk-{01,02,03,04} \
+            .github/ton113-payload/chunk-05-{0,1,2,3} \
+            .github/ton113-payload/chunk-06-{0,1,2,3} \
+            .github/ton113-payload/chunk-07-0 \
+            .github/ton113-payload/chunk-07-1-{0,1} \
+            .github/ton113-payload/chunk-07-{2,3} \
+            > /tmp/ton113.remote.b64
+          set +e
+          base64 --decode /tmp/ton113.remote.b64 > /tmp/ton113.remote.patch 2> /tmp/ton113.decode.stderr
+          decode_status=$?
+          set -e
+          {
+            echo "decode_status=${decode_status}"
+            wc -c /tmp/ton113.remote.b64 /tmp/ton113.remote.patch
+            sha256sum /tmp/ton113.remote.b64 /tmp/ton113.remote.patch
+            echo '--- fragment hashes ---'
+            find .github/ton113-payload -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum
+            echo '--- decode stderr ---'
+            cat /tmp/ton113.decode.stderr
+          } | tee /tmp/ton113-diagnostics.txt
+          echo "${decode_status}" > /tmp/ton113.decode.status
+
+      - name: Upload reconstruction evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ton113-reconstruction-diagnostics
+          path: |
+            /tmp/ton113.remote.b64
+            /tmp/ton113.remote.patch
+            /tmp/ton113-diagnostics.txt
+            /tmp/ton113.decode.stderr
+            /tmp/ton113.decode.status
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Verify exact patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat /tmp/ton113.decode.status)" -eq 0
+          test "$(wc -c < /tmp/ton113.remote.b64)" -eq 124584
+          test "$(wc -c < /tmp/ton113.remote.patch)" -eq 93438
+          echo '2913d2bf633e9854993ca83c99bcb5bdb7f5637714981f3c60788ae11ea67531  /tmp/ton113.remote.patch' | sha256sum -c -
+          cp /tmp/ton113.remote.patch /tmp/ton113.patch
+
+      - name: Apply exact patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "PUBLISHER_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "TASK_BRANCH=${{ github.head_ref }}" >> "$GITHUB_ENV"
+          git checkout --detach 7c71dd5037d521d55a6d893217fb1db4f19c4f2b
+          git apply --check /tmp/ton113.patch
+          git apply /tmp/ton113.patch
+          git add -N .
+          git diff --check
+          test "$(git diff --name-only | wc -l)" -eq 30
+          test -z "$(git diff --name-only | grep '^\.github/' || true)"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Compile and run focused PostgreSQL suites
+        run: |
+          mvn -B -DskipTests compile
+          mvn -B -Dtest=OutboxIntegrationTests,CommentIntegrationTests,CommentVoteIntegrationTests,AdminCommentModerationIntegrationTests,AdminPostModerationIntegrationTests,AdminUserModerationIntegrationTests,ModerationCaseIntegrationTests,VoteSystemApplicationTests test
+
+      - name: Publish verified task source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git diff --cached --check
+          git config user.name vote-system-automation
+          git config user.email actions@users.noreply.github.com
+          git commit -m 'TON-113 Add transactional community outbox'
+          REMOTE_SHA=$(git ls-remote origin "refs/heads/${TASK_BRANCH}" | cut -f1)
+          test "$REMOTE_SHA" = "$PUBLISHER_SHA"
+          git push --force-with-lease="refs/heads/${TASK_BRANCH}:${PUBLISHER_SHA}" origin "HEAD:${TASK_BRANCH}"
