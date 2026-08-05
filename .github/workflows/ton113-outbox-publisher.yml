@@ -22,36 +22,10 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Verify and decode exact patch
+      - name: Reconstruct and verify exact patch
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/payload.sha256 <<'EOF'
-          ed1ca359e88d96f97c054578f461f37c9d6fdcabfc20d2f491dc8356ecc5d422  .github/ton113-payload/chunk-00-0-0-0
-          df09a8058a4225e982f5902cb444ef03bbd8ec8421ff6d18111ce1144c4a8485  .github/ton113-payload/chunk-00-0-0-1
-          af60dc5eee0e1ed76d84cdb25e243ab0e072e6af31d338fd1609436e4889b397  .github/ton113-payload/chunk-00-0-1
-          c32bb25e0a5cb28ae6faf960809b6573c725592ef025ad41f36f1b133e8403ac  .github/ton113-payload/chunk-00-1
-          2693abf49aee16204dce2cc3fdd29c86e2acc65379f25e760facf69c2cfe5e7e  .github/ton113-payload/chunk-00-2
-          adb9d5100ec2d51b2d844f53d1e7bc1c2297fa8a0271f3ffa2ce5c20573413da  .github/ton113-payload/chunk-00-3
-          2c304a3eb41c6dd0225a20f205e56878ba9505e12efe394d92fa5c9f780b57c6  .github/ton113-payload/chunk-01
-          ada93f97bdd7536dda67820e9b41125fab95d583930ec97c0a772e7482285609  .github/ton113-payload/chunk-02
-          7ddb27b4556b6ef05d94acbb4d08d575082a6dd2f29a088c921d852e9c4965ef  .github/ton113-payload/chunk-03
-          6f9eb9c62c1a507edf02cb55ccf69d7fa8a79eba838184381aec31b511ac4415  .github/ton113-payload/chunk-04
-          bcdeabd5b9fb2912915cd5b90e00fbb49319ec799fb7b350753f91926047f33e  .github/ton113-payload/chunk-05-0
-          1e116be89ed587c1e048ff7888fdad8329ee7d0ac148c63cb1c1b2d734bf4d3e  .github/ton113-payload/chunk-05-1
-          c5bb8286231ce08ea986717391b92eb1c35408d47e2a16b5f8369ebe170c47ca  .github/ton113-payload/chunk-05-2
-          ea8eb2498cea381a7b000281efc84ca2a7ab4ae9f7925ee0abbb1fdf5688a100  .github/ton113-payload/chunk-05-3
-          29884e36660d023515970fc79b4cb53e13911b7b1f33bfb33b59b4cdabe7022a  .github/ton113-payload/chunk-06-0
-          20af5800e94d8bb924f86fc1def5b8f5ab7220bdb7f87f62283fd1386084ad5a  .github/ton113-payload/chunk-06-1
-          0b452e6451f2969c1f8aea4ac2602284cda486e51261a69bca7d6a838ab2641e  .github/ton113-payload/chunk-06-2
-          34c784469f68d79d826a98349776f5e5b069b02bd2aed1c58492490b4120e026  .github/ton113-payload/chunk-06-3
-          00c4c3c4e247bf88a5bb4514e87c57d2f2a08ce3e1d2499241cb76d02a6c7034  .github/ton113-payload/chunk-07-0
-          ca16a72db937af82d912df4c4df1c6403df203a41db8ed13461e46ecf1829be0  .github/ton113-payload/chunk-07-1-0
-          7931a527f5b06e41b2361e78c5422740ab6e2067985da618558f59fd6df831ac  .github/ton113-payload/chunk-07-1-1
-          c17eb846a8541228f3ede053be6acef447fe734512fab571e4f436e8f0d565f3  .github/ton113-payload/chunk-07-2
-          084217928fabc6c8cbd91db87beac8f4336653339e132d8f3edfece5caab2a4f  .github/ton113-payload/chunk-07-3
-          EOF
-          sha256sum -c /tmp/payload.sha256
           cat \
             .github/ton113-payload/chunk-00-0-0-{0,1} \
             .github/ton113-payload/chunk-00-0-1 \
@@ -63,6 +37,7 @@ jobs:
             .github/ton113-payload/chunk-07-1-{0,1} \
             .github/ton113-payload/chunk-07-{2,3} \
             | base64 --decode > /tmp/ton113.patch
+          test "$(wc -c < /tmp/ton113.patch)" -eq 124584
           echo '2913d2bf633e9854993ca83c99bcb5bdb7f5637714981f3c60788ae11ea67531  /tmp/ton113.patch' | sha256sum -c -
 
       - name: Apply exact patch
