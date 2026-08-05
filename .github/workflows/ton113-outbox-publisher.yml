@@ -22,10 +22,10 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Reconstruct and verify exact patch
+      - name: Reconstruct patch and diagnostics
         shell: bash
         run: |
-          set -euo pipefail
+          set -u
           cat \
             .github/ton113-payload/chunk-00-0-0-{0,1} \
             .github/ton113-payload/chunk-00-0-1 \
@@ -36,9 +36,45 @@ jobs:
             .github/ton113-payload/chunk-07-0 \
             .github/ton113-payload/chunk-07-1-{0,1} \
             .github/ton113-payload/chunk-07-{2,3} \
-            | base64 --decode > /tmp/ton113.patch
-          test "$(wc -c < /tmp/ton113.patch)" -eq 93438
-          echo '2913d2bf633e9854993ca83c99bcb5bdb7f5637714981f3c60788ae11ea67531  /tmp/ton113.patch' | sha256sum -c -
+            > /tmp/ton113.remote.b64
+          set +e
+          base64 --decode /tmp/ton113.remote.b64 > /tmp/ton113.remote.patch 2> /tmp/ton113.decode.stderr
+          decode_status=$?
+          set -e
+          {
+            echo "decode_status=${decode_status}"
+            wc -c /tmp/ton113.remote.b64 /tmp/ton113.remote.patch
+            sha256sum /tmp/ton113.remote.b64 /tmp/ton113.remote.patch
+            echo '--- fragment hashes ---'
+            find .github/ton113-payload -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum
+            echo '--- decode stderr ---'
+            cat /tmp/ton113.decode.stderr
+          } | tee /tmp/ton113-diagnostics.txt
+          echo "${decode_status}" > /tmp/ton113.decode.status
+
+      - name: Upload reconstruction evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ton113-reconstruction-diagnostics
+          path: |
+            /tmp/ton113.remote.b64
+            /tmp/ton113.remote.patch
+            /tmp/ton113-diagnostics.txt
+            /tmp/ton113.decode.stderr
+            /tmp/ton113.decode.status
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Verify exact patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat /tmp/ton113.decode.status)" -eq 0
+          test "$(wc -c < /tmp/ton113.remote.b64)" -eq 124584
+          test "$(wc -c < /tmp/ton113.remote.patch)" -eq 93438
+          echo '2913d2bf633e9854993ca83c99bcb5bdb7f5637714981f3c60788ae11ea67531  /tmp/ton113.remote.patch' | sha256sum -c -
+          cp /tmp/ton113.remote.patch /tmp/ton113.patch
 
       - name: Apply exact patch
         shell: bash
