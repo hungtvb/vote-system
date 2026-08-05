@@ -156,6 +156,19 @@ Transitions:
 
 State and audit append commit in one transaction under a ballot lock. Hidden/deleted ballots are excluded from public detail, feeds, vote, SSE, and owner mutations. Redis ranking and SSE subscriber changes happen only after commit. Administrator soft-delete preserves ballot and vote rows. See [`MODERATION.md`](MODERATION.md).
 
+
+## Comment moderation
+
+```http
+POST /api/v1/admin/comments/{commentId}/hide
+POST /api/v1/admin/comments/{commentId}/restore
+POST /api/v1/admin/comments/{commentId}/remove
+```
+
+Comment moderation uses `VISIBLE`, `HIDDEN`, `REMOVED_BY_AUTHOR`, and terminal `DELETED` states. State transition, parent ballot `commentCount`, and immutable COMMENT audit append commit together under `post -> comment` locking. Public responses keep a safe tombstone but never expose the previous body for non-visible comments. Existing vote aggregates remain stored; new votes are rejected unless both the comment and ballot are visible.
+
+The unified moderation-case workflow supports `HIDE_COMMENT`, `RESTORE_COMMENT`, and `DELETE_COMMENT`; these adapters call the same service as the direct admin routes. Comment resolutions do not accept `until`.
+
 ## Account moderation
 
 ```http
@@ -211,6 +224,7 @@ Backend coverage includes:
 - bootstrap normalization, idempotency, missing target, invalid configuration, and restricted-target rejection;
 - audit privacy, JSONB persistence, filtering, deterministic ordering, and append-only trigger;
 - ballot transitions, public visibility, stale Redis filtering, rollback, concurrency, and SSE cleanup;
+- comment hide/restore/delete transitions, tombstone privacy, count consistency, vote preservation, audit rollback, and moderation-case resolution;
 - account suspend, ban, restore, explicit session revocation, temporary expiry, and public-history behavior;
 - old JWT, login, refresh, authenticated write, and authenticated SSE rejection;
 - social callback rejection without refresh-cookie issuance;

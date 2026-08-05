@@ -1,5 +1,6 @@
 package com.hungtvb.votesystem.moderation;
 
+import com.hungtvb.votesystem.admin.moderation.AdminCommentModerationService;
 import com.hungtvb.votesystem.admin.moderation.AdminPostModerationService;
 import com.hungtvb.votesystem.admin.usermoderation.AdminUserModerationService;
 import com.hungtvb.votesystem.comment.Comment;
@@ -20,17 +21,20 @@ public class ModerationTargetService {
     private final UserRepository userRepository;
     private final CommentRepository commentRepository;
     private final AdminPostModerationService postModerationService;
+    private final AdminCommentModerationService commentModerationService;
     private final AdminUserModerationService userModerationService;
 
     public ModerationTargetService(PostRepository postRepository,
                                    UserRepository userRepository,
                                    CommentRepository commentRepository,
                                    AdminPostModerationService postModerationService,
+                                   AdminCommentModerationService commentModerationService,
                                    AdminUserModerationService userModerationService) {
         this.postRepository = postRepository;
         this.userRepository = userRepository;
         this.commentRepository = commentRepository;
         this.postModerationService = postModerationService;
+        this.commentModerationService = commentModerationService;
         this.userModerationService = userModerationService;
     }
 
@@ -76,6 +80,9 @@ public class ModerationTargetService {
             case HIDE_BALLOT -> postModerationService.hide(actorId, targetId, reason);
             case RESTORE_BALLOT -> postModerationService.restore(actorId, targetId, reason);
             case DELETE_BALLOT -> postModerationService.softDelete(actorId, targetId, reason);
+            case HIDE_COMMENT -> commentModerationService.hide(actorId, targetId, reason);
+            case RESTORE_COMMENT -> commentModerationService.restore(actorId, targetId, reason);
+            case DELETE_COMMENT -> commentModerationService.remove(actorId, targetId, reason);
             case SUSPEND_USER -> userModerationService.suspend(actorId, targetId, reason, until);
             case BAN_USER -> userModerationService.ban(actorId, targetId, reason, until);
             case RESTORE_USER -> userModerationService.restore(actorId, targetId, reason);

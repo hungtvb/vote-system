@@ -121,6 +121,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if ("PATCH".equals(method) && path.matches("/api/v1/comments/[0-9a-fA-F-]+")) {
             return new Rule("comment-edit", properties.commentEdit(), true);
         }
+        if (("PUT".equals(method) || "DELETE".equals(method))
+                && path.matches("/api/v1/comments/[0-9a-fA-F-]+/vote")) {
+            return new Rule("comment-vote", properties.commentVote(), true);
+        }
         if ("DELETE".equals(method) && path.matches("/api/v1/auth/sessions(?:/others|/[0-9a-fA-F-]+)")) {
             return new Rule("session-management", properties.sessionManagement(), true);
         }

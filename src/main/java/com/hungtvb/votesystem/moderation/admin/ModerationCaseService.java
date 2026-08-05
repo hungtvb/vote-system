@@ -267,8 +267,8 @@ public class ModerationCaseService {
         if (action.targetType() != moderationCase.getTargetType()) {
             throw new InvalidRequestException("Resolution action is incompatible with the moderation target");
         }
-        if (moderationCase.getTargetType() == ModerationTargetType.BALLOT && until != null) {
-            throw new InvalidRequestException("Ballot moderation actions do not accept an expiry");
+        if (moderationCase.getTargetType() != ModerationTargetType.USER && until != null) {
+            throw new InvalidRequestException("Ballot and comment moderation actions do not accept an expiry");
         }
         if (action == ModerationResolutionAction.RESTORE_USER && until != null) {
             throw new InvalidRequestException("Restore user does not accept an expiry");

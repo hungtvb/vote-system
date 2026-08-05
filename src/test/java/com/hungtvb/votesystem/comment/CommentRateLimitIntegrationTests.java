@@ -22,6 +22,7 @@ import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -32,7 +33,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "app.rate-limit.comment-create.limit=1",
         "app.rate-limit.comment-create.window=PT1M",
         "app.rate-limit.comment-edit.limit=1",
-        "app.rate-limit.comment-edit.window=PT1M"
+        "app.rate-limit.comment-edit.window=PT1M",
+        "app.rate-limit.comment-vote.limit=1",
+        "app.rate-limit.comment-vote.window=PT1M"
 })
 @AutoConfigureMockMvc
 class CommentRateLimitIntegrationTests {
@@ -86,10 +89,39 @@ class CommentRateLimitIntegrationTests {
                 .andExpect(header().exists(HttpHeaders.RETRY_AFTER));
     }
 
+    @Test
+    void commentVotingHasItsOwnUserScopedLimit() throws Exception {
+        String token = register("comment-vote-rate@example.com");
+        UUID postId = createPost(token);
+        MvcResult created = mockMvc.perform(post("/api/v1/posts/{postId}/comments", postId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Rate-limited vote target\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID commentId = UUID.fromString(json(created).get("id").asText());
+
+        mockMvc.perform(put("/api/v1/comments/{commentId}/vote", commentId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"UP\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/comments/{commentId}/vote", commentId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"DOWN\"}"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists(HttpHeaders.RETRY_AFTER));
+    }
+
     private String register() throws Exception {
+        return register("comment-rate@example.com");
+    }
+
+    private String register(String email) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"comment-rate@example.com\",\"password\":\"strong-password\"}"))
+                        .content("{\"email\":\"" + email + "\",\"password\":\"strong-password\"}"))
                 .andExpect(status().isCreated())
                 .andReturn();
         return json(result).get("accessToken").asText();

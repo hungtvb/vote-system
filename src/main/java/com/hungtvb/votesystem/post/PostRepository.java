@@ -42,6 +42,15 @@ public interface PostRepository extends JpaRepository<Post, UUID>, JpaSpecificat
             """)
     Optional<Post> findVisibleByIdForUpdate(@Param("postId") UUID postId);
 
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    @Query("""
+            select post
+              from Post post
+             where post.id = :postId
+               and post.moderationStatus = com.hungtvb.votesystem.post.ModerationStatus.VISIBLE
+            """)
+    Optional<Post> findVisibleByIdForRead(@Param("postId") UUID postId);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             update Post post
