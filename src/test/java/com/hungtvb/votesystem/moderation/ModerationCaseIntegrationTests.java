@@ -378,6 +378,47 @@ class ModerationCaseIntegrationTests {
                 .andExpect(jsonPath("$.detail").value("Users cannot report their own comment"));
     }
 
+    @Test
+    void resolveCommentCaseUsesAuditedCommentModerationBoundary() throws Exception {
+        AuthSession reporter = register("case-comment-resolve-reporter@example.com");
+        AuthSession commenter = register("case-comment-resolve-author@example.com");
+        AuthSession admin = admin("case-comment-resolve-admin@example.com");
+        UUID postId = createPost(reporter.accessToken(), "Comment case", "Resolve comment target", "GENERAL");
+        UUID commentId = createComment(commenter.accessToken(), postId, "Comment requiring moderation");
+
+        JsonNode report = json(mockMvc.perform(post("/api/v1/reports")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(reporter.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reportPayload("COMMENT", commentId, "HARASSMENT", "Comment-level evidence")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.targetValidationStatus").value("VERIFIED"))
+                .andReturn());
+        UUID caseId = UUID.fromString(report.get("caseId").asText());
+        advanceToReview(admin, caseId);
+
+        mockMvc.perform(post("/api/v1/admin/moderation-cases/{caseId}/resolve", caseId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(admin.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(resolvePayload("HIDE_COMMENT", "Confirmed comment violation", null)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RESOLVED"))
+                .andExpect(jsonPath("$.resolutionAction").value("HIDE_COMMENT"));
+
+        mockMvc.perform(get("/api/v1/posts/{postId}/comments", postId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].moderationStatus").value("HIDDEN"))
+                .andExpect(jsonPath("$.content[0].body").doesNotExist());
+        assertEquals(0L, scalar("select comment_count from posts where id = ?", Long.class, postId));
+        assertEquals(1L, auditCount(commentId, "ADMIN_HIDE_COMMENT"));
+        assertEquals(1L, auditCount(caseId, "ADMIN_RESOLVE_MODERATION_CASE"));
+
+        mockMvc.perform(post("/api/v1/admin/moderation-cases/{caseId}/resolve", caseId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(admin.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(resolvePayload("HIDE_COMMENT", "Repeat resolution", Instant.now().plusSeconds(60))))
+                .andExpect(status().isBadRequest());
+    }
+
     private void advanceToReview(AuthSession admin, UUID caseId) throws Exception {
         mockMvc.perform(post("/api/v1/admin/moderation-cases/{caseId}/assign", caseId)
                         .header(HttpHeaders.AUTHORIZATION, bearer(admin.accessToken()))

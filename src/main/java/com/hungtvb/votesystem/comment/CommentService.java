@@ -13,6 +13,7 @@ import com.hungtvb.votesystem.post.Post;
 import com.hungtvb.votesystem.post.PostRepository;
 import com.hungtvb.votesystem.post.dto.AuthorSummary;
 import com.hungtvb.votesystem.user.UserRepository;
+import com.hungtvb.votesystem.vote.VoteType;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,13 +32,16 @@ public class CommentService {
     private final CommentRepository commentRepository;
     private final PostRepository postRepository;
     private final UserRepository userRepository;
+    private final CommentVoteRepository voteRepository;
 
     public CommentService(CommentRepository commentRepository,
                           PostRepository postRepository,
-                          UserRepository userRepository) {
+                          UserRepository userRepository,
+                          CommentVoteRepository voteRepository) {
         this.commentRepository = commentRepository;
         this.postRepository = postRepository;
         this.userRepository = userRepository;
+        this.voteRepository = voteRepository;
     }
 
     @Transactional(readOnly = true)
@@ -63,11 +67,19 @@ public class CommentService {
                 .stream()
                 .map(AuthorSummary::from)
                 .collect(Collectors.toMap(AuthorSummary::id, author -> author));
+        Map<UUID, VoteType> currentVotes = currentUserId == null || fetched.isEmpty()
+                ? Map.of()
+                : voteRepository.findByUserIdAndCommentIdIn(
+                                currentUserId,
+                                fetched.stream().map(Comment::getId).toList())
+                        .stream()
+                        .collect(Collectors.toMap(CommentVote::getCommentId, CommentVote::getType));
         List<CommentResponse> content = fetched.stream()
                 .map(comment -> CommentResponse.from(
                         comment,
                         authors.getOrDefault(comment.getAuthorId(), AuthorSummary.technical(comment.getAuthorId())),
-                        currentUserId
+                        currentUserId,
+                        currentVotes.get(comment.getId())
                 ))
                 .toList();
         Comment last = fetched.isEmpty() ? null : fetched.get(fetched.size() - 1);
@@ -152,7 +164,12 @@ public class CommentService {
         AuthorSummary author = userRepository.findById(comment.getAuthorId())
                 .map(AuthorSummary::from)
                 .orElseGet(() -> AuthorSummary.technical(comment.getAuthorId()));
-        return CommentResponse.from(comment, author, currentUserId);
+        VoteType myVote = currentUserId == null
+                ? null
+                : voteRepository.findByUserIdAndCommentId(currentUserId, comment.getId())
+                        .map(CommentVote::getType)
+                        .orElse(null);
+        return CommentResponse.from(comment, author, currentUserId, myVote);
     }
 
     private Post lockPublicPost(UUID postId) {

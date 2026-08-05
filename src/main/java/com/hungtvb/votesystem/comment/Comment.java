@@ -43,6 +43,18 @@ public class Comment {
     @Column(name = "removed_at")
     private Instant removedAt;
 
+    @Column(name = "moderation_updated_at")
+    private Instant moderationUpdatedAt;
+
+    @Column(name = "vote_score", nullable = false)
+    private long voteScore;
+
+    @Column(name = "up_votes", nullable = false)
+    private long upVotes;
+
+    @Column(name = "down_votes", nullable = false)
+    private long downVotes;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -62,6 +74,9 @@ public class Comment {
         this.parentId = parentId;
         this.body = Objects.requireNonNull(body);
         this.moderationStatus = CommentModerationStatus.VISIBLE;
+        this.voteScore = 0;
+        this.upVotes = 0;
+        this.downVotes = 0;
         this.createdAt = Objects.requireNonNull(now);
         this.updatedAt = now;
     }
@@ -88,8 +103,53 @@ public class Comment {
         requireVisible("Only visible comments can be removed by their author");
         moderationStatus = CommentModerationStatus.REMOVED_BY_AUTHOR;
         removedAt = Objects.requireNonNull(now);
+        moderationUpdatedAt = now;
         updatedAt = now;
         return true;
+    }
+
+
+    public void hide(Instant now) {
+        if (moderationStatus != CommentModerationStatus.VISIBLE) {
+            throw new IllegalStateException("Only visible comments can be hidden");
+        }
+        moderationStatus = CommentModerationStatus.HIDDEN;
+        removedAt = Objects.requireNonNull(now);
+        moderationUpdatedAt = now;
+        updatedAt = now;
+    }
+
+    public void restore(Instant now) {
+        if (moderationStatus != CommentModerationStatus.HIDDEN) {
+            throw new IllegalStateException("Only hidden comments can be restored");
+        }
+        moderationStatus = CommentModerationStatus.VISIBLE;
+        removedAt = null;
+        moderationUpdatedAt = Objects.requireNonNull(now);
+        updatedAt = now;
+    }
+
+    public void softDelete(Instant now) {
+        if (moderationStatus == CommentModerationStatus.DELETED) {
+            throw new IllegalStateException("Deleted comments cannot be deleted again");
+        }
+        moderationStatus = CommentModerationStatus.DELETED;
+        removedAt = Objects.requireNonNull(now);
+        moderationUpdatedAt = now;
+        updatedAt = now;
+    }
+
+    public void applyVoteDelta(int scoreDelta, int upDelta, int downDelta, Instant now) {
+        long nextScore = Math.addExact(voteScore, scoreDelta);
+        long nextUpVotes = Math.addExact(upVotes, upDelta);
+        long nextDownVotes = Math.addExact(downVotes, downDelta);
+        if (nextUpVotes < 0 || nextDownVotes < 0 || nextScore != nextUpVotes - nextDownVotes) {
+            throw new IllegalStateException("Comment vote aggregates are invalid");
+        }
+        voteScore = nextScore;
+        upVotes = nextUpVotes;
+        downVotes = nextDownVotes;
+        updatedAt = Objects.requireNonNull(now);
     }
 
     public boolean acceptsReply() {
@@ -118,6 +178,10 @@ public class Comment {
     public CommentModerationStatus getModerationStatus() { return moderationStatus; }
     public Instant getEditedAt() { return editedAt; }
     public Instant getRemovedAt() { return removedAt; }
+    public Instant getModerationUpdatedAt() { return moderationUpdatedAt; }
+    public long getVoteScore() { return voteScore; }
+    public long getUpVotes() { return upVotes; }
+    public long getDownVotes() { return downVotes; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public long getVersion() { return version; }

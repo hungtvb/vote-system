@@ -131,6 +131,9 @@ app:
     comment-edit:
       limit: ${RATE_LIMIT_COMMENT_EDIT_LIMIT:30}
       window: ${RATE_LIMIT_COMMENT_EDIT_WINDOW:PT10M}
+    comment-vote:
+      limit: ${RATE_LIMIT_COMMENT_VOTE_LIMIT:60}
+      window: ${RATE_LIMIT_COMMENT_VOTE_WINDOW:PT1M}
   security:
     admin-bootstrap:
       enabled: ${ADMIN_BOOTSTRAP_ENABLED:false}

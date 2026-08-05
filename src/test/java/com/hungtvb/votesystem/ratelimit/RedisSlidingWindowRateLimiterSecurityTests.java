@@ -58,6 +58,7 @@ class RedisSlidingWindowRateLimiterSecurityTests {
                 policy,
                 policy,
                 policy,
+                policy,
                 policy
         );
     }

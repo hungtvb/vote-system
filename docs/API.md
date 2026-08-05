@@ -146,6 +146,8 @@ GET    /api/v1/posts/{postId}/comments?limit=20&afterCreatedAt=...&afterId=...
 POST   /api/v1/posts/{postId}/comments
 PATCH  /api/v1/comments/{commentId}
 DELETE /api/v1/comments/{commentId}
+PUT    /api/v1/comments/{commentId}/vote
+DELETE /api/v1/comments/{commentId}/vote
 ```
 
 Create payload:
@@ -159,11 +161,13 @@ Create payload:
 
 `parentId` may reference only a visible top-level comment on the same ballot, so reply depth is exactly one level. Body text is trimmed, required, and limited to 2,000 characters.
 
-Public ordering is `createdAt ASC, id ASC`. Cursor fields must be supplied together and remain stable when newer comments arrive. Responses batch-load privacy-safe author summaries containing display name, initials, and Ballot Mark. Removed or moderated rows remain safe tombstones with `body` omitted; previous text is never exposed publicly.
+Public ordering is `createdAt ASC, id ASC`. Cursor fields must be supplied together and remain stable when newer comments arrive. Responses batch-load privacy-safe author summaries containing display name, initials, and Ballot Mark. They also include `voteScore`, `upVotes`, `downVotes`, and authenticated `myVote`. Removed or moderated rows remain safe tombstones with `body` omitted; previous text is never exposed publicly.
+
+Comment voting uses `{"type":"UP"}` or `DOWN` with add/change/remove semantics. A unique `(user, comment)` row and a locked comment aggregate keep `voteScore = upVotes - downVotes` with non-negative counts. Voting is accepted only while the comment and parent ballot are visible.
 
 Authors may edit or remove only their own visible comments. Author removal is idempotent and decrements the ballot's visible `commentCount` under the same ballot lock used by comment creation. Closed ballots may still be discussed, but hidden/deleted ballots expose neither comments nor mutation existence.
 
-COMMENT reports now validate against an existing visible comment and visible ballot, and self-reporting is rejected. Comment-specific administrator hide/restore/remove actions remain owned by TON-111.
+COMMENT reports validate against an existing visible comment and visible ballot, reject self-reporting, and may be resolved through the audited comment moderation actions below.
 
 ## Voting and realtime
 
@@ -209,6 +213,19 @@ VISIBLE/HIDDEN -> DELETED
 ```
 
 `DELETED` is terminal. State and audit append commit atomically. Hide/delete remove ranking membership and close SSE subscribers only after commit. Administrator soft-delete preserves ballot and vote rows. Public paths return generic not-found behavior. See [`MODERATION.md`](MODERATION.md).
+
+
+## Administrator comment moderation
+
+```http
+POST /api/v1/admin/comments/{commentId}/hide
+POST /api/v1/admin/comments/{commentId}/restore
+POST /api/v1/admin/comments/{commentId}/remove
+```
+
+All routes require `ROLE_ADMIN` and the same bounded `{"reason":"..."}` request used by ballot moderation. Transitions are `VISIBLE -> HIDDEN`, `HIDDEN -> VISIBLE`, and any non-deleted state to terminal `DELETED`. Hide/delete decrement visible `commentCount`; restore increments it. The comment body and vote rows remain stored, but every non-visible public response is a tombstone with the body omitted. State, count, and immutable COMMENT audit append commit atomically.
+
+Moderation-case resolution actions `HIDE_COMMENT`, `RESTORE_COMMENT`, and `DELETE_COMMENT` call this same service boundary. Comment actions do not accept an expiry.
 
 ## Administrator account moderation
 
@@ -284,6 +301,8 @@ User responses exclude credential, provider-subject, session/token, IP, and raw 
 | Profile update | 10/hour | user |
 | Comment create | 20/10 minutes | user |
 | Comment edit | 30/10 minutes | user |
+| Comment vote | 60/minute | user |
+| Report create | 10/hour | user |
 | Session revocation | 10/minute | user |
 
 Redis Lua implements atomic sliding windows. Rejection returns `429` plus `Retry-After`. Default infrastructure-error behavior is fail-open; account-status PostgreSQL enforcement is separate and does not fail open.

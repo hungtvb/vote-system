@@ -158,13 +158,35 @@ The backend regression suite covers:
 - concurrent moderation producing one transition and one audit record.
 
 
-## Comment-report boundary
+## Comment moderation and report resolution
 
-TON-110 introduces the comment domain and changes new `COMMENT` reports from deferred validation to authoritative validation:
+Comments use a separate moderation state machine:
 
-- the comment must exist;
-- the comment and its ballot must both be publicly visible;
-- an author cannot report their own comment;
-- removed author tombstones and future hidden/deleted comments are not reportable.
+```text
+VISIBLE -> HIDDEN -> VISIBLE
+VISIBLE/HIDDEN/REMOVED_BY_AUTHOR -> DELETED
+DELETED is terminal
+```
 
-A valid comment report creates or joins the same unified moderation-case workflow used by ballots and users with `targetValidationStatus=VERIFIED`. TON-110 intentionally does not add administrator comment actions. Hide, restore, remove, audit integration, and comment-vote moderation remain the scope of TON-111. Until then, a comment case may be triaged or rejected but cannot be resolved through a mismatched ballot/user action.
+Administrator routes are:
+
+```http
+POST /api/v1/admin/comments/{commentId}/hide
+POST /api/v1/admin/comments/{commentId}/restore
+POST /api/v1/admin/comments/{commentId}/remove
+```
+
+Every mutation locks the parent ballot before the comment, changes the comment state, adjusts the ballot's visible `commentCount` only when visibility changes, and appends one immutable audit record in the same transaction. Audit actions are `ADMIN_HIDE_COMMENT`, `ADMIN_RESTORE_COMMENT`, and `ADMIN_DELETE_COMMENT` with target type `COMMENT`.
+
+Public comment reads always retain the row as a tombstone but omit its previous body whenever status is not `VISIBLE`. Voting and new reports require both comment and parent ballot visibility. Existing vote rows and aggregates remain stored across hide/restore/delete for auditability; hidden/deleted comments cannot receive new vote mutations.
+
+New `COMMENT` reports are authoritative when the comment and parent ballot are visible and the reporter is not the author. Moderation cases may resolve them with `HIDE_COMMENT`, `RESTORE_COMMENT`, or `DELETE_COMMENT`. These actions reuse the same audited comment moderation service; comment resolutions never accept an expiry.
+
+Lock ordering is consistent across community mutations:
+
+```text
+comment create/edit/remove/admin moderation: post write -> comment write
+comment vote:                              post read  -> comment write
+```
+
+The shared post lock permits votes on different comments to proceed concurrently while still converging with ballot or comment moderation.
