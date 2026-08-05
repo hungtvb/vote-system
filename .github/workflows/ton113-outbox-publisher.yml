@@ -37,7 +37,7 @@ jobs:
             .github/ton113-payload/chunk-07-1-{0,1} \
             .github/ton113-payload/chunk-07-{2,3} \
             | base64 --decode > /tmp/ton113.patch
-          test "$(wc -c < /tmp/ton113.patch)" -eq 124584
+          test "$(wc -c < /tmp/ton113.patch)" -eq 93438
           echo '2913d2bf633e9854993ca83c99bcb5bdb7f5637714981f3c60788ae11ea67531  /tmp/ton113.patch' | sha256sum -c -
 
       - name: Apply exact patch
