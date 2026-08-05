@@ -16,7 +16,6 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
     steps:
       - name: Checkout publisher branch
         uses: actions/checkout@v4
@@ -28,46 +27,39 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo 'a2852883c2b7e6738b26b27d8a3ef580b206a215abd405fcb8f920ba7e3e28c7  .github/ton113-payload/chunk-00' | sha256sum -c -
-          echo '2c304a3eb41c6dd0225a20f205e56878ba9505e12efe394d92fa5c9f780b57c6  .github/ton113-payload/chunk-01' | sha256sum -c -
-          echo 'ada93f97bdd7536dda67820e9b41125fab95d583930ec97c0a772e7482285609  .github/ton113-payload/chunk-02' | sha256sum -c -
-          echo '7ddb27b4556b6ef05d94acbb4d08d575082a6dd2f29a088c921d852e9c4965ef  .github/ton113-payload/chunk-03' | sha256sum -c -
-          echo '6f9eb9c62c1a507edf02cb55ccf69d7fa8a79eba838184381aec31b511ac4415  .github/ton113-payload/chunk-04' | sha256sum -c -
-          echo 'bcdeabd5b9fb2912915cd5b90e00fbb49319ec799fb7b350753f91926047f33e  .github/ton113-payload/chunk-05-0' | sha256sum -c -
-          echo '1e116be89ed587c1e048ff7888fdad8329ee7d0ac148c63cb1c1b2d734bf4d3e  .github/ton113-payload/chunk-05-1' | sha256sum -c -
-          echo 'c5bb8286231ce08ea986717391b92eb1c35408d47e2a16b5f8369ebe170c47ca  .github/ton113-payload/chunk-05-2' | sha256sum -c -
-          echo 'ea8eb2498cea381a7b000281efc84ca2a7ab4ae9f7925ee0abbb1fdf5688a100  .github/ton113-payload/chunk-05-3' | sha256sum -c -
-          echo '29884e36660d023515970fc79b4cb53e13911b7b1f33bfb33b59b4cdabe7022a  .github/ton113-payload/chunk-06-0' | sha256sum -c -
-          echo '20af5800e94d8bb924f86fc1def5b8f5ab7220bdb7f87f62283fd1386084ad5a  .github/ton113-payload/chunk-06-1' | sha256sum -c -
-          echo '0b452e6451f2969c1f8aea4ac2602284cda486e51261a69bca7d6a838ab2641e  .github/ton113-payload/chunk-06-2' | sha256sum -c -
-          echo '34c784469f68d79d826a98349776f5e5b069b02bd2aed1c58492490b4120e026  .github/ton113-payload/chunk-06-3' | sha256sum -c -
-          echo '00c4c3c4e247bf88a5bb4514e87c57d2f2a08ce3e1d2499241cb76d02a6c7034  .github/ton113-payload/chunk-07-0' | sha256sum -c -
-          echo 'dc1a90194fe27b9d9349ea2959658e3d1c4768085e0da87bc3108533c9bb373d  .github/ton113-payload/chunk-07-1' | sha256sum -c -
-          echo 'c17eb846a8541228f3ede053be6acef447fe734512fab571e4f436e8f0d565f3  .github/ton113-payload/chunk-07-2' | sha256sum -c -
-          echo '084217928fabc6c8cbd91db87beac8f4336653339e132d8f3edfece5caab2a4f  .github/ton113-payload/chunk-07-3' | sha256sum -c -
-
+          cat > /tmp/payload.sha256 <<'EOF'
+          f05bc4eeba7d311a8bcfa19af194d83f3e686f646e752fdf40cceb09ea9e56a9  .github/ton113-payload/chunk-00-0
+          c32bb25e0a5cb28ae6faf960809b6573c725592ef025ad41f36f1b133e8403ac  .github/ton113-payload/chunk-00-1
+          2693abf49aee16204dce2cc3fdd29c86e2acc65379f25e760facf69c2cfe5e7e  .github/ton113-payload/chunk-00-2
+          adb9d5100ec2d51b2d844f53d1e7bc1c2297fa8a0271f3ffa2ce5c20573413da  .github/ton113-payload/chunk-00-3
+          2c304a3eb41c6dd0225a20f205e56878ba9505e12efe394d92fa5c9f780b57c6  .github/ton113-payload/chunk-01
+          ada93f97bdd7536dda67820e9b41125fab95d583930ec97c0a772e7482285609  .github/ton113-payload/chunk-02
+          7ddb27b4556b6ef05d94acbb4d08d575082a6dd2f29a088c921d852e9c4965ef  .github/ton113-payload/chunk-03
+          6f9eb9c62c1a507edf02cb55ccf69d7fa8a79eba838184381aec31b511ac4415  .github/ton113-payload/chunk-04
+          bcdeabd5b9fb2912915cd5b90e00fbb49319ec799fb7b350753f91926047f33e  .github/ton113-payload/chunk-05-0
+          1e116be89ed587c1e048ff7888fdad8329ee7d0ac148c63cb1c1b2d734bf4d3e  .github/ton113-payload/chunk-05-1
+          c5bb8286231ce08ea986717391b92eb1c35408d47e2a16b5f8369ebe170c47ca  .github/ton113-payload/chunk-05-2
+          ea8eb2498cea381a7b000281efc84ca2a7ab4ae9f7925ee0abbb1fdf5688a100  .github/ton113-payload/chunk-05-3
+          29884e36660d023515970fc79b4cb53e13911b7b1f33bfb33b59b4cdabe7022a  .github/ton113-payload/chunk-06-0
+          20af5800e94d8bb924f86fc1def5b8f5ab7220bdb7f87f62283fd1386084ad5a  .github/ton113-payload/chunk-06-1
+          0b452e6451f2969c1f8aea4ac2602284cda486e51261a69bca7d6a838ab2641e  .github/ton113-payload/chunk-06-2
+          34c784469f68d79d826a98349776f5e5b069b02bd2aed1c58492490b4120e026  .github/ton113-payload/chunk-06-3
+          00c4c3c4e247bf88a5bb4514e87c57d2f2a08ce3e1d2499241cb76d02a6c7034  .github/ton113-payload/chunk-07-0
+          dc1a90194fe27b9d9349ea2959658e3d1c4768085e0da87bc3108533c9bb373d  .github/ton113-payload/chunk-07-1
+          c17eb846a8541228f3ede053be6acef447fe734512fab571e4f436e8f0d565f3  .github/ton113-payload/chunk-07-2
+          084217928fabc6c8cbd91db87beac8f4336653339e132d8f3edfece5caab2a4f  .github/ton113-payload/chunk-07-3
+          EOF
+          sha256sum -c /tmp/payload.sha256
           cat \
-            .github/ton113-payload/chunk-00 \
-            .github/ton113-payload/chunk-01 \
-            .github/ton113-payload/chunk-02 \
-            .github/ton113-payload/chunk-03 \
-            .github/ton113-payload/chunk-04 \
-            .github/ton113-payload/chunk-05-0 \
-            .github/ton113-payload/chunk-05-1 \
-            .github/ton113-payload/chunk-05-2 \
-            .github/ton113-payload/chunk-05-3 \
-            .github/ton113-payload/chunk-06-0 \
-            .github/ton113-payload/chunk-06-1 \
-            .github/ton113-payload/chunk-06-2 \
-            .github/ton113-payload/chunk-06-3 \
-            .github/ton113-payload/chunk-07-0 \
-            .github/ton113-payload/chunk-07-1 \
-            .github/ton113-payload/chunk-07-2 \
-            .github/ton113-payload/chunk-07-3 \
+            .github/ton113-payload/chunk-00-{0,1,2,3} \
+            .github/ton113-payload/chunk-{01,02,03,04} \
+            .github/ton113-payload/chunk-05-{0,1,2,3} \
+            .github/ton113-payload/chunk-06-{0,1,2,3} \
+            .github/ton113-payload/chunk-07-{0,1,2,3} \
             | base64 --decode > /tmp/ton113.patch
           echo '2913d2bf633e9854993ca83c99bcb5bdb7f5637714981f3c60788ae11ea67531  /tmp/ton113.patch' | sha256sum -c -
 
-      - name: Apply patch to exact base
+      - name: Apply exact patch and verify source scope
         shell: bash
         run: |
           set -euo pipefail
@@ -78,12 +70,7 @@ jobs:
           git apply /tmp/ton113.patch
           git add -N .
           git diff --check
-
-      - name: Verify exact source allowlist
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat > /tmp/expected-files <<'EOF'
+          cat > /tmp/expected <<'EOF'
           .env.example
           README.md
           docs/OUTBOX.md
@@ -115,10 +102,10 @@ jobs:
           src/test/java/com/hungtvb/votesystem/outbox/OutboxIntegrationTests.java
           src/test/resources/application.properties
           EOF
-          sort -o /tmp/expected-files /tmp/expected-files
-          git diff --name-only 7c71dd5037d521d55a6d893217fb1db4f19c4f2b | sort > /tmp/actual-files
-          diff -u /tmp/expected-files /tmp/actual-files
-          test "$(wc -l < /tmp/actual-files)" -eq 30
+          sort -o /tmp/expected /tmp/expected
+          git diff --name-only 7c71dd5037d521d55a6d893217fb1db4f19c4f2b | sort > /tmp/actual
+          diff -u /tmp/expected /tmp/actual
+          test "$(wc -l < /tmp/actual)" -eq 30
 
       - name: Set up Java 21
         uses: actions/setup-java@v4
@@ -127,14 +114,10 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Compile backend
-        run: mvn -B -DskipTests compile
-
-      - name: Run focused PostgreSQL and domain suites
-        run: >-
-          mvn -B
-          -Dtest=OutboxIntegrationTests,CommentIntegrationTests,CommentVoteIntegrationTests,AdminCommentModerationIntegrationTests,AdminPostModerationIntegrationTests,AdminUserModerationIntegrationTests,ModerationCaseIntegrationTests,VoteSystemApplicationTests
-          test
+      - name: Compile and run focused PostgreSQL suites
+        run: |
+          mvn -B -DskipTests compile
+          mvn -B -Dtest=OutboxIntegrationTests,CommentIntegrationTests,CommentVoteIntegrationTests,AdminCommentModerationIntegrationTests,AdminPostModerationIntegrationTests,AdminUserModerationIntegrationTests,ModerationCaseIntegrationTests,VoteSystemApplicationTests test
 
       - name: Publish verified task source
         shell: bash
@@ -142,8 +125,8 @@ jobs:
           set -euo pipefail
           git add -A
           git diff --cached --check
-          git config user.name 'vote-system-automation'
-          git config user.email 'actions@users.noreply.github.com'
+          git config user.name vote-system-automation
+          git config user.email actions@users.noreply.github.com
           git commit -m 'TON-113 Add transactional community outbox'
           TASK_SHA=$(git rev-parse HEAD)
           REMOTE_SHA=$(git ls-remote origin "refs/heads/${TASK_BRANCH}" | cut -f1)
