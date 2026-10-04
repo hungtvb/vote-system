@@ -7,7 +7,7 @@ RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 
-FROM maven:3.9.11-eclipse-temurin-21 AS backend-build
+FROM maven:3-eclipse-temurin-24 AS backend-build
 WORKDIR /workspace
 
 COPY pom.xml ./
