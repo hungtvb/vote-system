@@ -91,7 +91,7 @@ jobs:
           test "$(grep -c 'admin-system reconciliation read failed after commit' admin-system-partial-success-qa/server.log)" -eq 1
       - name: Upload partial-success evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: admin-system-partial-success-qa
           path: frontend/admin-system-partial-success-qa/**
